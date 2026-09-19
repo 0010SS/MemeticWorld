@@ -99,11 +99,41 @@ Prestige and conformity are available as `modules.prestige_bias` and `modules.co
 
 ## UI
 
-**Campus**
-- a top-down map with GA sprites, animated semantic movement, active events and speech bubbles with listener
-  lines
-- play, pause, speed and rewind controls, plus buttons that jump to the first meme use and the first cross-group
-  transmission
+**Campus** — a Smallville-style pixel-art map of the real Homewood campus at 1:1
+- 483×575 tiles at 2 m per tile, north up, from University Parkway to Wyman Park Drive and from Stony Run to
+  just east of Charles Street; built from OpenStreetMap data (`data/homewood_osm.json`, ODbL) by
+  `scripts/homewood_geo.py` (projection + rasterisation) and `scripts/build_homewood_map.py` (tiles)
+- the eight places of the experiment are furnished buildings drawn on their exact footprints (1-tile walls,
+  rooms laid out inside the real shape, doors where the real walkways meet the building): Gym = O'Connor Rec
+  Center (the rotated hall), Dining Hall = Hopkins Cafe (the FFC hall in the corner of AMR III, beside AMR II),
+  Dorm = AMR II (the H-shaped hall: bedrooms along both wings, lounge and grad apartment in the north blocks,
+  hallway through the central bar, the courtyard open), Classroom = Gilman Hall, Quad = Keyser Quad (real lawn
+  and paths), Library = MSE Library + Brody (L-shaped), Cafe = Levering, Research Lab = Hackerman Hall
+- every other building is a grey footprint with its name (dark grey = campus buildings); roads, brick walkways,
+  plazas, lawns, sports fields, parking, the woods of Wyman Park and Stony Run come from the map data
+- pixel-art straightening: outlines within a few degrees of the grid (or of 45°) are rotated about their centre
+  onto it, then every outline and line is simplified and snapped to 0°/45°/90° (anything at another angle is
+  routed straight–diagonal–straight with its endpoints kept, so positions, proportions and the path network are
+  preserved); small unnamed grass slivers are plain grass, underground garages and their aisles are not drawn
+  (Decker Quad is grass), sidewalks are generated as an even band along every road, informal trails are dirt,
+  and the woods are packed rows of trees like Smallville's forests
+- interiors are furnished per room type from Smallville's furniture (bedrooms with beds, desks and dressers; a
+  lounge with a kitchenette, table, sofa and pool table; serving lines and table rows in the dining hall and
+  cafe; a lecture-hall desk grid, seminar tables, library shelves and reading tables, lab benches and computer
+  desks, gym machines) with floors that differ by room type
+- every tile and every piece of furniture comes from the Generative Agents "the Ville" assets (CuteRPG World by
+  PixyMoon, Room Builder / Modern Interiors by LimeZu) plus a small generated tileset for streets, sidewalks,
+  footprints, water and turf; each arena is a furnished room, agents walk through doors and along the walkways
+  (A* over the map's walk-cost grid), with GA's character sprites
+- camera: drag to pan, wheel or +/− to zoom, `fit` / `quad` buttons, minimap, and *follow* for the selected agent;
+  the map is drawn in 32-tile chunks at three detail levels (plus the thumbnail when zoomed far out) so the
+  15456×18400 px world stays smooth
+- place labels, building and road names, active-event outlines, name tags and pixel speech bubbles with listener
+  lines; play, pause, speed and rewind controls, plus buttons that jump to the first meme use and the first
+  cross-group transmission
+- URL parameters for stills: `?run=<id>&tick=<n>&frac=<0..1>&zoom=<z>&place=<Place>&agent=<id>&follow=1&view=fit`
+- rebuild with `python3 scripts/build_homewood_map.py [--preview map.png]` (needs Pillow); the schematic
+  `python3 scripts/homewood_outline.py` renders `data/homewood_outline.png` for checking the layout
 - click an agent to see identity, personality, relationships, routine, current activity, memories as of that
   tick, last retrieved memories with score components, reflections and conversations
 - click any utterance to see its causal trace
@@ -135,8 +165,9 @@ backend/
   api/server.py           FastAPI
   prompts/                MemeWorld's own (non-GA) prompt templates
 configs/                  experiment configs + population
-frontend/                 index.html, app.js, styles.css
-third_party/generative_agents/   vendored upstream (unmodified)
+frontend/                 index.html, app.js, styles.css, homewood_map.json (generated), homewood_extra.png
+scripts/build_homewood_map.py    builds the pixel-art campus map from the vendored Smallville assets
+third_party/generative_agents/   vendored upstream (unmodified; includes the Ville tilesets, see UPSTREAM.md)
 docs/DECISIONS.md         every deviation from GA / the plan
 REPORT.md                 build report and first results
 ```

@@ -4,11 +4,14 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>MemeWorld</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Pixelify+Sans:wght@400;600;700&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="/static/styles.css">
 </head>
 <body>
 <header class="topbar">
-  <div class="brand">MemeWorld <span class="sub">controlled meme-evolution simulator</span></div>
+  <div class="brand"><span class="logo">MemeWorld</span> <span class="sub">controlled meme-evolution simulator · Homewood campus</span></div>
   <nav class="tabs" role="tablist">
     <button class="tab active" data-view="campus">Campus</button>
     <button class="tab" data-view="culture">Culture</button>
@@ -28,9 +31,20 @@
   <section id="view-campus" class="view active">
     <div class="campus-layout">
       <div class="map-col">
-        <div class="map-wrap"><canvas id="map" width="1000" height="620"></canvas>
-          <div class="clock" id="clock">—</div>
+        <div class="map-wrap" id="mapWrap">
+          <canvas id="map"></canvas>
+          <div class="clock hud" id="clock">—</div>
+          <div class="hud map-tools">
+            <button id="zoomOut" title="Zoom out (−)">−</button>
+            <button id="zoomIn" title="Zoom in (+)">+</button>
+            <button id="zoomFit" title="Fit the whole campus">fit</button>
+            <button id="zoomQuad" title="Centre on Keyser Quad">quad</button>
+            <label class="follow" title="Keep the camera on the selected agent"><input type="checkbox" id="followSel"> follow</label>
+          </div>
+          <canvas id="minimap" class="hud" width="120" height="143" title="Click to move the camera"></canvas>
+          <div class="hud map-help" id="mapHelp">drag to pan · wheel to zoom · click an agent</div>
           <div class="debug-badge" id="debugBadge" hidden>RESEARCH DEBUG: hidden event types visible</div>
+          <div class="map-loading" id="mapLoading">loading campus…</div>
         </div>
         <div class="timeline">
           <button id="btnBack" title="Step back">⏮</button>
