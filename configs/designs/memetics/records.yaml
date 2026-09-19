@@ -1,0 +1,37 @@
+# Complete experiment preset. Edit levels, horizons and seeds for the research question.
+"name": "memetics_records"
+"description": "Speech, records and cultural memory"
+"base": "configs/memetics.yaml"
+"seeds":
+  - 11
+  - 12
+  - 13
+  - 14
+  - 15
+"replicates": 1
+"observer":
+  "backend": "claude_cli"
+  "model": "sonnet"
+"questions":
+  - "How do ideas move between speech, writing and private memory, and what changes along those paths?"
+"common": {}
+"factors":
+  "access":
+    "hidden":
+      "records":
+        "display": "none"
+    "current":
+      "records":
+        "display": "current"
+    "history":
+      "records":
+        "display": "history"
+"outcomes":
+  - "memetics.n_threads"
+  - "memetics.n_multi_agent_threads"
+  - "memetics.n_changes"
+  - "memetics.mean_public_users"
+  - "memetics.mean_senses"
+  - "memetics.mean_persistence_days"
+  - "memetics.n_supported_reuses"
+  - "memetics.mean_agent_agreement"

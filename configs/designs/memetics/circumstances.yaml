@@ -1,0 +1,67 @@
+# Complete experiment preset. Edit levels, horizons and seeds for the research question.
+"name": "memetics_circumstances"
+"description": "Changing circumstances and historical dependence"
+"base": "configs/memetics.yaml"
+"seeds":
+  - 11
+  - 12
+  - 13
+  - 14
+  - 15
+"replicates": 1
+"observer":
+  "backend": "claude_cli"
+  "model": "sonnet"
+"questions":
+  - "How do changing circumstances affect concepts and explanations, and what persists when circumstances return?"
+"common": {}
+"factors":
+  "history":
+    "stable":
+      "regimes":
+        "schedule":
+          -
+            "day": 1
+            "regime": "A"
+    "changed":
+      "regimes":
+        "schedule":
+          -
+            "day": 1
+            "regime": "A"
+          -
+            "day": 10
+            "regime": "B"
+    "returned":
+      "regimes":
+        "schedule":
+          -
+            "day": 1
+            "regime": "A"
+          -
+            "day": 10
+            "regime": "B"
+          -
+            "day": 20
+            "regime": "A"
+  "cue":
+    "absent":
+      "regimes":
+        "cues": []
+    "present":
+      "regimes":
+        "cues":
+          -
+            "day": 9
+            "time": "16:45"
+            "arena": "Stockroom"
+            "text_key": "new_supplier"
+"outcomes":
+  - "memetics.n_threads"
+  - "memetics.n_multi_agent_threads"
+  - "memetics.n_changes"
+  - "memetics.mean_public_users"
+  - "memetics.mean_senses"
+  - "memetics.mean_persistence_days"
+  - "memetics.n_supported_reuses"
+  - "memetics.mean_agent_agreement"

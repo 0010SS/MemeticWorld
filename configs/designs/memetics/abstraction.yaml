@@ -1,0 +1,41 @@
+# Complete experiment preset. Edit levels, horizons and seeds for the research question.
+"name": "memetics_abstraction"
+"description": "Reflection, abstraction and recombination"
+"base": "configs/memetics.yaml"
+"seeds":
+  - 11
+  - 12
+  - 13
+  - 14
+  - 15
+"replicates": 1
+"observer":
+  "backend": "claude_cli"
+  "model": "sonnet"
+"questions":
+  - "How do private reflections and remembered experiences contribute to publicly expressed concepts?"
+"common": {}
+"factors":
+  "reminding":
+    "off":
+      "reminding":
+        "enabled": false
+    "on":
+      "reminding":
+        "enabled": true
+  "reflection":
+    "off":
+      "reflection":
+        "enabled": false
+    "on":
+      "reflection":
+        "enabled": true
+"outcomes":
+  - "memetics.n_threads"
+  - "memetics.n_multi_agent_threads"
+  - "memetics.n_changes"
+  - "memetics.mean_public_users"
+  - "memetics.mean_senses"
+  - "memetics.mean_persistence_days"
+  - "memetics.n_supported_reuses"
+  - "memetics.mean_agent_agreement"

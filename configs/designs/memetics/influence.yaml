@@ -1,0 +1,50 @@
+# Complete experiment preset. Edit levels, horizons and seeds for the research question.
+"name": "memetics_influence"
+"description": "Influence, competition and coexistence"
+"base": "configs/memetics.yaml"
+"seeds":
+  - 11
+  - 12
+  - 13
+  - 14
+  - 15
+"replicates": 1
+"observer":
+  "backend": "claude_cli"
+  "model": "sonnet"
+"questions":
+  - "How do implemented influence mechanisms affect the circulation and coexistence of interpretations?"
+"common": {}
+"factors":
+  "prestige":
+    "off":
+      "modules":
+        "prestige_bias": false
+    "network":
+      "modules":
+        "prestige_bias": true
+      "module_params":
+        "prestige_bias":
+          "scores_source": "degree"
+    "reassigned":
+      "modules":
+        "prestige_bias": true
+      "module_params":
+        "prestige_bias":
+          "scores_source": "random"
+  "conformity":
+    "off":
+      "modules":
+        "conformity": false
+    "on":
+      "modules":
+        "conformity": true
+"outcomes":
+  - "memetics.n_threads"
+  - "memetics.n_multi_agent_threads"
+  - "memetics.n_changes"
+  - "memetics.mean_public_users"
+  - "memetics.mean_senses"
+  - "memetics.mean_persistence_days"
+  - "memetics.n_supported_reuses"
+  - "memetics.mean_agent_agreement"

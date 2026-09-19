@@ -24,13 +24,25 @@ memes, slang or labels, never see hidden families, skins, circles or assignment,
 
 ## Research direction
 
-The implementation contract is **[docs/ONTOLOGY_V2.md](docs/ONTOLOGY_V2.md)**. It tests the hypothesis that a
-shared expression forms only when three bottlenecks are passed: **NEED**, **LINK** and **WORDING** (see
-*Mechanisms* below). As of 2026-09-19 the research direction has changed
-([docs/research/MEMO_2026-09-19_research_landscape.md](docs/research/MEMO_2026-09-19_research_landscape.md)).
-The primary study will ask how a community's existing ideas acquire new meanings when its circumstances change,
-and when cultural memory helps or hinders that. It is being specified in `docs/ONTOLOGY_V3.md`. The v2
-bottleneck factorial is now **calibration** and a secondary study.
+The current experiment pipeline investigates **how ideas emerge, circulate, acquire meanings, and change**
+in the existing agent society. It combines 12 editable experimental families with open-ended LLM observation,
+evidence-linked concept histories, deterministic measurements, arbitrary research inquiries and portable reports.
+The motivating questions do not prescribe the concepts or developments the observer may discover.
+
+See **[the complete experiment guide](docs/EXPERIMENT_PIPELINE.md)** for designs, commands, measurement
+definitions, observer audits, visualization, sharing and interpretation limits. The environment contract is
+[ontology v3](docs/ONTOLOGY_V3.md). The earlier [v2 bottleneck design](docs/ONTOLOGY_V2.md) and grounding
+instruments remain available for their original studies.
+
+```cmd
+.venv\Scripts\python.exe -X utf8 -m backend.cli experiment list
+.venv\Scripts\python.exe -X utf8 -m backend.cli experiment run emergence --parallel 2
+.venv\Scripts\python.exe -X utf8 -m backend.cli serve --port 8765
+start http://127.0.0.1:8765/?view=research
+```
+
+Live experiments use the configured providers and require authentication. Use `--backend mock` for offline
+software verification; mock output contains no semantic judgments and is labeled accordingly.
 
 ## Four separated layers
 
@@ -39,7 +51,7 @@ bottleneck factorial is now **calibration** and a secondary study.
 | **WORLD**: campus graph, clock, routines, and the pre-generated world script (structures × skins, referents, circles) | `backend/simulation/` | everything |
 | **AGENT**: GA persona, perception with viewpoints, lossy memory, retrieval, reflection, reminding, open matters, dyadic and group conversation | `backend/agents/`, `backend/memory/` | only its own observations and memories |
 | **EXPERIMENT CONTROLLER**: configs, mechanism switches, pressure modules, factorial designs | `configs/`, `backend/modules/`, `backend/experiment/` | re-weights cognition; never specifies culture |
-| **OBSERVER**: candidates, typed provenance, emergence, grounding, funnel and manipulation checks, probes, outcomes | `backend/analysis/` | the finished run's logs; never imported by agent code (enforced by a test) |
+| **OBSERVER**: open concept histories, semantic interpretations, measurements, inquiries, audits and reports; legacy grounding instruments | `backend/research/`, `backend/analysis/` | recorded history; interpretations are never fed back to agents |
 
 ## Mechanisms (ontology v2)
 

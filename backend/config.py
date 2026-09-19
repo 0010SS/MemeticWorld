@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import copy
 import warnings
+from functools import lru_cache
 from pathlib import Path
 
 import yaml
@@ -10,6 +11,17 @@ import yaml
 from backend.ga_compat import REPO_ROOT
 
 DEFAULT = REPO_ROOT / "configs" / "default.yaml"
+
+
+@lru_cache(maxsize=128)
+def _yaml_cached(path: str, modified: int, size: int):
+    return yaml.safe_load(Path(path).read_text(encoding="utf-8")) or {}
+
+
+def read_config_yaml(path):
+    p = Path(path).resolve()
+    stat = p.stat()
+    return copy.deepcopy(_yaml_cached(str(p), stat.st_mtime_ns, stat.st_size))
 
 # keys dropped in ontology v2 -> what to use instead (shown in the unknown-key warning)
 REMOVED = {
@@ -50,7 +62,7 @@ def unknown_keys(over: dict, ref: dict, prefix: str = "") -> list[str]:
 def check_keys(over: dict, source: str) -> list[str]:
     """Warn (never fail) about overlay keys that default.yaml does not know: a silently ignored typo
     would make two conditions identical while their labels say they differ."""
-    bad = unknown_keys(over, yaml.safe_load(DEFAULT.read_text()))
+    bad = unknown_keys(over, read_config_yaml(DEFAULT))
     for key in bad:
         hint = REMOVED.get(key, "not in configs/default.yaml; the engine will ignore it")
         warnings.warn(f"{source}: unknown config key '{key}' ({hint})", ConfigKeyWarning, stacklevel=3)
@@ -58,12 +70,12 @@ def check_keys(over: dict, source: str) -> list[str]:
 
 
 def load_config(path: str | Path | None = None, overrides: dict | None = None) -> dict:
-    cfg = yaml.safe_load(DEFAULT.read_text())
+    cfg = read_config_yaml(DEFAULT)
     if path:
         p = Path(path)
         if not p.is_absolute():
             p = REPO_ROOT / p
-        user = yaml.safe_load(p.read_text()) or {}
+        user = read_config_yaml(p)
         base_name = user.pop("extends", None)
         if base_name:
             cfg = load_config(base_name)

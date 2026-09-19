@@ -46,6 +46,9 @@ def analyze(run_dir: Path, llm_backend: str | None = None, probes: bool = True, 
     """llm_backend / llm_model override the observer spec; otherwise cfg analysis.observer is used,
     falling back to the agents' llm settings."""
     rd = RunData(run_dir)
+    if (rd.cfg.get("analysis") or {}).get("pipeline") == "memetics":
+        from backend.research.observer import observe
+        return observe(run_dir, backend=llm_backend, model=llm_model)
     if rd.cfg.get("world", {}).get("mode") == "commons":
         from backend.analysis.commons import analyze_commons
         out = analyze_commons(run_dir)

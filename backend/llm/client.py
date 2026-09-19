@@ -187,7 +187,8 @@ class LLMClient:
                  replay_path: Optional[Path] = None, fallback: Optional[Backend] = None,
                  on_call: Optional[Callable[[dict], None]] = None,
                  replay_until_tick: Optional[int] = None, fail_fast: Optional[dict] = None,
-                 record_cached: bool = True, sleep: Optional[Callable[[float], None]] = None):
+                  record_cached: bool = True, sleep: Optional[Callable[[float], None]] = None,
+                  raise_on_error: bool = False):
         """mode: 'record' (call backend, store), 'replay' (read only from replay_path).
 
         v3 additions (all inert when absent, so v2 behaviour is unchanged):
@@ -203,6 +204,7 @@ class LLMClient:
           (to `<stem>.resume<k>.jsonl`), unless `record_cached=False` (then new calls are appended in place).
         """
         self.backend = backend
+        self.raise_on_error = raise_on_error
         self.replay_until_tick = None if replay_until_tick is None else int(replay_until_tick)
         if self.replay_until_tick is not None and not replay_path:
             raise ValueError("replay_until_tick needs replay_path (the parent's llm_calls.jsonl)")
@@ -237,6 +239,8 @@ class LLMClient:
                 replay_path = aside
             self.replay_source = replay_path
             for rec in _read_jsonl(replay_path):
+                if rec.get("error"):
+                    continue
                 if self.mode == "prefix":
                     t = scope_tick(_key_scope(rec))
                     if t is None or t >= self.replay_until_tick:
@@ -277,12 +281,28 @@ class LLMClient:
               max_tokens: int, temperature: float) -> str:
         """One live call. Fail-fast: retry up to max_consecutive_errors, then pause; after max_pauses
         pauses raise LLMUnavailable. The exception text is never returned as a response."""
+        if self.raise_on_error:
+            try:
+                return self.backend.generate(prompt, system, max_tokens, temperature)
+            except Exception as exc:
+                self._error(key, scope, purpose, exc, 1)
+                # Strict legacy runtimes require a diagnostic call record, never error text in memory.
+                record = {"key": key, "scope": scope, "purpose": purpose, "agent": current_agent(),
+                          "model": getattr(self.backend, "model", self.backend.name),
+                          "system": system, "prompt": prompt, "response": "", "error": str(exc), "cached": False}
+                with self._lock:
+                    self.stats["calls"] += 1
+                    self._fh.write(json.dumps(record) + "\n")
+                    self._fh.flush()
+                raise ProviderFailure(str(exc)) from exc
         if self.fail_fast is None:
             try:
                 return self.backend.generate(prompt, system, max_tokens, temperature)
             except Exception as e:  # noqa: BLE001 - legacy v2 behaviour
                 with self._lock:
                     self.stats["errors"] += 1
+                if self.raise_on_error:
+                    raise ProviderFailure(str(e)) from e
                 return f"LLM_ERROR: {e}"
         ff = self.fail_fast
         failures, pauses, attempt = 0, 0, 0
@@ -356,8 +376,6 @@ class LLMClient:
         rec = {"key": key, "scope": scope, "purpose": purpose, "agent": current_agent(),
                "model": model, "system": system, "prompt": prompt, "response": text,
                "cached": cached, "seconds": round(dt, 3)}
-        if error:
-            rec["error"] = error
         with self._lock:
             self.stats["calls"] += 1
             self.stats["cached"] += int(cached)
@@ -367,8 +385,6 @@ class LLMClient:
                 self._fh.flush()
         if self.on_call:
             self.on_call(rec)
-        if error and self.raise_on_error:
-            raise ProviderFailure(error)
         return text
 
 

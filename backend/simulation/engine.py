@@ -39,7 +39,7 @@ from backend.agents.perception import AgentObservation, observe
 from backend.agents.planner import decide_reaction
 from backend.agents.viewpoint import render as render_viewpoint
 from backend.agents.profile import load_population
-from backend.llm.client import LLMClient, llm_scope, make_backend
+from backend.llm.client import LLMClient, LLMUnavailable, client_from_config, llm_scope, make_backend
 from backend.llm.embeddings import make_embedder
 from backend.memory.encoder import add_simple_event, encode
 from backend.memory.reflection import reflect, should_reflect
@@ -110,6 +110,15 @@ def _code_version() -> dict:
     for f in sorted(GA_TEMPLATES.rglob("*.txt")):
         rel = f.relative_to(GA_TEMPLATES).as_posix()
         out["prompt_hashes"][f"ga/{rel}"] = hashlib.sha256(f.read_bytes()).hexdigest()[:16]
+    source = hashlib.sha256()
+    for path in ("agents", "simulation", "memory", "modules", "llm", "experiment", "tracing"):
+        for f in sorted((root / "backend" / path).rglob("*.py")):
+            source.update(f.relative_to(root).as_posix().encode())
+            source.update(f.read_bytes())
+    for f in [root / "backend" / "config.py", root / "backend" / "ga_compat.py", *sorted((root / "third_party").rglob("*.py"))]:
+        source.update(f.relative_to(root).as_posix().encode())
+        source.update(f.read_bytes())
+    out["source_hash"] = source.hexdigest()
     return out
 
 
@@ -129,12 +138,13 @@ class Simulation:
         yaml.safe_dump(cfg, open(self.run_dir / "config.resolved.yaml", "w"), sort_keys=False)
         self.clock = Clock(cfg)
         backend = make_backend(cfg["llm"])
-        replay_from = replay_from or cfg["llm"].get("replay_from")
-        mode = "replay" if replay_from else "record"
-        self.llm = LLMClient(backend, self.run_dir / "llm_calls.jsonl", mode=mode,
-                             replay_path=Path(replay_from) if replay_from else None,
-                             fallback=None if mode_name == "commons" or (mode == "replay" and cfg["llm"]["backend"] != "mock") else backend,
-                             raise_on_error=mode_name == "commons")
+        self.llm = client_from_config(cfg["llm"], self.run_dir / "llm_calls.jsonl",
+                                      replay_from=replay_from, backend=backend)
+        self.llm.raise_on_error = mode_name == "commons"
+        if mode_name == "commons":
+            self.llm.fallback = None
+        self.last_complete_tick = None
+        self.commons = None
         self.embed = make_embedder(cfg.get("embedding"))
         ga_compat.load(self.llm, self.embed)
         self.meta = SimMemoryMeta()
@@ -170,6 +180,11 @@ class Simulation:
         for a in self.ctx.agents.values():
             a.mods = self.ctx.mods
         self.agents = self.ctx.agents
+        if mode_name == "commons":
+            from backend.simulation.commons import CommonsWorld
+            self.commons = CommonsWorld({**cfg.get("commons", {}), "seed": self.world_seed},
+                                        {aid: a.name for aid, a in self.agents.items()},
+                                        self.clock.ticks_per_day)
         self.ctx.lexicon = self.lexicon
         self.ctx.circles = self.circles
         # WORLD SCRIPT (v2 §1.1): every event is generated before the run from world_seed streams only,
@@ -245,7 +260,13 @@ class Simulation:
             "modules": [m.name for m in self.ctx.mods.modules],
             "ga_upstream": "joonspk-research/generative_agents@fe05a71",
             "stats": {**self.stats, "llm": self.llm.stats},
+            "last_complete_tick": self.last_complete_tick,
         }
+        from backend.tracing.replay import manifest_block
+        if branch := manifest_block(self.run_dir):
+            man["branch"] = branch
+        if self.cfg.get("_continuation"):
+            man["continuation"] = self.cfg["_continuation"]
         if self.commons:
             man.pop("latent_types")
             man["research_design"] = {
@@ -259,7 +280,9 @@ class Simulation:
             }
         if extra:
             man.update(extra)
-        json.dump(man, open(self.run_dir / "manifest.json", "w"), indent=1, default=str)
+        tmp = self.run_dir / "manifest.json.tmp"
+        tmp.write_text(json.dumps(man, indent=1, default=str), encoding="utf-8")
+        tmp.replace(self.run_dir / "manifest.json")
 
     # ------------------------------------------------------------------ world
     def _release_events(self, tick: int):
@@ -652,7 +675,8 @@ class Simulation:
         self._parallel([(f"t{tick:04d}:06heard:{aid}", (lambda aid=aid: job(aid))) for aid in ids])
 
     def _reflect(self, tick):
-        ids = [aid for aid in sorted(self.agents) if should_reflect(self.agents[aid])]
+        ids = [aid for aid in sorted(self.agents)
+               if getattr(self.agents[aid].state, "active", True) and should_reflect(self.agents[aid])]
         if not ids:
             return
         res = self._parallel([(f"t{tick:04d}:07reflect:{aid}", (lambda aid=aid: reflect(self.agents[aid], self.agents[aid].stream("reflect"))))
@@ -662,7 +686,8 @@ class Simulation:
     def _frame(self, tick, beats):
         fr = {"tick": tick, "time": self.clock.time_of(tick).isoformat(), "day": self.clock.day_of(tick),
               "label": self.clock.label(tick),
-              "agents": {aid: {**a.snapshot(), "modules": self.ctx.mods.frame_state(aid)}
+              "agents": {aid: {**a.snapshot(), "active": getattr(a.state, "active", True),
+                                "modules": self.ctx.mods.frame_state(aid)}
                          for aid, a in self.agents.items()},
               "utterances": [{"id": u["id"], "speaker": u["speaker"], "text": u["text"], "listeners": u["listeners"],
                               "conversation_id": u["conversation_id"]} for u in self.tick_utts],
@@ -670,24 +695,30 @@ class Simulation:
                          "arena": b["arena"], "facts": [f["text"] for f in b["facts"]]} for e, b in beats]}
         if getattr(self, "coop", None):
             fr["coop"] = self.coop.frame_state()
+        if self.commons:
+            fr["commons"] = self.commons.snapshot()
         self.frames_fh.write(json.dumps(fr) + "\n")
         self.frames_fh.flush()
 
     # ------------------------------------------------------------------- run
     def run(self):
+        try:
+            return self._run()
+        except BaseException as exc:
+            self.pool.shutdown(wait=True)
+            self.tracer.close(end_tick=False)
+            self.frames_fh.close()
+            self.events_fh.close()
+            self.llm.close()
+            paused = isinstance(exc, (LLMUnavailable, KeyboardInterrupt))
+            self.write_manifest("paused" if paused else "failed",
+                                {"failure": {"type": type(exc).__name__, "message": str(exc)}})
+            raise
+
+    def _run(self):
         if self.commons:
             from backend.simulation.commons_runtime import CommonsRuntime
-            try:
-                return CommonsRuntime(self).run()
-            except Exception as exc:
-                self.pool.shutdown(wait=True)
-                self.tracer.log("run_failed", error_type=type(exc).__name__, message=str(exc))
-                self.tracer.close()
-                self.frames_fh.close()
-                self.events_fh.close()
-                self.llm.close()
-                self.write_manifest("failed", {"failure": {"type": type(exc).__name__, "message": str(exc)}})
-                raise
+            return CommonsRuntime(self).run()
         t_start = time.time()
         self.coop = None
         if any((self.cfg.get(k) or {}).get("enabled") for k in ("workshop", "records", "roster", "turnover")):
@@ -702,6 +733,11 @@ class Simulation:
         for tick in range(self.clock.total_ticks):
             now = self.clock.time_of(tick)
             self.tracer.tick, self.tracer.time = tick, now.isoformat()
+            from backend.tracing.replay import on_branch_tick
+            on_branch_tick(self, tick)
+            if self.cfg.get("_continuation"):
+                from backend.tracing.replay import check_continuation
+                check_continuation(self, tick)
             self.tick_utts = []
             if tick % tpd == 0:
                 day = self.clock.day_of(tick)
@@ -709,6 +745,8 @@ class Simulation:
                     self.coop.day_start(tick)                                        # 0a
                 for aid in sorted(self.agents):
                     a = self.agents[aid]
+                    if not getattr(a.state, "active", True):
+                        continue
                     # routine plans are part of the WORLD (agreement a): seeded by world_seed, exactly as
                     # world_script plans them, so holding world_seed fixed holds every beat's place fixed
                     a.day_plan = plan_day(a, self.clock, seed_rng(self.world_seed, "plan", aid, day))
@@ -716,7 +754,8 @@ class Simulation:
                     self.tracer.log("day_plan", agent=aid, day=day, plan=a.day_plan)
             for a in self.agents.values():
                 a.set_time(now)
-            self.ctx.mods.on_tick(tick, self.agents)
+            self.ctx.mods.on_tick(tick, {a: v for a, v in self.agents.items()
+                                       if getattr(v.state, "active", True)})
             with llm_scope(f"t{tick:04d}:00world"):
                 self._release_events(tick)
                 beats = self._beats_now(tick) + (self.coop.world(tick) if self.coop else [])   # 1
@@ -740,6 +779,11 @@ class Simulation:
             self.tracer.flush()
             if self.coop:
                 self.coop.day_end(tick)                                             # 8b
+            self.tracer.end_tick()
+            self.last_complete_tick = tick
+            if (self.run_dir / "pause.request").exists():
+                self.finish(time.time() - t_start, status="paused")
+                return
             if self.progress and (tick % 4 == 0 or tick == self.clock.total_ticks - 1):
                 s = self.llm.stats
                 print(f"[{self.clock.label(tick)}] tick {tick + 1}/{self.clock.total_ticks} "
@@ -750,7 +794,7 @@ class Simulation:
                 self.write_manifest("running")
         self.finish(time.time() - t_start)
 
-    def finish(self, seconds: float):
+    def finish(self, seconds: float, status="finished"):
         out = self.run_dir / "agents_final"
         for aid, a in self.agents.items():
             a.a_mem.save_ga(out / aid / "associative_memory")
@@ -765,7 +809,7 @@ class Simulation:
         man = _manip(self.ctx.mods)
         if getattr(self, "coop", None):
             man = {**man, "coop": self.coop.manipulation_checks()}
-        self.write_manifest("finished", {"wall_seconds": round(seconds, 1),
+        self.write_manifest(status, {"wall_seconds": round(seconds, 1),
                                          "manipulation": man,
                                          "trace_sha256": trace_digest(self.run_dir)})
 

@@ -1,0 +1,27 @@
+# Complete experiment preset. Edit levels, horizons and seeds for the research question.
+"name": "memetics_emergence"
+"description": "Spontaneous emergence and cultural development"
+"base": "configs/memetics.yaml"
+"seeds":
+  - 11
+  - 12
+  - 13
+  - 14
+  - 15
+"replicates": 1
+"observer":
+  "backend": "claude_cli"
+  "model": "sonnet"
+"questions":
+  - "What ideas appear, circulate, change, and persist in these societies?"
+"common": {}
+"factors": {}
+"outcomes":
+  - "memetics.n_threads"
+  - "memetics.n_multi_agent_threads"
+  - "memetics.n_changes"
+  - "memetics.mean_public_users"
+  - "memetics.mean_senses"
+  - "memetics.mean_persistence_days"
+  - "memetics.n_supported_reuses"
+  - "memetics.mean_agent_agreement"

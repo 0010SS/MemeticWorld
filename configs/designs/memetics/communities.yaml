@@ -1,0 +1,47 @@
+# Complete experiment preset. Edit levels, horizons and seeds for the research question.
+"name": "memetics_communities"
+"description": "Social structure and local cultures"
+"base": "configs/memetics.yaml"
+"seeds":
+  - 11
+  - 12
+  - 13
+  - 14
+  - 15
+"replicates": 1
+"observer":
+  "backend": "claude_cli"
+  "model": "sonnet"
+"questions":
+  - "How do social ties relate to shared and diverging interpretations, including transformations across groups?"
+"common":
+  "topology":
+    "mode": "generated"
+"factors":
+  "cross_ties":
+    "sparse":
+      "topology":
+        "generated":
+          "p_between": 0.05
+    "dense":
+      "topology":
+        "generated":
+          "p_between": 0.4
+  "bridges":
+    "none":
+      "topology":
+        "generated":
+          "n_bridges": 0
+    "two":
+      "topology":
+        "generated":
+          "n_bridges": 2
+"outcomes":
+  - "memetics.n_threads"
+  - "memetics.n_multi_agent_threads"
+  - "memetics.n_changes"
+  - "memetics.mean_public_users"
+  - "memetics.mean_senses"
+  - "memetics.mean_persistence_days"
+  - "memetics.n_supported_reuses"
+  - "memetics.mean_agent_agreement"

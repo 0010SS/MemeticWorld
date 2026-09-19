@@ -37,7 +37,7 @@ import subprocess
 import sys
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Callable
 
@@ -46,12 +46,12 @@ import yaml
 from backend.config import REPO_ROOT, check_keys, deep_merge, load_config, observer_spec
 
 DESIGN_KEYS = {"name", "description", "kind", "base", "seeds", "days", "observer", "common", "factors", "controls",
-               "outcomes", "runs_root"}
+               "outcomes", "runs_root", "replicates", "questions"}
 NAME_RE = re.compile(r"^[A-Za-z0-9]+(_[A-Za-z0-9]+)*$")   # no '-' or '__': they separate cell-id parts
 RESERVED_COLUMNS = {"cell", "control", "seed", "n", "observer", "inactive", "status", "run_dir"}
 SIDECAR = "design_cell.json"    # {pid, host, started, stage, ended, error}: liveness + failure of a cell run
 LOG = "design_cell.log"
-STATUSES = ("missing", "running", "failed", "finished", "stale", "analyzed")
+STATUSES = ("missing", "running", "paused", "failed", "incompatible", "finished", "stale", "analyzed")
 
 
 @dataclass
@@ -68,6 +68,8 @@ class Design:
     outcomes: list[str]
     runs_root: Path
     sha256: str
+    replicates: int = 1
+    questions: list[str] = field(default_factory=list)
 
 
 @dataclass
@@ -80,6 +82,7 @@ class Cell:
     base: str
     overrides: dict                          # everything on top of `base`, incl. seed, observer, _condition
     run_dir: Path
+    replica: int = 0
 
     def config(self) -> dict:
         return load_config(self.base, self.overrides)
@@ -192,9 +195,13 @@ def load_design(path: str | Path, runs_root: str | Path | None = None) -> "Desig
     if clash:
         raise ValueError(f"{p}: outcome names {sorted(clash)} clash with table columns")
     root = runs_root or os.environ.get("MEMEWORLD_RUNS_ROOT") or raw.get("runs_root") or "runs"
+    replicates = int(raw.get("replicates", 1))
+    if replicates < 1:
+        raise ValueError("replicates must be positive")
     return Design(name=name, path=p, base=base, seeds=seeds, days=int(days) if days is not None else None,
-                  observer=observer, common=common, factors=factors, controls=controls, outcomes=outcomes,
-                  runs_root=_abs(root), sha256=hashlib.sha256(text.encode()).hexdigest())
+                   observer=observer, common=common, factors=factors, controls=controls, outcomes=outcomes,
+                  runs_root=_abs(root), sha256=hashlib.sha256(text.encode()).hexdigest(),
+                  replicates=replicates, questions=[str(q) for q in raw.get("questions", [])])
 
 
 # ---------------------------------------------------------------------------------------- expansion
@@ -242,19 +249,26 @@ def expand(design: Design, backend_override: str | None = None) -> list[Cell]:
         observer["backend"] = backend_override
     specs = cell_specs(design)
     cells = []
-    for s in design.seeds:
+    for s, replica in itertools.product(design.seeds, range(design.replicates)):
         for cid, levels, control, ov in specs:
             cond = {"design": design.name, "cell": cid, "levels": levels, "control": control, "seed": s,
                     "design_sha256": design.sha256}
-            fixed = {"seed": s, "world_seed": s, "run_name": f"{design.name}__{cid}",
+            if design.replicates > 1:
+                cond["replica"] = replica
+            if design.questions:
+                cond["questions"] = design.questions
+            agent_seed = s if replica == 0 else int(hashlib.sha256(f"{s}:{replica}".encode()).hexdigest()[:8], 16)
+            fixed = {"seed": agent_seed, "world_seed": s, "run_name": f"{design.name}__{cid}",
                      "analysis": {"observer": observer}, "_condition": cond}
             if design.days is not None:
                 fixed["simulation_days"] = design.days
             if backend_override:
                 fixed["llm"] = {"backend": backend_override}
                 cond["backend_override"] = backend_override
+            dirname = f"s{s}" + (f"_r{replica}" if design.replicates > 1 else "")
             cells.append(Cell(design=design.name, cell_id=cid, levels=dict(levels), control=control, seed=s,
-                              base=design.base, overrides=deep_merge(ov, fixed), run_dir=root / cid / f"s{s}"))
+                              base=design.base, overrides=deep_merge(ov, fixed), run_dir=root / cid / dirname,
+                              replica=replica))
     return cells
 
 
@@ -276,13 +290,8 @@ def _alive(side: dict) -> bool:
         return False
     if side.get("host") != socket.gethostname():
         return True                           # another machine's process: cannot check, assume alive
-    try:
-        os.kill(int(side["pid"]), 0)
-    except (ProcessLookupError, KeyError, TypeError, ValueError):
-        return False
-    except PermissionError:
-        return True
-    return True
+    from backend.experiment.process import alive
+    return alive(side.get("pid"))
 
 
 def _observer_matches(out: dict, cell: Cell) -> bool:
@@ -294,6 +303,11 @@ def _observer_matches(out: dict, cell: Cell) -> bool:
         ANALYSIS_VERSION = None
     rec = out.get("observer") or {}
     cfg = cell.config()
+    if (cfg.get("analysis") or {}).get("pipeline") == "memetics":
+        from backend.research.observer import settings
+        expected = settings(cfg)
+        return (out.get("status") == "complete" and
+                all(rec.get(k) == value for k, value in expected.items()))
     b, m = observer_spec(cfg)
     want = {"backend": b or cfg["llm"]["backend"], "model": m or cfg["llm"].get("model"),
             "analysis_version": ANALYSIS_VERSION}
@@ -305,6 +319,11 @@ def cell_status(cell: Cell) -> str:
     observer) | analyzed (outcomes.json present)."""
     d = cell.run_dir
     man, side = _read(d / "manifest.json"), _read(d / SIDECAR)
+    if man and man.get("config") and man.get("status") in ("finished", "paused", "failed"):
+        if simulation_signature(man["config"]) != simulation_signature(cell.config()):
+            return "incompatible"
+    if man and man.get("status") == "paused":
+        return "paused"
     if man and man.get("status") == "finished":
         if side and _alive(side):
             return "running"                  # analysis in progress
@@ -314,11 +333,19 @@ def cell_status(cell: Cell) -> str:
         return "analyzed" if _observer_matches(out, cell) else "stale"
     if side:
         return "running" if _alive(side) and not side.get("error") else "failed"
+    if man and man.get("status") == "failed":
+        return "failed"
     return "running" if man else "missing"    # a manifest without our sidecar: someone else's live run
 
 
+def simulation_signature(cfg):
+    """Prevent old simulations satisfying a changed design. Observer/question changes are separate."""
+    core = {k: v for k, v in cfg.items() if k not in ("analysis", "run_name") and not k.startswith("_")}
+    return hashlib.sha256(json.dumps(core, sort_keys=True, default=str).encode()).hexdigest()
+
+
 def status(design: Design, backend_override: str | None = None, cells: list[Cell] | None = None) -> list[dict]:
-    return [{"cell": c.cell_id, "seed": c.seed, "status": node_status(c) if isinstance(c, NodeRun) else cell_status(c),
+    return [{"cell": c.cell_id, "seed": c.seed, "replica": getattr(c, "replica", 0), "status": node_status(c) if isinstance(c, NodeRun) else cell_status(c),
              "run_dir": str(c.run_dir)}
             for c in (cells if cells is not None else expand(design, backend_override))]
 
@@ -343,7 +370,7 @@ def prepare(cell: Cell) -> str:
     st = cell_status(cell)
     d = cell.run_dir
     partial = st == "missing" and d.exists() and any(p.name != LOG for p in d.iterdir())
-    if st == "failed" or partial:
+    if st in ("failed", "incompatible") or partial:
         _move_aside(d)
         return "missing"
     return st
@@ -353,7 +380,7 @@ def run_cell(cell: Cell, progress: bool = False) -> str:
     """Simulate (if needed) and analyze one cell x seed in this process with the design's observer.
     Returns the final status. Skips cells that are analyzed or running elsewhere."""
     st = prepare(cell)
-    if st in ("analyzed", "running"):
+    if st in ("analyzed", "running", "paused"):
         return st
     cfg = cell.config()
     cell.run_dir.mkdir(parents=True, exist_ok=True)
@@ -374,6 +401,10 @@ def run_cell(cell: Cell, progress: bool = False) -> str:
         if st == "missing":
             from backend.simulation.engine import Simulation
             Simulation(cfg, cell.run_dir, progress=progress).run()
+            if cell_status(cell) == "paused":
+                side.update(stage="paused", ended=_now())
+                write()
+                return "paused"
             side["stage"] = "analyze"
             write()
         from backend.analysis.pipeline import analyze
@@ -389,12 +420,15 @@ def run_cell(cell: Cell, progress: bool = False) -> str:
 
 
 ACTIONS = {"missing": "simulate+analyze", "failed": "simulate+analyze (retry)", "finished": "analyze",
+           "incompatible": "simulate+analyze (changed design; retain previous recording)",
            "stale": "re-analyze"}
 
 
 def cell_command(design: Design, cell: Cell, backend_override: str | None = None) -> list[str]:
     cmd = [sys.executable, "-m", "backend.cli", "design", "run-cell", str(design.path), "--cell", cell.cell_id,
-           "--seed", str(cell.seed), "--runs-root", str(design.runs_root)]
+            "--seed", str(cell.seed), "--runs-root", str(design.runs_root)]
+    if getattr(cell, "replica", 0):
+        cmd += ["--replica", str(cell.replica)]
     return cmd + (["--backend", backend_override] if backend_override else [])
 
 
@@ -417,7 +451,7 @@ def run_design(design: Design, cells: list[Cell], parallel: int = 1, backend_ove
                          "run_dir": str(c.run_dir), "cmd": cell_command(design, c, backend_override)})
         return rows
 
-    env = {**os.environ, "PYTHONUNBUFFERED": "1"}
+    env = {**os.environ, "PYTHONUNBUFFERED": "1", "PYTHONUTF8": "1"}
 
     def one(c: Cell, st: str) -> dict:
         t0 = time.time()
@@ -464,7 +498,7 @@ def table(design: Design, backend_override: str | None = None) -> list[dict]:
         if out is None:
             continue
         obs = out.get("observer") or {}
-        rows.append({"cell": c.cell_id, "control": c.control, **c.levels, "seed": c.seed,
+        rows.append({"cell": c.cell_id, "control": c.control, **c.levels, "seed": c.seed, "replica": getattr(c, "replica", 0),
                      **{o: _outcome(out, o) for o in design.outcomes},
                      "inactive": ",".join(sorted(k for k, v in (out.get("validity") or {}).items() if v == "inactive")),
                      "observer": "/".join(str(obs.get(k)) for k in ("backend", "model", "analysis_version")

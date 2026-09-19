@@ -1,0 +1,64 @@
+# Complete experiment preset. Edit levels, horizons and seeds for the research question.
+"name": "memetics_inheritance"
+"description": "Turnover and cultural inheritance"
+"base": "configs/memetics.yaml"
+"seeds":
+  - 11
+  - 12
+  - 13
+  - 14
+  - 15
+"replicates": 1
+"observer":
+  "backend": "claude_cli"
+  "model": "sonnet"
+"questions":
+  - "What do newcomers acquire, reinterpret or introduce, and what persists after departures?"
+"common": {}
+"factors":
+  "cohorts":
+    "stable":
+      "turnover":
+        "enabled": false
+        "waves": []
+    "one":
+      "turnover":
+        "enabled": true
+        "waves":
+          -
+            "day": 10
+            "depart":
+              "am_crew": 1
+              "pm_crew": 1
+              "stores": 1
+    "two":
+      "turnover":
+        "enabled": true
+        "waves":
+          -
+            "day": 10
+            "depart":
+              "am_crew": 1
+              "pm_crew": 1
+              "stores": 1
+          -
+            "day": 20
+            "depart":
+              "am_crew": 1
+              "pm_crew": 1
+  "access":
+    "hidden":
+      "records":
+        "display": "none"
+    "current":
+      "records":
+        "display": "current"
+"outcomes":
+  - "memetics.n_threads"
+  - "memetics.n_multi_agent_threads"
+  - "memetics.n_changes"
+  - "memetics.mean_public_users"
+  - "memetics.mean_senses"
+  - "memetics.mean_persistence_days"
+  - "memetics.n_supported_reuses"
+  - "memetics.mean_agent_agreement"

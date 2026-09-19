@@ -8,6 +8,7 @@
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Pixelify+Sans:wght@400;600;700&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="/static/styles.css">
+<link rel="stylesheet" href="/static/research.css">
 </head>
 <body>
 <header class="topbar">
@@ -16,6 +17,7 @@
     <button class="tab active" data-view="campus">Campus</button>
     <button class="tab" data-view="world" id="worldTab" hidden>World</button>
     <button class="tab" data-view="culture">Culture</button>
+    <button class="tab" data-view="research">Research</button>
     <button class="tab" data-view="trace">Trace</button>
     <button class="tab" data-view="runs">Runs</button>
   </nav>
@@ -106,6 +108,8 @@
     <div id="cards" class="cards"></div>
     <div id="memeDetail" class="meme-detail"></div>
   </section>
+
+  <section id="view-research" class="view"></section>
 
   <!-- TRACE ---------------------------------------------------------------->
   <section id="view-trace" class="view">

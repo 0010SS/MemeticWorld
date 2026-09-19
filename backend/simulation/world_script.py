@@ -394,7 +394,7 @@ def save(instances: list[EventInstance], path, meta: dict | None = None) -> str:
     """Write one §1.7 record per line; returns the sha256 of the file (for the manifest). `meta`
     (script_meta()) goes to a sidecar meta_path(path), so a later `script_from` can check the fit."""
     text = "".join(json.dumps(i.ground_truth()) + "\n" for i in instances)
-    Path(path).write_text(text)
+    Path(path).write_bytes(text.encode("utf-8"))
     if meta is not None:
         meta_path(path).write_text(json.dumps(meta, indent=1, sort_keys=True))
     return hashlib.sha256(text.encode()).hexdigest()

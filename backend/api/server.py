@@ -38,6 +38,7 @@ app = FastAPI(title="MemeWorld")
 
 # Dropped wherever they occur (any depth) in demo mode.
 HIDDEN_KEYS = {
+    "bench_mode",
     # world ground truth: families, structure, skins, composition, regime, holdout
     "latent_type", "latent_types", "latent_type_base_rates", "latent_distribution", "family", "family_home_groups",
     "schema", "skin", "skins", "composed_from", "structure_mode", "scenario", "narrative", "holdout", "roles",
@@ -371,7 +372,9 @@ def analysis(run_id: str, debug: int = 0):
     p = _run_dir(run_id) / "analysis.json"
     if not p.exists():
         raise HTTPException(404, "not analyzed yet")
-    a = json.load(open(p))
+    a = json.load(open(p, encoding="utf-8"))
+    if a.get("kind") == "memetics":
+        return a
     if debug:
         return a
     a = _strip(a)
@@ -402,7 +405,8 @@ def llm_calls(run_id: str, agent: str = "", purpose: str = "", start: int = 0, l
 @app.get("/api/compare")
 def compare_runs(debug: int = 0):
     from backend.analysis.compare import compare
-    dirs = discover_runs(need="analysis.json")
+    dirs = [d for d in discover_runs(need="analysis.json")
+            if json.loads((d / "analysis.json").read_text(encoding="utf-8")).get("kind") != "memetics"]
     rows = compare(dirs, allow_mixed_observers=True)
     if len(rows) == len(dirs):                  # one row per analysed run: use the full (nested) run id
         for r, d in zip(rows, dirs):
@@ -428,13 +432,16 @@ def launch(config: str, days: int | None = None, backend: str | None = None):
         sets.append(f"simulation_days={int(days)}")
     if backend:
         sets.append(f"llm.backend={backend}")
+        sets.append(f"analysis.observer.backend={backend}")
     if sets:
         cmd += ["--set", *sets]
     RUNS.mkdir(parents=True, exist_ok=True)
     log = open(RUNS / f"launch_{cfg.stem}.log", "a")
     # the new run goes where this server looks for runs
     subprocess.Popen(cmd, cwd=REPO_ROOT, stdout=log, stderr=subprocess.STDOUT,
-                     env={**os.environ, "MEMEWORLD_RUNS_ROOT": str(RUNS)})
+                     env={**os.environ, "MEMEWORLD_RUNS_ROOT": str(RUNS), "PYTHONUTF8": "1"},
+                     creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
+    log.close()
     return JSONResponse({"launched": " ".join(cmd)})
 
 
@@ -446,6 +453,9 @@ def launch_analysis(run_id: str):
                      stderr=subprocess.STDOUT)
     return {"launched": True}
 
+
+from backend.api.research import router as research_router
+app.include_router(research_router)
 
 app.mount("/ga_assets", StaticFiles(directory=str(GA_ASSETS)), name="ga_assets")
 if FRONTEND.exists():

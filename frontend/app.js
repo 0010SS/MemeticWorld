@@ -1,6 +1,8 @@
 // MemeWorld frontend: pixel-art Homewood campus replay, culture dashboard, causal trace explorer.
 // Normal demo mode never requests hidden ground truth; Research Debug Mode adds ?debug=1.
 
+import { mountResearch, refreshResearch, renderMemeticsCulture } from "./research.js";
+
 const $ = (s, el = document) => el.querySelector(s);
 const $$ = (s, el = document) => [...el.querySelectorAll(s)];
 const esc = (s) => String(s ?? "").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
@@ -26,6 +28,7 @@ function hideTip() { tip.hidden = true; }
 
 // ------------------------------------------------------------------- boot
 async function boot() {
+  mountResearch({run: () => S.runId, replay: (tick) => { showView("campus"); setTick(Math.max(0,tick)); }});
   $$(".tab").forEach((b) => b.onclick = () => showView(b.dataset.view));
   $("#debugToggle").onchange = async (e) => { S.debug = e.target.checked; $("#debugBadge").hidden = !S.debug; await loadRun(S.runId, true); };
   $("#runSelect").onchange = (e) => loadRun(e.target.value);
@@ -47,7 +50,7 @@ async function boot() {
   $("#btnLaunch").onclick = launchRun;
   bindMapControls();
   window.addEventListener("keydown", (e) => {
-    if (e.target.tagName === "INPUT" || e.target.tagName === "SELECT") return;
+    if (["INPUT", "SELECT", "TEXTAREA"].includes(e.target.tagName)) return;
     if (e.code === "Space") { e.preventDefault(); togglePlay(); }
     if (e.code === "ArrowRight") setTick(S.tick + 1);
     if (e.code === "ArrowLeft") setTick(S.tick - 1);
@@ -65,6 +68,7 @@ async function boot() {
   const qs = new URLSearchParams(location.search);
   if (qs.get("tick")) setTick(+qs.get("tick"));
   if (qs.get("view") === "fit") zoomFit();
+  if (qs.get("view") === "research") showView("research");
   if (qs.get("zoom")) setZoom(+qs.get("zoom"));
   if (qs.get("place") && M.data.places[qs.get("place")]) { const b = M.data.places[qs.get("place")].box; centerOn((b[0] + b[2] + 1) / 2 * TILE, (b[1] + b[3] + 1) / 2 * TILE); }
   if (qs.get("frac")) S.tf = S.tick + Math.min(0.999, Math.max(0, +qs.get("frac")));
@@ -79,6 +83,7 @@ function showView(v) {
   if (v === "culture") renderCulture();
   if (v === "trace") renderTraceSearch();
   if (v === "runs") renderRuns();
+  if (v === "research") refreshResearch();
   if (v === "campus") resizeMap();
 }
 
@@ -108,6 +113,7 @@ async function loadRun(id, keepTick = false) {
   if (!keepTick) setTick(0); else setTick(S.tick);
   if (S.sel) renderAgent(S.sel);
   renderCulture();
+  if ($("#view-research").classList.contains("active")) refreshResearch();
 }
 
 // ================================================================== pixel map
@@ -585,6 +591,7 @@ function renderCulture() {
   const A = S.analysis;
   if (!A) { $("#cultureSummary").innerHTML = `<span class="muted">This run has not been analyzed yet. Use “Re-run analysis” or <code>python -m backend.cli analyze runs/${esc(S.runId)}</code>.</span>`; $("#cards").innerHTML = ""; $("#memeDetail").innerHTML = ""; return; }
   if (A.mode === "commons") { renderCommonsResearch(A); return; }
+  if (A.kind === "memetics") { renderMemeticsCulture(A, S.runId, tick => { showView("campus"); setTick(Math.max(0,tick)); }); return; }
   const s = A.summary;
   $("#cultureSummary").innerHTML = [["Utterances", s.n_utterances], ["Conversations", s.n_conversations], ["World events", s.n_events], ["Candidates", s.n_candidates], ["LLM-classified conventions", s.n_llm_conventions]]
     .map(([l, v]) => `<div class="stat"><div class="v">${v}</div><div class="l">${l}</div></div>`).join("");

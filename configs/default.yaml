@@ -20,6 +20,10 @@ day_start: "07:30"
 day_end: "22:30"
 tick_minutes: 15
 
+# Legacy world selection; the co-op is enabled through its existing mechanisms.
+world: {mode: latent_events}
+commons: {}
+
 llm:
   backend: claude_cli       # claude_cli | anthropic | mock | auto
   model: haiku
@@ -225,6 +229,16 @@ branch: {parent: null, at_day: null, salt: null}
 probe: {backend: claude_cli, model: haiku, workers: 8, k: 6, tau: 0.7, framings: [note, text, overheard]}
 
 analysis:
+  pipeline: legacy                 # legacy | memetics (open concept observer and reports)
+  memetics:
+    window_chars: 18000
+    history_chars: 16000
+    overlap: 3
+    max_tokens: 6000
+    temperature: 0
+    max_windows: null              # null covers the complete history
+    include_private: true
+    fail_fast: {max_consecutive_errors: 2, pause_seconds: 1, max_pauses: 1}
   coder: {backend: claude_cli, model: sonnet, second: haiku, blind: true, human_sample: 120}
   llm_classifier: true
   probes: true

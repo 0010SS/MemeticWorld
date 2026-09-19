@@ -122,7 +122,8 @@ def cmd_design_run(args):
 def cmd_design_run_cell(args):
     """Internal: one cell x seed in this process (what `design run` launches per subprocess)."""
     D, d = _design(args)
-    match = [c for c in D.expand(d, args.backend) if c.cell_id == args.cell and c.seed == args.seed]
+    match = [c for c in D.expand(d, args.backend) if c.cell_id == args.cell and c.seed == args.seed
+             and getattr(c, "replica", 0) == getattr(args, "replica", 0)]
     if not match:
         sys.exit(f"{d.name}: no cell {args.cell} with seed {args.seed}")
     if isinstance(d, D.TreeDesign):
@@ -245,6 +246,7 @@ def _add_design(sub):
     rc = dsub.add_parser("run-cell", parents=[common], help=argparse.SUPPRESS)
     rc.add_argument("--cell", required=True)
     rc.add_argument("--seed", type=int, required=True)
+    rc.add_argument("--replica", type=int, default=0)
     rc.add_argument("--no-analyze", action="store_true")
     rc.set_defaults(fn=cmd_design_run_cell)
     pr = dsub.add_parser("probe", parents=[common], help="observer battery on finished tree nodes (probes:)")
@@ -286,6 +288,8 @@ def main(argv=None):
     c.add_argument("--json")
     c.set_defaults(fn=cmd_compare)
     _add_design(sub)
+    from backend.research.commands import add_parsers
+    add_parsers(sub)
     b = sub.add_parser("branch", help="ad-hoc branch of a finished run (prefix replay up to --day)")
     b.add_argument("parent_run")
     b.add_argument("--day", type=int, required=True, help="at_day: the first live day")

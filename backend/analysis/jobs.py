@@ -75,16 +75,18 @@ def job_table(run) -> dict:
         e = ends.get(jid, {})
         delivered = e.get("delivered")
         if delivered is None and att:
-            delivered = any(a.get("success") for a in att)
+            delivered = any(a.get("success", a.get("outcome")) for a in att)
         out[jid] = {
             "job": jid, "day": day, "shift": s.get("shift") or st.get("shift"), "regime": regime, "class": cls,
             "cause": cause, "gt": gt, "faulted": cls not in (None, "K0"),
             "operator": (first or {}).get("agent") or s.get("operator") or st.get("operator"),
             "first_action": (first or {}).get("action"), "first_valid": bool(first) and not _invalid(first),
             "first_tick": (first or {}).get("tick"), "first_decision": first,
-            "first_success": (att[0].get("success") if att else None),
+            "first_success": (att[0].get("success", att[0].get("outcome")) if att else None),
             "first_correct": (first.get("action") == gt) if first and not _invalid(first) and gt else None,
-            "attempts": [{k: a.get(k) for k in ("attempt", "action", "success", "agent", "tick")} for a in att],
+            "attempts": [{**{k: a.get(k) for k in ("attempt", "action", "tick")},
+                          "success": a.get("success", a.get("outcome")),
+                          "agent": a.get("agent", a.get("operator"))} for a in att],
             "delivered": delivered, "deferred": bool(first) and first.get("action") == "stop",
         }
     return out
