@@ -139,6 +139,7 @@ def test_api_strips_v3_hidden_fields():
 
 # ------------------------------------------------------------------------------------ CoopWorld (mock)
 V3_DAY = {
+    "population_size": 8,   # fixture written for the 8-agent campus (the file now has 10)
     "run_name": "coop_inv", "seed": 13, "simulation_days": 1, "day_end": "19:30",
     "llm": {"backend": "mock", "max_workers": 6},
     "latent_events": {"event_rate": 0.0},
