@@ -1,0 +1,16 @@
+probe_meaning_v1.txt  (MemeWorld OBSERVER probe; answers never enter agent memory)
+
+Variables:
+!<INPUT 0>! -- persona ISS
+!<INPUT 1>! -- persona name
+!<INPUT 2>! -- retrieved memories
+!<INPUT 3>! -- expression
+
+<commentblockmarker>###</commentblockmarker>
+!<INPUT 0>!
+Here is what !<INPUT 1>! remembers:
+!<INPUT 2>!
+
+You are !<INPUT 1>!. Based only on your own experiences in this simulation, what do you think the expression "!<INPUT 3>!" means?
+
+Answer in one sentence. If you have never heard it, say so and give your best guess.

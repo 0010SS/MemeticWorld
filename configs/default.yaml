@@ -1,0 +1,88 @@
+# Default experiment configuration. Every run stores the fully resolved copy
+# of this file (merged with the run's own config) as runs/<run_id>/config.resolved.yaml.
+run_name: default
+seed: 42
+population: configs/population/homewood8.yaml
+population_size: 8          # first N agents of the population file
+simulation_days: 3
+start_date: "2026-09-14"    # a Monday
+day_start: "07:30"
+day_end: "22:30"
+tick_minutes: 15
+
+llm:
+  backend: claude_cli       # claude_cli | anthropic | mock | auto
+  model: haiku
+  max_workers: 6
+  replay_from: null         # path to a previous run's llm_calls.jsonl -> deterministic replay
+
+embedding:
+  backend: hash             # hash | sentence_transformers
+  dim: 512
+
+memory:
+  encoding_noise: 0.3       # 0 = perfect verbatim memory ... 1 = gist only
+  decay_rate: 0.1           # per simulated hour, used in recency = exp(-decay_rate * hours)
+  memory_capacity: 300      # max nodes per agent before forgetting the weakest
+  merge_threshold: 0.92     # embedding cosine above which a new memory merges into an old one (only if noise > 0)
+  entity_generalization: 0.5  # prob. multiplier for replacing unfamiliar names with a role ("a student")
+
+retrieval:
+  alpha: 3.0                # relevance weight   (GA gw[1])
+  beta: 0.5                 # recency weight     (GA gw[0])
+  gamma: 2.0                # importance weight  (GA gw[2])
+  temperature: 0.7          # softmax temperature; 0 = deterministic GA top-k
+  top_k: 5
+
+reflection:
+  enabled: true
+  importance_threshold: 60  # GA importance_trigger_max (150 upstream; lower because our days are short)
+  n_focal_points: 2
+  n_insights: 3
+
+perception:
+  base_attention: 0.75
+  other_arena_factor: 0.35  # attention multiplier for events in the same building but a different room
+  busy_factor: 0.6          # attention multiplier while in a conversation
+  familiarity_weight: 0.35  # extra attention for facts involving familiar people
+  overhear_prob: 0.3        # prob. a bystander in the same room hears a given utterance
+
+conversation:
+  max_utterances: 4
+  base_talk_prob: 0.35      # stochastic gate before the GA decide_to_talk prompt
+  pair_cooldown_minutes: 150
+  max_per_agent_per_day: 6
+  invite_prob: 0.15
+
+routine:
+  jitter_minutes: 20
+  deviation_prob: 0.08
+
+latent_events:
+  event_rate: 0.12          # probability that a new latent-event instance starts in a tick
+  families: [E1, E2, E3, E4]
+  family_weights: {E1: 1.0, E2: 1.0, E3: 1.0, E4: 1.0}
+  holdout_from_day: 3       # generalization test: from this day on, only held-out surface templates are used (null = never)
+  generator: template       # template | llm
+
+reaction:
+  enabled: true
+  min_salience: 0.5         # observations below this don't trigger an LLM reaction decision
+
+modules:
+  emotion: false
+  social_reward: false
+  prestige_bias: false
+  conformity: false
+
+module_params:
+  emotion: {decay_per_hour: 0.15, salience_gain: 0.5, contagion: 0.2}
+  social_reward: {lam: 1.0, importance_gain: 2.0}
+  prestige_bias: {attention_gain: 0.3, importance_gain: 1.5, scores: {}}
+  conformity: {strength: 0.6, sim_threshold: 0.35}
+
+analysis:
+  llm_classifier: true
+  probes: true
+  min_speakers: 2
+  min_uses: 3

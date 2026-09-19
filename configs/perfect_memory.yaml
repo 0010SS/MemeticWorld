@@ -1,0 +1,9 @@
+# Perfect memory: no encoding loss, minimal forgetting, deterministic retrieval.
+run_name: perfect_memory
+memory:
+  encoding_noise: 0.0
+  decay_rate: 0.01
+  memory_capacity: 100000
+  entity_generalization: 0.0
+retrieval:
+  temperature: 0.0

@@ -1,0 +1,34 @@
+react_v1.txt  (MemeWorld, non-GA: structured reaction decision after perceiving something salient)
+
+Variables:
+!<INPUT 0>! -- persona ISS
+!<INPUT 1>! -- current time
+!<INPUT 2>! -- persona name
+!<INPUT 3>! -- location + room
+!<INPUT 4>! -- current activity
+!<INPUT 5>! -- people nearby
+!<INPUT 6>! -- extra context lines (relationships / experimental-module lines)
+!<INPUT 7>! -- what was just noticed
+!<INPUT 8>! -- retrieved memories
+!<INPUT 9>! -- places on campus
+
+<commentblockmarker>###</commentblockmarker>
+!<INPUT 0>!
+It is !<INPUT 1>!. !<INPUT 2>! is at the !<INPUT 3>!, !<INPUT 4>!.
+People nearby: !<INPUT 5>!
+!<INPUT 6>!
+
+!<INPUT 2>! just noticed:
+!<INPUT 7>!
+
+Things !<INPUT 2>! remembers that seem related:
+!<INPUT 8>!
+
+What does !<INPUT 2>! do next? Options:
+- CONTINUE: carry on with the current activity.
+- REACT: a brief action or remark in response (include the exact words if !<INPUT 2>! says something aloud).
+- TALK: start a conversation with one person nearby (include who, and the opening line).
+- MOVE: go somewhere else on campus (one of: !<INPUT 9>!).
+
+Answer with a single JSON object and nothing else:
+{"action": "CONTINUE | REACT | TALK | MOVE", "target": "<a person's name, a place, or null>", "utterance": "<exact words said aloud, or null>", "reason": "<a few words>"}

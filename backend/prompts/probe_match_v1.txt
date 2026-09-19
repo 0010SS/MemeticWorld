@@ -1,0 +1,18 @@
+probe_match_v1.txt  (MemeWorld OBSERVER generalization probe; answers never enter agent memory)
+
+Variables:
+!<INPUT 0>! -- persona ISS
+!<INPUT 1>! -- persona name
+!<INPUT 2>! -- retrieved memories
+!<INPUT 3>! -- expression
+!<INPUT 4>! -- lettered list of novel situations
+
+<commentblockmarker>###</commentblockmarker>
+!<INPUT 0>!
+Here is what !<INPUT 1>! remembers:
+!<INPUT 2>!
+
+You are !<INPUT 1>!. Which of these situations best matches "!<INPUT 3>!"?
+!<INPUT 4>!
+
+Answer with the letter only.

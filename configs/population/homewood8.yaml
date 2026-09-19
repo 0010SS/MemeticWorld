@@ -1,0 +1,196 @@
+# Homewood-style campus population. Stable profile data only.
+# NOTE: nothing here describes latent events, memes or culture (by design).
+agents:
+  - id: maya
+    name: Maya Chen
+    sprite: Mei_Lin
+    demographics: {age: 20, year: junior, major: Computer Science, role: undergraduate research assistant}
+    background: Grew up in Seattle; works in a computational biology lab on machine-learning models; rooms with Priya.
+    personality: {traits: [outgoing, humorous, curious], communication_style: chatty and playful; teases friends}
+    interests: {topics: [machine learning, board games], hobbies: [bouldering], clubs: [ACM]}
+    habits: [grabs coffee before class, studies at the library in the evening]
+    home: {location: Dorm, arena: Room 214}
+    routine:
+      - {time: "07:30", location: Dorm, arena: Room 214, activity: getting ready for the day}
+      - {time: "08:30", location: Cafe, activity: grabbing coffee}
+      - {time: "09:00", location: Classroom, arena: Lecture Hall, activity: attending the Probability lecture}
+      - {time: "10:30", location: Library, arena: Study Tables, activity: working on a problem set}
+      - {time: "12:00", location: Dining Hall, activity: eating lunch}
+      - {time: "13:00", location: Research Lab, arena: Dry Lab, activity: running machine-learning experiments}
+      - {time: "17:00", location: Quad, activity: hanging out on the lawn}
+      - {time: "18:00", location: Dining Hall, activity: eating dinner}
+      - {time: "19:00", location: Library, arena: Study Tables, activity: studying}
+      - {time: "21:30", location: Dorm, arena: Room 214, activity: winding down}
+
+  - id: priya
+    name: Priya Raman
+    sprite: Ayesha_Khan
+    demographics: {age: 20, year: junior, major: Neuroscience, role: undergraduate}
+    background: From New Jersey; pre-med; sings in an a cappella group; rooms with Maya.
+    personality: {traits: [reserved, serious, cautious], communication_style: precise and understated}
+    interests: {topics: [neuroscience, medicine], hobbies: [singing, running], clubs: [a cappella group]}
+    habits: [works out early, keeps a detailed planner]
+    home: {location: Dorm, arena: Room 214}
+    routine:
+      - {time: "07:30", location: Gym, activity: working out}
+      - {time: "08:30", location: Dorm, arena: Room 214, activity: getting ready}
+      - {time: "09:30", location: Classroom, arena: Seminar Room, activity: attending the Neuroanatomy lecture}
+      - {time: "11:00", location: Library, arena: Quiet Floor, activity: reading papers}
+      - {time: "12:30", location: Dining Hall, activity: eating lunch}
+      - {time: "13:30", location: Library, arena: Study Tables, activity: studying for an exam}
+      - {time: "16:00", location: Classroom, arena: Seminar Room, activity: rehearsing with the a cappella group}
+      - {time: "18:00", location: Dining Hall, activity: eating dinner}
+      - {time: "19:00", location: Dorm, arena: Room 214, activity: studying in her room}
+
+  - id: ethan
+    name: Ethan Brooks
+    sprite: Eddy_Lin
+    demographics: {age: 19, year: sophomore, major: Mechanical Engineering, role: undergraduate}
+    background: From Ohio; builds robots in the makerspace; plays intramural soccer; rooms with Leo.
+    personality: {traits: [outgoing, impulsive, competitive], communication_style: loud and enthusiastic; tells long stories}
+    interests: {topics: [robotics, soccer], hobbies: [video games, frisbee], clubs: [robotics team]}
+    habits: [often runs late, snacks constantly]
+    home: {location: Dorm, arena: Room 310}
+    routine:
+      - {time: "07:30", location: Dorm, arena: Room 310, activity: sleeping in}
+      - {time: "08:30", location: Dining Hall, activity: eating a quick breakfast}
+      - {time: "09:00", location: Classroom, arena: Lecture Hall, activity: attending the Probability lecture}
+      - {time: "10:30", location: Quad, activity: tossing a frisbee}
+      - {time: "11:30", location: Research Lab, arena: Makerspace, activity: building a robot arm}
+      - {time: "13:00", location: Dining Hall, activity: eating lunch}
+      - {time: "14:00", location: Library, arena: Study Tables, activity: cramming for a quiz}
+      - {time: "16:30", location: Gym, activity: practicing with the intramural soccer team}
+      - {time: "18:00", location: Dining Hall, activity: eating dinner}
+      - {time: "19:30", location: Dorm, arena: Lounge, activity: playing video games}
+      - {time: "22:00", location: Dorm, arena: Room 310, activity: winding down}
+
+  - id: leo
+    name: Leo Martinez
+    sprite: Carlos_Gomez
+    demographics: {age: 19, year: sophomore, major: Economics, role: undergraduate}
+    background: From San Antonio; quiet but with a dry sense of humor; lifts every morning; rooms with Ethan.
+    personality: {traits: [reserved, humorous, routine-oriented], communication_style: dry, brief remarks}
+    interests: {topics: [economics, basketball], hobbies: [weightlifting, cooking], clubs: [investment club]}
+    habits: [never misses a workout, eats at the same table every day]
+    home: {location: Dorm, arena: Room 310}
+    routine:
+      - {time: "07:30", location: Gym, activity: lifting weights}
+      - {time: "08:30", location: Dining Hall, activity: eating breakfast}
+      - {time: "09:30", location: Classroom, arena: Seminar Room, activity: attending the Microeconomics seminar}
+      - {time: "11:00", location: Library, arena: Quiet Floor, activity: reading a book}
+      - {time: "12:30", location: Dining Hall, activity: eating lunch}
+      - {time: "13:30", location: Library, arena: Study Tables, activity: doing economics homework}
+      - {time: "16:30", location: Gym, activity: working out}
+      - {time: "18:00", location: Dining Hall, activity: eating dinner}
+      - {time: "19:00", location: Dorm, arena: Room 310, activity: reading a book}
+      - {time: "21:00", location: Dorm, arena: Lounge, activity: watching TV}
+
+  - id: jordan
+    name: Jordan Kim
+    sprite: Ryan_Park
+    demographics: {age: 21, year: senior, major: Applied Mathematics, role: undergraduate course grader}
+    background: From Baltimore; grades for the Probability course; lifts with Leo; applying to grad school.
+    personality: {traits: [cooperative, serious, cautious], communication_style: calm and thoughtful}
+    interests: {topics: [probability, chess], hobbies: [lifting, chess], clubs: [chess club]}
+    habits: [grades homework at the library, plans everything in advance]
+    home: {location: Dorm, arena: Room 118}
+    routine:
+      - {time: "08:00", location: Dorm, arena: Room 118, activity: getting ready}
+      - {time: "08:30", location: Cafe, activity: grabbing coffee}
+      - {time: "09:00", location: Classroom, arena: Lecture Hall, activity: attending the Probability lecture}
+      - {time: "10:30", location: Library, arena: Study Tables, activity: grading homework}
+      - {time: "12:00", location: Dining Hall, activity: eating lunch}
+      - {time: "13:30", location: Classroom, arena: Seminar Room, activity: attending the Real Analysis seminar}
+      - {time: "15:00", location: Library, arena: Quiet Floor, activity: writing grad school applications}
+      - {time: "16:30", location: Gym, activity: lifting weights with Leo}
+      - {time: "18:00", location: Dining Hall, activity: eating dinner}
+      - {time: "19:00", location: Library, arena: Study Tables, activity: studying}
+      - {time: "21:30", location: Dorm, arena: Lounge, activity: playing chess online}
+
+  - id: dev
+    name: Dev Patel
+    sprite: Rajiv_Patel
+    demographics: {age: 24, year: first-year PhD, major: Biomedical Engineering, role: graduate student}
+    background: From Chicago; first-year PhD student in the computational biology lab; mentors Maya.
+    personality: {traits: [reserved, curious, routine-oriented], communication_style: soft-spoken and technical}
+    interests: {topics: [genomics, coffee], hobbies: [running, photography], clubs: []}
+    habits: [drinks too much coffee, works late in the lab]
+    home: {location: Dorm, arena: Grad Apartment}
+    routine:
+      - {time: "08:00", location: Dorm, arena: Grad Apartment, activity: getting ready}
+      - {time: "09:00", location: Cafe, activity: answering emails over coffee}
+      - {time: "09:30", location: Research Lab, arena: Wet Lab, activity: preparing samples}
+      - {time: "12:30", location: Cafe, activity: eating a sandwich}
+      - {time: "13:00", location: Research Lab, arena: Dry Lab, activity: analyzing data}
+      - {time: "18:00", location: Gym, activity: going for an evening run}
+      - {time: "19:00", location: Dining Hall, activity: eating dinner}
+      - {time: "20:00", location: Research Lab, arena: Dry Lab, activity: running late experiments}
+      - {time: "22:00", location: Dorm, arena: Grad Apartment, activity: winding down}
+
+  - id: sofia
+    name: Sofia Alvarez
+    sprite: Carmen_Ortiz
+    demographics: {age: 18, year: freshman, major: International Studies, role: student barista}
+    background: From Miami; works shifts at the campus cafe; new to a cappella and the outdoors club.
+    personality: {traits: [outgoing, curious, impulsive], communication_style: warm and animated}
+    interests: {topics: [politics, travel], hobbies: [hiking, singing], clubs: [a cappella group, outdoors club]}
+    habits: [chats with every customer, says yes to every plan]
+    home: {location: Dorm, arena: Room 105}
+    routine:
+      - {time: "07:30", location: Dorm, arena: Room 105, activity: getting ready}
+      - {time: "08:00", location: Cafe, activity: working a barista shift}
+      - {time: "11:00", location: Classroom, arena: Lecture Hall, activity: attending Intro to International Relations}
+      - {time: "12:15", location: Dining Hall, activity: eating lunch}
+      - {time: "13:00", location: Library, arena: Study Tables, activity: writing an essay}
+      - {time: "16:00", location: Classroom, arena: Seminar Room, activity: rehearsing with the a cappella group}
+      - {time: "17:30", location: Quad, activity: meeting up with the outdoors club}
+      - {time: "18:30", location: Dining Hall, activity: eating dinner}
+      - {time: "20:00", location: Dorm, arena: Lounge, activity: hanging out}
+
+  - id: hana
+    name: Hana Okafor
+    sprite: Latoya_Williams
+    demographics: {age: 21, year: senior, major: Biology, role: undergraduate researcher}
+    background: From Atlanta; does wet-lab research with Dev; leads hikes for the outdoors club.
+    personality: {traits: [cooperative, serious, curious], communication_style: calm and encouraging}
+    interests: {topics: [cell biology, ecology], hobbies: [hiking, baking], clubs: [outdoors club]}
+    habits: [arrives early to the lab, keeps snacks for everyone]
+    home: {location: Dorm, arena: Room 402}
+    routine:
+      - {time: "07:30", location: Dorm, arena: Room 402, activity: getting ready}
+      - {time: "08:30", location: Research Lab, arena: Wet Lab, activity: setting up cell cultures}
+      - {time: "12:00", location: Dining Hall, activity: eating lunch}
+      - {time: "13:00", location: Research Lab, arena: Wet Lab, activity: running assays}
+      - {time: "17:30", location: Quad, activity: meeting up with the outdoors club}
+      - {time: "18:30", location: Dining Hall, activity: eating dinner}
+      - {time: "19:30", location: Library, arena: Study Tables, activity: writing her thesis}
+      - {time: "21:30", location: Dorm, arena: Room 402, activity: winding down}
+
+# Social topology (stored explicitly so it can become an experimental variable).
+groups:
+  dorm_a: [maya, priya]
+  dorm_b: [ethan, leo]
+  probability_class: [maya, ethan, jordan]
+  comp_bio_lab: [maya, dev, hana]
+  a_cappella: [priya, sofia]
+  outdoors_club: [sofia, hana]
+  gym_buddies: [leo, jordan]
+
+# Undirected relationships; anything unlisted is `stranger` (familiarity 0.05, affinity 0.5).
+relationships:
+  - {a: maya, b: priya, type: roommate, familiarity: 0.95, affinity: 0.8}
+  - {a: maya, b: jordan, type: classmate, familiarity: 0.6, affinity: 0.6}
+  - {a: maya, b: ethan, type: classmate, familiarity: 0.5, affinity: 0.55}
+  - {a: maya, b: dev, type: labmate, familiarity: 0.7, affinity: 0.6}
+  - {a: maya, b: hana, type: labmate, familiarity: 0.75, affinity: 0.7}
+  - {a: priya, b: sofia, type: clubmate, familiarity: 0.6, affinity: 0.65}
+  - {a: priya, b: hana, type: acquaintance, familiarity: 0.3, affinity: 0.5}
+  - {a: ethan, b: leo, type: roommate, familiarity: 0.9, affinity: 0.75}
+  - {a: ethan, b: jordan, type: classmate, familiarity: 0.45, affinity: 0.5}
+  - {a: leo, b: jordan, type: friend, familiarity: 0.7, affinity: 0.75}
+  - {a: dev, b: hana, type: labmate, familiarity: 0.8, affinity: 0.65}
+  - {a: sofia, b: hana, type: clubmate, familiarity: 0.6, affinity: 0.7}
+  - {a: leo, b: sofia, type: acquaintance, familiarity: 0.2, affinity: 0.55}
+  - {a: dev, b: sofia, type: acquaintance, familiarity: 0.25, affinity: 0.6}
+  - {a: jordan, b: sofia, type: acquaintance, familiarity: 0.2, affinity: 0.5}
+  - {a: priya, b: leo, type: acquaintance, familiarity: 0.2, affinity: 0.5}

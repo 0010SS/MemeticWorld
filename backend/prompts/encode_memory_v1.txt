@@ -1,0 +1,24 @@
+encode_memory_v1.txt  (MemeWorld, non-GA: lossy reconstructive memory encoding)
+
+Variables:
+!<INPUT 0>! -- persona name
+!<INPUT 1>! -- persona ISS (upstream Scratch.get_str_iss)
+!<INPUT 2>! -- current time
+!<INPUT 3>! -- location
+!<INPUT 4>! -- how it was experienced ("saw", "heard in a conversation", ...)
+!<INPUT 5>! -- observation text
+!<INPUT 6>! -- memory-fidelity instruction (set by memory.encoding_noise)
+!<INPUT 7>! -- what the persona knows about the people involved
+
+<commentblockmarker>###</commentblockmarker>
+Here is a brief description of !<INPUT 0>!.
+!<INPUT 1>!
+!<INPUT 7>!
+
+It is !<INPUT 2>! and !<INPUT 0>! is at the !<INPUT 3>!. This is what !<INPUT 0>! just !<INPUT 4>!:
+!<INPUT 5>!
+
+People do not store experiences word for word; they keep a reconstructed version, shaped by what they noticed and cared about.
+!<INPUT 6>!
+
+Write the memory that !<INPUT 0>! keeps of this, in the third person (e.g. "!<INPUT 0>! saw ..."). Output only the memory.

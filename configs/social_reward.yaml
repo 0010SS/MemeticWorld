@@ -1,0 +1,6 @@
+# Social reward: agents derive utility from improving others' emotional state.
+# (Requires the emotion module, which provides the happiness signal.)
+run_name: social_reward
+modules:
+  emotion: true
+  social_reward: true

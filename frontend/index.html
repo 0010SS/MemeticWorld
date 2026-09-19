@@ -1,0 +1,110 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>MemeWorld</title>
+<link rel="stylesheet" href="/static/styles.css">
+</head>
+<body>
+<header class="topbar">
+  <div class="brand">MemeWorld <span class="sub">controlled meme-evolution simulator</span></div>
+  <nav class="tabs" role="tablist">
+    <button class="tab active" data-view="campus">Campus</button>
+    <button class="tab" data-view="culture">Culture</button>
+    <button class="tab" data-view="trace">Trace</button>
+    <button class="tab" data-view="runs">Runs</button>
+  </nav>
+  <div class="controls-right">
+    <label class="field">Run <select id="runSelect"></select></label>
+    <label class="switch" title="Research Debug Mode reveals hidden ground-truth event types">
+      <input type="checkbox" id="debugToggle"> <span>Research debug</span>
+    </label>
+  </div>
+</header>
+
+<main>
+  <!-- CAMPUS --------------------------------------------------------------->
+  <section id="view-campus" class="view active">
+    <div class="campus-layout">
+      <div class="map-col">
+        <div class="map-wrap"><canvas id="map" width="1000" height="620"></canvas>
+          <div class="clock" id="clock">—</div>
+          <div class="debug-badge" id="debugBadge" hidden>RESEARCH DEBUG: hidden event types visible</div>
+        </div>
+        <div class="timeline">
+          <button id="btnBack" title="Step back">⏮</button>
+          <button id="btnPlay" title="Play / pause">▶</button>
+          <button id="btnFwd" title="Step forward">⏭</button>
+          <select id="speed" title="Playback speed">
+            <option value="0.5">0.5×</option><option value="1" selected>1×</option>
+            <option value="2">2×</option><option value="4">4×</option><option value="8">8×</option>
+          </select>
+          <input type="range" id="scrub" min="0" max="0" value="0">
+          <button id="btnFirstMeme" class="pill">Jump: first meme use</button>
+          <button id="btnFirstCross" class="pill">Jump: first cross-group transmission</button>
+        </div>
+        <div class="events-strip" id="eventsStrip"></div>
+      </div>
+      <aside class="side-col">
+        <div class="panel" id="agentPanel">
+          <div class="muted">Click an agent on the map to inspect their profile, memories, retrieval and reflections.</div>
+        </div>
+        <div class="panel">
+          <h3>Utterances <span class="muted small">(click for causal trace)</span></h3>
+          <div id="feed" class="feed"></div>
+        </div>
+      </aside>
+    </div>
+  </section>
+
+  <!-- CULTURE -------------------------------------------------------------->
+  <section id="view-culture" class="view">
+    <div class="culture-head">
+      <div>
+        <h2>Emerging cultural conventions</h2>
+        <p class="muted small">Detected by the external observer only (n-gram statistics + variant grouping + LLM classifier). Nothing on this page is ever shown to agents.</p>
+      </div>
+      <div class="filters">
+        <label class="switch"><input type="checkbox" id="onlyConv" checked> <span>LLM-classified conventions first</span></label>
+        <button id="btnAnalyze" class="pill">Re-run analysis</button>
+      </div>
+    </div>
+    <div id="cultureSummary" class="summary-row"></div>
+    <div id="cards" class="cards"></div>
+    <div id="memeDetail" class="meme-detail"></div>
+  </section>
+
+  <!-- TRACE ---------------------------------------------------------------->
+  <section id="view-trace" class="view">
+    <h2>Causal trace</h2>
+    <p class="muted small">world event → partial observation → lossy memory → retrieval → utterance → listeners → listener memories → later reuse</p>
+    <div class="trace-search">
+      <input id="traceQuery" placeholder="Search utterances…">
+      <div id="traceResults" class="feed short"></div>
+    </div>
+    <div id="chain" class="chain"></div>
+  </section>
+
+  <!-- RUNS ----------------------------------------------------------------->
+  <section id="view-runs" class="view">
+    <h2>Runs</h2>
+    <div class="launch panel">
+      <h3>Launch a new run</h3>
+      <label class="field">Config <select id="cfgSelect"></select></label>
+      <label class="field">Days <input id="cfgDays" type="number" min="1" max="7" value="1"></label>
+      <label class="field">LLM <select id="cfgBackend"><option value="mock">mock (offline)</option><option value="claude_cli">claude CLI</option><option value="anthropic">Anthropic API</option></select></label>
+      <button id="btnLaunch" class="pill">Launch</button>
+      <span id="launchMsg" class="muted small"></span>
+    </div>
+    <table class="table" id="runsTable"></table>
+    <h2 style="margin-top:18px">Condition comparison <span class="muted small">(analyzed runs; conventions = LLM-classified, else top-3 candidates)</span></h2>
+    <div class="panel"><table class="table" id="compareTable"></table></div>
+  </section>
+</main>
+
+<div class="modal" id="modal" hidden><div class="modal-body"><button class="close" id="modalClose">×</button><div id="modalContent"></div></div></div>
+<div class="tooltip" id="tooltip" hidden></div>
+<script type="module" src="/static/app.js"></script>
+</body>
+</html>

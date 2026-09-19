@@ -1,0 +1,5 @@
+# Negative control: identical agents and routines, but no latent world events at all.
+# Measures how many "conventions" arise from ordinary chatter alone, and the observer's false-positive rate.
+run_name: no_events
+latent_events:
+  event_rate: 0.0

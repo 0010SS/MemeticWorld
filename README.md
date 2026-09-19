@@ -1,86 +1,142 @@
-# MemeticWorld
+# MemeWorld
 
-**Can AI agents invent, spread, and converge on memes without being asked to?**
+MemeWorld is a hackathon MVP for a **controlled experiment in meme evolution**, built on top of
+[Generative Agents](https://github.com/joonspk-research/generative_agents) (Park et al., 2023).
 
-MemeticWorld drops eight LLM-driven students onto a small, Homewood-style campus. They follow
-class schedules, bump into each other at lunch, witness small absurd incidents (a dropped tray,
-a squirrel stealing a bagel, the lab printer grinding away), talk, and remember. Nobody tells
-them to be funny, coin phrases, or make memes. Every word is logged, and an analysis layer
-traces which phrases one agent coins and others pick up.
+Eight students live ordinary routines on a Homewood-style campus. The simulator injects hidden, recurring
+*latent event structures* that agents never see (a small mistake that cascades, two mistakes that cancel out, an
+independent coincidence, a beneficial failure). Agents perceive fragments of these events, form **lossy symbolic
+memories**, retrieve them stochastically, reflect, and talk.
+
+An external observer then asks: do agents spontaneously invent and converge on expressions that stand for those
+hidden structures? It also measures how the answer changes when a single selective pressure is changed (memory
+quality, emotion, social reward, prestige, conformity).
 
 ```
-ordinary interaction → novel expression → reuse → spread → shared convention
+latent event → partial perception → lossy symbolic memory → retrieval/reflection
+             → social interaction → symbol invention/reuse → cultural transmission
 ```
 
-## What you see
+There is **no meme state inside agents**: no `known_memes`, no meanings, no fitness. A "meme" exists only as
+language that agents happen to reuse, and the analyzer finds it afterwards.
 
-- **Campus map**: agents walking between buildings, speech bubbles, live incidents.
-- **Timeline**: scrub or replay the run; the strip shows how much talking happened each tick.
-- **Phrases**: detected candidates ranked by evidence, with originator, adopters and a per-agent
-  meter; "competing names" for the same incident shows convergence.
-- **Who got it from whom**: a swimlane cascade per phrase. Arrows run from the use that exposed
-  an agent to that agent's first reuse in a new conversation. Bold arrows mean the adopter's
-  prompt literally contained a memory quoting the phrase.
-- **Agent inspector**: exactly what an agent saw, which memories it retrieved, and what the
-  model answered.
-- **Full vs control**: the same seed rerun with agents that remember *that* they talked but not
-  *what* was said. Phrases that spread there too are model habits, not culture.
+## Four separated layers
 
-## How it works
+| Layer | Code | Can see |
+|---|---|---|
+| **WORLD**: campus graph, clock, routines, hidden latent events | `backend/simulation/` | everything |
+| **AGENT**: GA persona, perception, memory stream, retrieval, reflection, planning, conversation | `backend/agents/`, `backend/memory/` | only its own observations and memories |
+| **EXPERIMENT CONTROLLER**: config and optional modules | `configs/`, `backend/modules/` | re-weights cognition; never specifies culture |
+| **OBSERVER**: meme analyzer, probes, ground-truth evaluation | `backend/analysis/` | the finished run's logs; never imported by agent code (enforced by a test) |
 
-Each 15-minute tick: `observe → retrieve memory → decide → move/talk → store memory`.
+## What comes from Generative Agents
 
-- Agents see only their own location. Memory retrieval scores
-  `0.6·similarity + 0.3·recency + 0.1·importance` and returns the top 5.
-- One small LLM call per decision (`MOVE / TALK / REACT / CONTINUE_ACTIVITY / IDLE`), validated
-  with pydantic. Conversations run 1–4 turns, one call per speaker, so no agent ever sees
-  another's memories.
-- Speech is remembered verbatim. That quote is the only way a phrase can travel.
-- The detector separates **adoption** (reuse in a new conversation after hearing it) from
-  **echo** (repeating it back on the spot) and from **independent coinage**. It confirms
-  transmission from logged retrieval, and demotes anything that also spreads in the control run.
+The upstream code is vendored **unmodified** in `third_party/generative_agents/` (commit `fe05a71`) and imported
+through `backend/ga_compat.py`. MemeWorld reuses:
+- the memory stream: `AssociativeMemory` / `ConceptNode` and the GA on-disk format
+- `Scratch` and its identity stable set
+- GA's retrieval scoring functions and weights
+- the reflection trigger, plus the focal-point and insight prompts
+- the poignancy prompts
+- `decide_to_talk`
+- the relationship-summary and iterative-conversation prompt functions, called directly
+- GA's prompt and retry helpers
+- the character sprites
+
+All of GA's OpenAI calls are routed to Claude. Every deviation is logged in **[docs/DECISIONS.md](docs/DECISIONS.md)**.
 
 ## Quick start
 
-No API key is needed to try it: without one, the backend uses an offline mock LLM, which is
-good for the UI and not for science.
-
 ```bash
-cp .env.example .env            # add LLM_API_KEY / LLM_MODEL for real runs
+uv venv .venv --python 3.12 && uv pip install --python .venv/bin/python numpy fastapi uvicorn pyyaml pytest anthropic
 
-cd backend
-uv venv .venv && uv pip install --python .venv/bin/python -r requirements.txt
-.venv/bin/uvicorn app.main:app --reload --port 8000
+# offline smoke run (deterministic mock LLM), then analyze it
+.venv/bin/python -m backend.cli run --config configs/smoke.yaml --out runs/smoke --analyze
 
-cd ../frontend
-npm install && npm run dev      # open http://localhost:3000 → New run
+# real run: Claude Haiku via the local `claude` CLI (or set llm.backend=anthropic with ANTHROPIC_API_KEY)
+.venv/bin/python -m backend.cli run --config configs/baseline.yaml --analyze
+
+# all experimental modes, same seed
+scripts/run_experiments.sh 42 5
+
+# deterministic replay from recorded LLM outputs (verifies the trace hash)
+.venv/bin/python -m backend.cli replay runs/<run_id>
+
+# UI: http://127.0.0.1:8765
+.venv/bin/python -m backend.cli serve
+
+# tests
+.venv/bin/python -m pytest -q tests
 ```
 
-Headless: `cd backend && .venv/bin/python -m app.cli run --days 2 --control`, then
-`python -m app.cli memes <run_id>`.
+Any config value can be overridden with `--set`, e.g. `--set memory.encoding_noise=0.6 simulation_days=2`.
 
-Any OpenAI-compatible API works (OpenAI, OpenRouter, Ollama, vLLM, LM Studio); see
-`.env.example`. Tests: `cd backend && .venv/bin/python -m pytest -q`.
+## Experimental modes (they differ only in config)
 
-## Stack
+| Config | Change relative to `default.yaml` |
+|---|---|
+| `baseline.yaml` | GA-style cognition, lossy memory (noise 0.3), no optional modules |
+| `perfect_memory.yaml` | verbatim encoding (no LLM rewrite), almost no decay or forgetting, deterministic retrieval |
+| `high_noise.yaml` | gist-only encoding, fast decay, small capacity, retrieval τ = 1.5 |
+| `social_reward.yaml` | emotion + social reward (utility from improving others' mood) |
+| `event_rich.yaml` | latent events about twice as frequent |
 
-Next.js 16 + TypeScript + Tailwind (SVG charts) · FastAPI + SQLite · REST + Server-Sent Events.
-See [CLAUDE.md](CLAUDE.md) for the architecture, data model, API, and contributor rules.
+Prestige and conformity are available as `modules.prestige_bias` and `modules.conformity`.
 
-## Demo script (3 minutes)
+## What a run writes (`runs/<run_id>/`)
 
-1. Start a full run with a control (or load a recorded one). Hit **Play** and point out agents
-   converging on the Dining Hall at lunch.
-2. An incident fires (⚡). Open **Conversations** and watch someone describe it in their own words.
-3. Open **Phrases**, pick the top *Strong* phrase, and walk the cascade: origin → confirmed
-   adoption → second-hand adoption.
-4. Click an adopter, open **Latest LLM call → Memories it retrieved**, and show the quote that
-   carried the phrase.
-5. **Full vs control**: the same world without speech memory produces far fewer adoptions.
+| File | Content |
+|---|---|
+| `config.resolved.yaml` | the exact configuration |
+| `manifest.json` | population, world, groups, stats |
+| `trace.jsonl` | full causal trace: world events and beats, observations (with attention probabilities), encoded, merged and forgotten memories (with prompts), decisions (prompt, response, retrieved memories and scores), utterances (with retrieved memories and context), exposures (actual listeners only), conversations, reflections (with evidence), moves, invitations |
+| `frames.jsonl` | per-tick state for replay |
+| `events.jsonl` | hidden ground truth (simulator only) |
+| `llm_calls.jsonl` | every prompt and response (used for replay) |
+| `memory_meta.json` | simulator-only memory provenance |
+| `agents_final/<id>/associative_memory/` | final memory streams in upstream GA format |
+| `analysis.json`, `analysis_llm_calls.jsonl` | observer output |
 
-## Honest limitations
+## UI
 
-- Eight agents over a few simulated days is small. Treat results as case studies, not statistics.
-- All agents share one model, so shared priors are the main confound. That's why the control
-  run exists, and why phrases made only of words the world supplies are ignored.
-- The n-gram detector is heuristic. Paraphrased variants are grouped by incident, not by meaning.
+**Campus**
+- a top-down map with GA sprites, animated semantic movement, active events and speech bubbles with listener
+  lines
+- play, pause, speed and rewind controls, plus buttons that jump to the first meme use and the first cross-group
+  transmission
+- click an agent to see identity, personality, relationships, routine, current activity, memories as of that
+  tick, last retrieved memories with score components, reflections and conversations
+- click any utterance to see its causal trace
+
+**Culture**
+- convention cards, adoption over time, a propagation network (confidence-weighted, with cross-group edges
+  marked), lexical lineage, meaning over time, private agent interpretations, and a latent-event correspondence
+  panel (debug only)
+
+**Trace**
+- search utterances and expand the chain: world event → observation → memory → retrieval → utterance → listener
+  memories → later reuse
+
+**Research debug**
+- this toggle reveals hidden event types; demo mode strips them *server-side*
+
+## Layout
+
+```
+backend/
+  ga_compat.py            bridge to upstream Generative Agents
+  llm/                    client (record/replay), claude CLI / Anthropic / mock backends, embeddings
+  simulation/             world.py, scheduler.py, latent_events.py, engine.py
+  agents/                 profile.py, agent.py, perception.py, planner.py, conversation.py, ga_prompts.py
+  memory/                 store.py, encoder.py, retrieval.py, reflection.py
+  modules/                base.py, emotion.py, social_reward.py, prestige.py, conformity.py
+  analysis/               candidates, transmission, semantics, lineage, probes, evaluation, pipeline
+  tracing/logger.py       deterministic JSONL trace
+  api/server.py           FastAPI
+  prompts/                MemeWorld's own (non-GA) prompt templates
+configs/                  experiment configs + population
+frontend/                 index.html, app.js, styles.css
+third_party/generative_agents/   vendored upstream (unmodified)
+docs/DECISIONS.md         every deviation from GA / the plan
+REPORT.md                 build report and first results
+```

@@ -1,0 +1,10 @@
+# High memory noise: strong compression and highly stochastic retrieval.
+run_name: high_noise
+memory:
+  encoding_noise: 0.85
+  decay_rate: 0.3
+  memory_capacity: 120
+  merge_threshold: 0.8
+  entity_generalization: 1.0
+retrieval:
+  temperature: 1.5

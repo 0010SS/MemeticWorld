@@ -1,0 +1,4 @@
+# Event rich: more recurring latent events.
+run_name: event_rich
+latent_events:
+  event_rate: 0.25

@@ -1,0 +1,9 @@
+# Tiny offline configuration for tests / frontend development (mock LLM).
+run_name: smoke
+simulation_days: 2
+llm:
+  backend: mock
+  max_workers: 4
+latent_events:
+  event_rate: 0.2
+  holdout_from_day: 2
