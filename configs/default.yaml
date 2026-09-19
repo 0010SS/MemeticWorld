@@ -13,7 +13,7 @@ seed: 42
 world_seed: null            # null -> seed. The world script (events, casting, referents) uses only this seed,
                             # so conditions sharing world_seed see identical events (common random numbers).
 population: configs/population/homewood8.yaml
-population_size: 8          # first N agents of the population file
+population_size: 10         # first N agents of the population file
 simulation_days: 3
 start_date: "2026-09-14"    # a Monday
 day_start: "07:30"
