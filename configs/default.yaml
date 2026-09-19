@@ -14,6 +14,7 @@ world_seed: null            # null -> seed. The world script (events, casting, r
                             # so conditions sharing world_seed see identical events (common random numbers).
 population: configs/population/homewood8.yaml
 population_size: 16         # first N agents of the population file
+initial_memories_file: null # optional per-agent one-time seed memories; no permanent linguistic habit
 simulation_days: 3
 start_date: "2026-09-14"    # a Monday
 day_start: "07:30"

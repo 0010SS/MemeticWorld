@@ -1,0 +1,27 @@
+# Fictional 500-person seeded naming experiment; see docs/HOMEWOOD_500_EXPERIMENT.md.
+# Mock is intentional: inspect structure/contact density before selecting a paid backend.
+extends: configs/baseline.yaml
+run_name: homewood500_naming
+seed: 42
+world_seed: 42
+population: configs/population/homewood500.yaml
+population_size: 500
+initial_memories_file: configs/population/homewood500_initial_memories.yaml
+simulation_days: 3
+day_start: "08:30"
+day_end: "17:00"
+llm:
+  backend: mock
+  max_workers: 4
+routine:
+  jitter_minutes: 0
+  deviation_prob: 0
+conversation:
+  invite_prob: 0
+topology:
+  mode: file
+latent_events:
+  event_rate: 0
+analysis:
+  llm_classifier: false
+  probes: false

@@ -2,6 +2,8 @@
 
 September 19, 2026. Proposed plan based on the current local code; these expansions have not been implemented or tested in this task.
 
+**Later direction:** the user selected a 500-person campus and a seeded Hopkins Cafe / FFC naming experiment. See the [current population and experiment guide](HOMEWOOD_500_EXPERIMENT.md). The smaller steps below remain historical recommendations; code details reflect the earlier inspection.
+
 ## Start here
 
 **Try 12 agents in the existing campus first. Keep the same four action types and four event families. Expand one thing at a time.**

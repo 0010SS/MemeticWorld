@@ -1,0 +1,4 @@
+# Recognition control: same profiles and preferred-term history, plus explicit alias equivalence.
+extends: configs/homewood500_naming.yaml
+run_name: homewood500_both_names
+initial_memories_file: configs/population/homewood500_both_names_memories.yaml

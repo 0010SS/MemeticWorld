@@ -76,6 +76,34 @@ _seed_rng = seed_rng       # the engine's streams use the one scheme in backend.
 COOP_FACT_ROLE = {"code": "detail", "oddity": "detail"}
 
 
+def _load_initial_memories(path: str | Path | None) -> dict[str, list[str]]:
+    """Optional autobiographical seed material, separate from permanent persona identity.
+
+    The full file is validated even when a run loads only a population subset. Unknown/unselected
+    agent ids are ignored by the seeding loop, so one file can serve both a pilot and a full run.
+    """
+    if path is None:
+        return {}
+    if not isinstance(path, (str, Path)) or not str(path).strip():
+        raise ValueError("initial_memories_file must be a nonempty path or null")
+    p = Path(path)
+    if not p.is_absolute():
+        p = ga_compat.REPO_ROOT / p
+    data = yaml.safe_load(p.read_text())
+    if not isinstance(data, dict):
+        raise ValueError("initial_memories_file must contain a mapping of agent ids to lists of text")
+    out = {}
+    for aid, memories in data.items():
+        if not isinstance(aid, str) or not aid.strip():
+            raise ValueError("initial_memories_file agent ids must be nonempty strings")
+        if not isinstance(memories, list):
+            raise ValueError(f"initial_memories_file[{aid!r}] must be a list of text")
+        if any(not isinstance(text, str) or not text.strip() for text in memories):
+            raise ValueError(f"initial_memories_file[{aid!r}] entries must be nonempty text")
+        out[aid] = [text.strip() for text in memories]
+    return out
+
+
 def forced_activity(routine: dict, place: dict) -> str:
     """Activity of a beat mover (agreement c): the world moves people, it does not narrate them. Keep what
     the agent was going to do there anyway (same building, awake), else a neutral, event-independent
@@ -203,7 +231,10 @@ class Simulation:
         return [f.result() for f in futs]
 
     def _seed_memories(self):
-        """Initial memories (GA seeds personas with their description; we add relationship knowledge)."""
+        """Seed relationships and optional autobiographical memories once, outside stable identity."""
+        if getattr(self, "_seed_memories_done", False):
+            return
+        initial = _load_initial_memories(self.cfg.get("initial_memories_file"))
         t0 = self.clock.time_of(0) - dt.timedelta(hours=10)
         with llm_scope("seed"):
             for a in self.agents.values():
@@ -219,7 +250,16 @@ class Simulation:
                                     importance=5, salience=0.3, source_type="seed", observation_id=None,
                                     observation=None, encoding_ops=[], prompt=None, originating_event_ids=[],
                                     speakers=[], utterance_ids=[])
+                for index, text in enumerate(initial.get(a.id, [])):
+                    node = a.a_mem.add("thought", t0, a.name, "remembers", "an earlier experience", text,
+                                       {a.name.lower()}, 5, self.embed(text), [])
+                    self.meta.set(node.node_id, MemoryMeta(agent_id=a.id, source_type="seed", salience=0.3))
+                    self.tracer.log("memory_encoded", agent=a.id, node_id=node.node_id, kind="thought", text=text,
+                                    importance=5, salience=0.3, source_type="seed", observation_id=None,
+                                    observation=None, encoding_ops=[], prompt=None, originating_event_ids=[],
+                                    speakers=[], utterance_ids=[], initial_memory=True, initial_memory_index=index)
         self.tracer.flush()
+        self._seed_memories_done = True
 
     def write_manifest(self, status="running", extra=None):
         man = {

@@ -87,8 +87,13 @@ class AgentProfile:
     def ga_learned(self) -> str:
         d = self.demographics
         it = self.interests
-        parts = [f"{self.first_name} is a {d.get('age')}-year-old {d.get('year')} studying {d.get('major')}"
-                 f" ({d.get('role')}). {self.background}"]
+        if d.get("category") in {"faculty", "staff"}:
+            role = d.get("role") or f"{d['category']} member"
+            department = f" in {d['department']}" if d.get("department") else ""
+            parts = [f"{self.first_name} is a {d.get('age')}-year-old {role}{department}. {self.background}"]
+        else:
+            parts = [f"{self.first_name} is a {d.get('age')}-year-old {d.get('year')} studying {d.get('major')}"
+                     f" ({d.get('role')}). {self.background}"]
         if it.get("topics"):
             parts.append(f"{self.first_name} is interested in {', '.join(it['topics'])}.")
         if it.get("hobbies"):
