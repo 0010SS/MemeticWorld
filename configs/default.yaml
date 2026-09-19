@@ -25,6 +25,8 @@ llm:
   model: haiku
   max_workers: 6
   replay_from: null         # path to a previous run's llm_calls.jsonl -> deterministic replay
+  replay_until_tick: null   # v3 branches: serve the parent's cache strictly before this tick, never after
+  fail_fast: {max_consecutive_errors: 3, pause_seconds: 600, max_pauses: 6}
 
 embedding:
   backend: hash             # hash | sentence_transformers
@@ -58,6 +60,7 @@ memory:
     distinctiveness: lexicon # lexicon (rare AND not campus/routine vocabulary) | zipf (rare only)
     exclude_self: true       # the agent's own utterances never "stick" as heard wording
     render_in_text: true     # also quote stuck wording in the memory description
+    on_sources: [conversation, overheard]   # v3_base adds record
 
 priming:                    # WORDING: recently heard wordings are in mind when speaking
   enabled: false
@@ -171,7 +174,58 @@ module_params:
 controls:
   planted_phrase: null      # positive control: {agent: maya, habit: "Maya has a habit of calling any mess \"a full pickle\"."}
 
+# ---------------------------------------------------------------- v3 (docs/ONTOLOGY_V3.md §8.2); all OFF
+workshop:
+  enabled: false
+  content: laser_alpha              # laser_alpha | laser_beta
+  jobs_ticks: [6, 10, 14, 18, 24, 28, 32, 36]
+  p_fault: 0.75
+  class_weights: {K1: 0.70, K2: 0.30}
+  k3_from_k0: 0.6
+  success: {match: 0.85, other_fix: 0.10, rerun: 0.10, slow: 0.35, slow_belt: 0.20}
+  max_attempts: 2
+  panel_code: {enabled: false, text: "F4", prob: 0.5}
+  oddity_prob: 0.3
+  symptom_visibility: arena
+  encode: per_job                   # per_job | per_beat
+  encode_reason: true
+  causal: real                      # real | scrambled
+  tally_time: "17:30"
+
+regimes: {mapping: auto, schedule: [{day: 1, regime: A}], cues: [], split: null}
+
+records:
+  enabled: false
+  display: current                  # none | current | history
+  history_from_day: null
+  consult: always                   # always | on_choice | never
+  consult_from_day: null
+  view_log_n: 5
+  front_max_chars: 600
+  log_max_chars: 200
+  revisable: true
+  retrieval: recent                 # recent | relevant
+  encode_on_read: new_only          # new_only | never
+  write_after: [faulted_job, tally, farewell]
+  authority: members                # members | manager_signed
+  replies: false
+  transitions: []                   # [{day, mode: keep|wipe}]
+
+roster: {enabled: false, shifts: {am: "08:45-13:15", pm: "13:00-17:45", stores: ["08:45-12:00", "13:00-17:45"]}}
+turnover: {enabled: false, waves: [], rotate: by_world_seed, crew_familiarity: 0.35, member_familiarity: 0.2,
+           farewell: true, reassign: []}
+
+comm:
+  clarify: {enabled: false, max_per_job: 1, max_utterances: 4}
+  handover: {enabled: false, time: "13:15", max_utterances: 6}
+  meeting: {enabled: false, days: [2, 5], time: "18:30", max_utterances: 10, max_participants: 8}
+
+checkpoints: {enabled: false, days: all}
+branch: {parent: null, at_day: null, salt: null}
+probe: {backend: claude_cli, model: haiku, workers: 8, k: 6, tau: 0.7, framings: [note, text, overheard]}
+
 analysis:
+  coder: {backend: claude_cli, model: sonnet, second: haiku, blind: true, human_sample: 120}
   llm_classifier: true
   probes: true
   min_speakers: 2

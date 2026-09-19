@@ -1,0 +1,33 @@
+# LB1 battery, content pack laser_alpha, mapping M2 (A = DAMP, B = LENS). OBSERVER ONLY (ONTOLOGY_V3 §5.3).
+# Item ids are neutral on purpose; the type field (K0-K3, CUE) never reaches a prompt.
+# wording: heldout = shares no content bigram with world surfaces (checked by tests/test_v3_world.py);
+#          twin = a world surface with the panel-code sentence removed. Twin text is resolved from the content
+#          pack at load time (surface index below); `text` is only the fallback when the pack is absent.
+battery: lb1
+pack: laser_alpha
+mapping: M2
+cue_extras:
+  supplier: "These sheets came from a different supplier's pallet."
+  neutral: "The machine had been running all morning."
+items:
+  - {id: i01, type: K1c, wording: heldout, text: "Pieces from the left part of the bed would not come loose from the sheet, their outlines singed a dull brown."}
+  - {id: i02, type: K1c, wording: heldout, text: "Toward the left, the beam only went partway into the acrylic, and those grooves had a toasted, amber look."}
+  - {id: i03, type: K1c, wording: heldout, text: "Everything on the leftmost portion needed pushing out by hand, and its border was tinted like burnt sugar."}
+  - {id: i04, type: K1c, wording: heldout, text: "The left-hand shapes were only scored, not cut free, and their outlines had gone a smoky caramel."}
+  - {id: i05, type: K1c, wording: twin, twin: {class: K1, surface: 0}, text: "The first sheet came out with the left third still attached, and the edges there were the color of weak tea."}
+  - {id: i06, type: K1c, wording: twin, twin: {class: K1, surface: 2}, text: "Halfway through, the beam stopped biting on the left; those pieces had tan rims."}
+  - {id: i07, type: K1c, wording: twin, twin: {class: K1, surface: 4}, text: "The left-side parts never dropped out of the sheet, and their cut lines were browned."}
+  - {id: i08, type: K1c, wording: twin, twin: {class: K1, surface: 6}, text: "On the left the cut didn't go through, and the edges it left looked tea-stained."}
+  - {id: i09, type: K1a, wording: heldout, text: "Everything cut through, but the left-side edges were browner than usual."}
+  - {id: i10, type: K1a, wording: heldout, text: "All the pieces came loose, though along the left their borders looked a shade darker than normal."}
+  - {id: i11, type: K3, wording: heldout, text: "The cut grooves came out fatter than the drawing, and a dull film fogged the top of the sheet."}
+  - {id: i12, type: K3, wording: heldout, text: "Each line was broader than planned, and the surface had gone cloudy, as if breathed on."}
+  - {id: i13, type: K3, wording: heldout, text: "The kerf looked thick and fuzzy, and a milky smear dimmed the acrylic around the shapes."}
+  - {id: i14, type: K2, wording: heldout, text: "On the right side the outlines came out twice, a touch apart, like a shaky photocopy."}
+  - {id: i15, type: K2, wording: heldout, text: "Toward the right, straight borders wobbled into gentle zigzags, and some shapes had a faint echo beside them."}
+  - {id: i16, type: K2, wording: twin, twin: {class: K2, surface: 0}, text: "Near the right edge every line came out doubled, as if the head had wobbled."}
+  - {id: i17, type: K2, wording: twin, twin: {class: K2, surface: 2}, text: "The shapes on the right were traced with wavy, doubled lines."}
+  - {id: i18, type: K0, wording: heldout, text: "The cut was clean everywhere, but the vent blower seemed noisier than normal."}
+  - {id: i19, type: K0, wording: heldout, text: "Every piece came out crisp and complete; the only odd thing was a creaky cover on the machine."}
+  - {id: i20, type: CUE, wording: heldout, base: i01, extra: supplier}
+  - {id: i21, type: CUE, wording: heldout, base: i01, extra: neutral}

@@ -1,0 +1,67 @@
+# MemeWorld v3 first-study base config (docs/ONTOLOGY_V3.md §4.6, §8.2): the co-op Makerspace, the binder,
+# turnover and scheduled talk switched on over configs/default.yaml (where every v3 mechanism is off).
+# Design trees (configs/designs/records_boundaries_v3.yaml) set seed/world_seed, days and the branch overlays.
+run_name: v3_base
+population: configs/population/coop13.yaml   # 13 personas: 8 active founders + 5 reserves (part T)
+population_size: 13
+simulation_days: 6
+
+latent_events:
+  event_rate: 0                     # E1-E4 off: the workshop is the only world content
+
+workshop:
+  enabled: true
+  panel_code: {enabled: true}
+
+regimes:
+  mapping: auto                     # M1 odd world seed, M2 even
+  schedule: [{day: 1, regime: A}]   # shift arms overlay [{day: 1, regime: A}, {day: 5, regime: B}]
+  cues: [{day: 4, time: "16:45", arena: Stockroom, text_key: new_supplier}]   # trunk: identical in every arm
+
+records:
+  enabled: true
+  display: current
+  consult: always
+  view_log_n: 5
+  encode_on_read: new_only
+  transitions: [{day: 4, mode: keep}]
+
+roster:
+  enabled: true
+
+turnover:
+  enabled: true
+  waves:
+    - {day: 4, depart: {am_crew: 1, pm_crew: 1, stores: 1}}
+    - {day: 6, depart: {am_crew: 1, pm_crew: 1}}
+  rotate: by_world_seed
+
+comm:
+  clarify: {enabled: true}
+  handover: {enabled: true}
+  meeting: {enabled: true}
+
+checkpoints:
+  enabled: true
+  days: all
+
+reminding:
+  enabled: true
+  on_sources: [perception, conversation, overheard, record]
+
+memory:
+  verbatim:
+    enabled: true
+    exclude_self: true
+    distinctiveness: lexicon
+    on_sources: [conversation, overheard, record]
+
+retrieval:
+  source_weights: {seed: 0.5, ambient: 0.5}
+
+conversation:
+  catchup: {enabled: true}
+  group: {enabled: false}           # the meeting uses comm.meeting
+
+need: {enabled: false}
+priming: {enabled: false}

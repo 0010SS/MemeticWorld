@@ -1,0 +1,19 @@
+# v3 calibration runs (docs/ONTOLOGY_V3.md §7.3, §7.6 G1), two independent roots (no branches):
+#   cal_scrambled: seed 10, no turnover, 3 days, workshop.causal scrambled (false-positive control)
+#   cal_shiftmini: seed 9, no turnover, 2 days, regime shift at D2 (shift sensitivity)
+name: v3_calibration
+kind: tree
+base: configs/v3_base.yaml
+seeds: [9, 10]
+observer: {backend: claude_cli, model: sonnet}
+common:
+  llm: {backend: claude_cli, model: haiku, max_workers: 6}
+  turnover: {enabled: false, waves: []}
+  regimes: {cues: []}
+  records: {transitions: []}
+freeze: {git_sha: required, prompt_hashes: required}
+tree:
+  cal_scrambled:  {days: 3, seeds: [10], set: {workshop: {causal: scrambled}}}
+  cal_shiftmini:  {days: 2, seeds: [9],
+                   set: {regimes: {schedule: [{day: 1, regime: A}, {day: 2, regime: B}]}}}
+outcomes: [v3.inertia.orr_jobs_d5d6]

@@ -290,6 +290,10 @@ class Simulation:
                     forced[a] = {"location": b["location"], "arena": b["arena"], "event": e.id, "activity": None}
         was = {aid: ((a.state.location, a.state.arena), a.state.in_conversation) for aid, a in self.agents.items()}
         for aid, a in self.agents.items():
+            if not getattr(a.state, "active", True):     # v3 turnover: departed / not yet arrived
+                a.state.location, a.state.arena, a.state.activity = "Away", "Away", "sleeping"
+                a.state.in_conversation, a.state.path, a.state.forced_by = None, [], None
+                continue
             prev = was[aid][0]
             pos = routine_position(a, k)
             activity = pos["activity"]
@@ -381,7 +385,11 @@ class Simulation:
             a = self.agents[aid]
             out = {"decisions": []}
             for o in obs_by_agent[aid]:
-                render_viewpoint(a, o)                 # the agent's own version of what it noticed (D42)
+                if getattr(o, "coop_episode", False):  # v3 job episode: render only its unrendered facts
+                    from backend.agents import work as WK
+                    WK.render_pending(a, o)
+                elif o.source_type != "record":        # binder text is read as written
+                    render_viewpoint(a, o)             # the agent's own version of what it noticed (D42)
                 if not o.facts:
                     continue
                 a.mods.on_observation(a, o.facts)
@@ -390,7 +398,8 @@ class Simulation:
                 if self.cfg.get("need", {}).get("enabled"):
                     from backend.memory import need as NEED
                     NEED.note(a, o, node)
-                if rc["enabled"] and max(f["salience"] for f in o.facts) >= rc["min_salience"]:
+                if rc["enabled"] and not getattr(o, "no_react", False) and \
+                        max(f["salience"] for f in o.facts) >= rc["min_salience"]:
                     present = [x for x in self.agents.values() if x.id != aid and
                                (x.state.location, x.state.arena) == (a.state.location, a.state.arena)]
                     d = decide_reaction(a, o, present, a.stream("react"))
@@ -603,6 +612,27 @@ class Simulation:
                 self.tracer.log("invitation", agent=p, target=q, until=tick + 3, conversation_id=conv["id"])
         return extra_obs
 
+    def _coop_groups(self, tick, groups, extra_obs):
+        """v3 scheduled multi-party talk (meeting): seated after dyads; participants already talking skip it."""
+        from backend.agents.group_conversation import run_group_conversation
+        for j, (parts, topic, _mu) in enumerate(groups):
+            parts = [p for p in parts if not self.agents[p].state.in_conversation
+                     and getattr(self.agents[p].state, "active", True)]
+            if len(parts) < 2:
+                continue
+            cid = f"d{self.clock.day_of(tick)}t{tick:04d}m{j}"
+            a = self.agents[parts[0]]
+            by = [x for x in sorted(self.agents.values(), key=lambda z: z.id) if x.id not in parts and
+                  x.state.activity != "sleeping" and (x.state.location, x.state.arena) == (a.state.location, a.state.arena)]
+            with llm_scope(f"t{tick:04d}:05conv:{cid}"):
+                conv = run_group_conversation(cid, [self.agents[x] for x in parts], by,
+                                              seed_rng(self.cfg["seed"], "gconv", tick, *parts), topic=topic)
+            self.stats["conversations"] += 1
+            self.stats["utterances"] += len(conv["utterances"])
+            self.tick_utts.extend(conv["utterances"])
+            for o in conv.pop("overheard", []):
+                extra_obs.setdefault(o.agent_id, []).append(o)
+
     def _encode_extra(self, tick, extra_obs):
         if not extra_obs:
             return
@@ -638,9 +668,8 @@ class Simulation:
                               "conversation_id": u["conversation_id"]} for u in self.tick_utts],
               "beats": [{"event_id": e.id, "latent_type": e.latent_type, "location": b["location"],
                          "arena": b["arena"], "facts": [f["text"] for f in b["facts"]]} for e, b in beats]}
-        if self.commons:
-            fr["commons"] = self.commons.snapshot()
-            fr["agents"] = {aid: a for aid, a in fr["agents"].items() if self.commons.residents[aid].active}
+        if getattr(self, "coop", None):
+            fr["coop"] = self.coop.frame_state()
         self.frames_fh.write(json.dumps(fr) + "\n")
         self.frames_fh.flush()
 
@@ -660,6 +689,13 @@ class Simulation:
                 self.write_manifest("failed", {"failure": {"type": type(exc).__name__, "message": str(exc)}})
                 raise
         t_start = time.time()
+        self.coop = None
+        if any((self.cfg.get(k) or {}).get("enabled") for k in ("workshop", "records", "roster", "turnover")):
+            from backend.simulation.coop_world import CoopWorld   # v3 co-op (docs/ONTOLOGY_V3.md §4.7)
+            self.coop = CoopWorld(self)
+            with open(self.run_dir / "world_script.jsonl", "a") as fh:
+                fh.write(self.coop.script_jsonl())
+            self.world_sha = hashlib.sha256((self.run_dir / "world_script.jsonl").read_bytes()).hexdigest()
         self.write_manifest("running")
         self._seed_memories()
         tpd = self.clock.ticks_per_day
@@ -669,6 +705,8 @@ class Simulation:
             self.tick_utts = []
             if tick % tpd == 0:
                 day = self.clock.day_of(tick)
+                if self.coop:
+                    self.coop.day_start(tick)                                        # 0a
                 for aid in sorted(self.agents):
                     a = self.agents[aid]
                     # routine plans are part of the WORLD (agreement a): seeded by world_seed, exactly as
@@ -681,17 +719,27 @@ class Simulation:
             self.ctx.mods.on_tick(tick, self.agents)
             with llm_scope(f"t{tick:04d}:00world"):
                 self._release_events(tick)
-                beats = self._beats_now(tick)
+                beats = self._beats_now(tick) + (self.coop.world(tick) if self.coop else [])   # 1
                 self._move(tick, beats)
                 obs = self._perceive(tick, beats)
-            results = self._cognition(tick, obs)
-            talks, remark_obs = self._apply_decisions(tick, results)
-            extra = self._conversations(tick, talks, remark_obs)
+            if self.coop:
+                obs = self.coop.perception_hook(tick, obs)                          # 3+
+            results = self._cognition(tick, obs)                                    # 4
+            req = None
+            if self.coop:
+                self.coop.after_cognition(tick, obs)                                # 4b
+                req = self.coop.apply(tick, results)                                # 4c
+            talks, remark_obs = self._apply_decisions(tick, results)                # 5
+            extra = self._conversations(tick, (req.dyads if req else []) + talks, remark_obs)   # 6
+            if req and req.groups:
+                self._coop_groups(tick, req.groups, extra)
             self._encode_extra(tick, extra)
             self._reflect(tick)
             with llm_scope(f"t{tick:04d}:99frame"):
                 self._frame(tick, beats)
             self.tracer.flush()
+            if self.coop:
+                self.coop.day_end(tick)                                             # 8b
             if self.progress and (tick % 4 == 0 or tick == self.clock.total_ticks - 1):
                 s = self.llm.stats
                 print(f"[{self.clock.label(tick)}] tick {tick + 1}/{self.clock.total_ticks} "
@@ -714,8 +762,11 @@ class Simulation:
         self.events_fh.close()
         self.llm.close()
         self.pool.shutdown()
+        man = _manip(self.ctx.mods)
+        if getattr(self, "coop", None):
+            man = {**man, "coop": self.coop.manipulation_checks()}
         self.write_manifest("finished", {"wall_seconds": round(seconds, 1),
-                                         "manipulation": _manip(self.ctx.mods),
+                                         "manipulation": man,
                                          "trace_sha256": trace_digest(self.run_dir)})
 
 

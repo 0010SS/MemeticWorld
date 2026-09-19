@@ -1,0 +1,20 @@
+probe_apply_v1.txt  (v3 OBSERVER probe, format A: applicability; answers never enter agent memory)
+
+Variables:
+!<INPUT 0>! -- persona ISS
+!<INPUT 1>! -- weekday of the checkpoint
+!<INPUT 2>! -- who: e.g. Maya
+!<INPUT 3>! -- retrieved memories, one "- " line each
+!<INPUT 4>! -- the words another member used
+!<INPUT 5>! -- numbered situations (1..n)
+
+<commentblockmarker>###</commentblockmarker>
+!<INPUT 0>!
+It is !<INPUT 1>! evening; !<INPUT 2>! is thinking about the co-op's laser cutter.
+What !<INPUT 2>! remembers:
+!<INPUT 3>!
+Another member uses the words "!<INPUT 4>!" when talking about the laser. For each situation below, would "!<INPUT 4>!" fit what happened, as !<INPUT 2>! sees it?
+!<INPUT 5>!
+
+For every number, answer "fits", "doesn't fit" or "not sure", with JSON only:
+{"1": "fits", "2": "doesn't fit", "3": "not sure", ...}

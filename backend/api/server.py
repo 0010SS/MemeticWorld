@@ -9,13 +9,16 @@ or, for design runs, `<design>/<cell>/s<seed>`. Routes take it as a path
 Normal (demo) mode strips hidden ground truth from every response: event
 families and structure (latent types, schemas, skins, composition, regime),
 casting (circles, assignment), event provenance ids, and the observer's
-grounding and family-matching output. `?debug=1` (Research Debug Mode) returns
+grounding and family-matching output. v3 adds job truth, regime, mapping,
+symptom-class and cause ids, uniforms, the binder manipulation, rotation and
+tree/branch names (HIDDEN_* below). `?debug=1` (Research Debug Mode) returns
 everything.
 """
 from __future__ import annotations
 
 import json
 import os
+import re
 import subprocess
 import sys
 from collections import defaultdict
@@ -49,7 +52,15 @@ HIDDEN_KEYS = {
     "grounding", "funnel", "evaluation", "family_distribution", "best_family", "best_type", "match_family",
     "latent_alignment", "n_grounded", "n_grounding_tested", "grounded", "n_aligned_p05", "mean_alignment",
     "mean_lift",
+    # v3 (ontology v3 §1.8, §6.5): job truth, regime, mapping, causes, symptom classes, uniforms, arms/branches
+    "hidden", "regime", "regimes", "mapping", "world_state", "job_truth", "regime_active", "cause_by_regime",
+    "cause", "causes", "class", "klass", "classes", "gt", "u_attempt", "fault", "surface", "code", "p_success",
+    "branch", "branches", "arm", "arms", "salt", "at_day", "replay_until_tick",
 }
+# v3: whole trace record types that exist only for the observer (hidden ground truth)
+HIDDEN_TRACE_TYPES = {"world_event_start", "event_beat", "job_truth", "regime_active"}
+# v3: hidden ids as keys or scalar values (K0-K3, causes, mappings) are dropped wherever they occur
+HIDDEN_VALUE = re.compile(r"^(K[0-3]|LENS|DAMP|BELT|AIR|WARP|M[12])$")
 # Dropped only at these paths (the key names are too generic to drop everywhere).
 HIDDEN_PATHS = {
     ("config", "latent_events", "structure"),        # regime of the run (real / scrambled / none)
@@ -57,15 +68,29 @@ HIDDEN_PATHS = {
     ("topology", "free"), ("topology", "bridges"),   # circle structure (free pool, cross-circle ties)
     ("condition", "cell"), ("condition", "levels"), ("condition", "control"),
     ("config", "_condition", "cell"), ("config", "_condition", "levels"), ("config", "_condition", "control"),
+    # v3: the manipulation (transitions, schedules), the world's hidden structure, rotation, tree nodes
+    ("config", "records", "transitions"), ("config", "records", "history_from_day"),
+    ("config", "records", "consult_from_day"), ("config", "workshop", "causal"), ("config", "workshop", "content"),
+    ("config", "workshop", "class_weights"), ("config", "workshop", "p_fault"), ("config", "workshop", "k3_from_k0"),
+    ("config", "workshop", "success"), ("config", "turnover", "rotate"), ("config", "turnover", "waves"),
+    ("roster",), ("workshop", "content"), ("condition", "node"), ("config", "_condition", "node"),
+    ("config", "design"), ("config", "_design"), ("config", "run_name"),
 }
+
+
+def _hidden_value(v) -> bool:
+    return isinstance(v, str) and bool(HIDDEN_VALUE.match(v))
 
 
 def _strip(obj, path: tuple = ()):
     if isinstance(obj, dict):
+        if obj.get("type") in HIDDEN_TRACE_TYPES and "tick" in obj:
+            return None
         return {k: _strip(v, path + (k,)) for k, v in obj.items()
-                if k not in HIDDEN_KEYS and path + (k,) not in HIDDEN_PATHS}
+                if k not in HIDDEN_KEYS and path + (k,) not in HIDDEN_PATHS
+                and not _hidden_value(k) and not _hidden_value(v)}
     if isinstance(obj, list):
-        return [_strip(x, path) for x in obj]
+        return [y for y in (_strip(x, path) for x in obj) if y is not None and not _hidden_value(y)]
     return obj
 
 
@@ -216,7 +241,7 @@ def trace(run_id: str, types: str = "", start: int = 0, end: int = 10 ** 9, agen
         if agent and agent not in (r.get("agent"), r.get("speaker"), r.get("speaker_id")) and \
                 agent not in (r.get("listeners") or []) and agent not in (r.get("participants") or []):
             continue
-        if not debug and r["type"] in ("world_event_start", "event_beat"):
+        if not debug and r["type"] in HIDDEN_TRACE_TYPES:
             continue
         out.append(r)
         if len(out) >= limit:

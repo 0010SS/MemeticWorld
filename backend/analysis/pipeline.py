@@ -160,6 +160,9 @@ def analyze(run_dir: Path, llm_backend: str | None = None, probes: bool = True, 
     json.dump(out, open(Path(run_dir) / "analysis.json", "w"), indent=1, default=str)
     O.write(run_dir, outcomes)
     llm.close()
+    if (rd.cfg.get("workshop") or {}).get("enabled"):     # v3 block (§5.12): merged into outcomes.json
+        from backend.analysis.outcomes_v3 import analyze_v3
+        outcomes["v3"] = analyze_v3(run_dir, write=True, verbose=verbose)
     if verbose:
         gc = grounding["candidates"]
         for c in cands[:10]:
