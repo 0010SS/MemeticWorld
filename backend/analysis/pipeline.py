@@ -169,6 +169,9 @@ def analyze(run_dir: Path, llm_backend: str | None = None, probes: bool = True, 
             "emerged": emergence[c["id"]]["emerged"], "adopters": emergence[c["id"]].get("n_adopters_carried"),
         }
 
+    # same order as the live view: system / world wording, model register and personal tics rank below
+    # everything that could be culture (candidates.BUCKET_RANK); ids stay as the judge saw them
+    cands.sort(key=lambda c: (C.BUCKET_RANK.get(c.get("bucket"), 9), -c["score"]))
     conv_cands = [c for c in cands if (c.get("llm") or {}).get("is_convention")] or cands[:3]
     first_use = min((c["usages"][0] for c in conv_cands), key=lambda u: u["tick"], default=None)
     cross = [trans[c["id"]]["first_cross_group"] for c in conv_cands if trans[c["id"]]["first_cross_group"]]
@@ -220,7 +223,9 @@ def analyze(run_dir: Path, llm_backend: str | None = None, probes: bool = True, 
 
 
 def _classify(c: dict, e: dict, vidx: "T.VerdictIndex", planted_norm: str | None) -> None:
-    """Sets c["status"], c["flags"], c["tier"], c["tier_reasons"], c["verdict"], c["planted"], c["control"]."""
+    """Sets c["status"], c["flags"], c["tier"], c["tier_reasons"], c["verdict"], c["planted"], c["control"],
+    c["bucket"], c["bucket_reasons"]."""
+    from backend.analysis.candidates import bucket_of
     w = c.get("wording") or {}
     system = bool(w.get("system") or e.get("in_lexicon") or e.get("in_system_text"))
     world = bool(e.get("in_world_text") or ((c.get("features") or {}).get("factual_repetition") and not system))
@@ -228,12 +233,15 @@ def _classify(c: dict, e: dict, vidx: "T.VerdictIndex", planted_norm: str | None
     if planted_norm:
         p = f" {planted_norm} "
         planted = any(f and (f" {f} " in p or p in f" {f} ") for f in T.forms(c))
-    st, flags = T.classify_status(e, world=world, planted=planted, system=system)
+    ordinary = bool((c.get("register") or {}).get("ordinary")) and not planted
+    st, flags = T.classify_status(e, world=world, planted=planted, system=system, ordinary=ordinary)
     real, mock = vidx.lookup(T.forms(c))
     tier, why = T.tier_of(e, system=system, world=world, planted=planted, verdict=(real or {}).get("verdict"),
-                          placeholder=(mock or {}).get("verdict"))
+                          placeholder=(mock or {}).get("verdict"), ordinary=ordinary)
+    personal = len(c.get("speakers") or ()) < 2 or (c.get("n_conversations") or 1) < 2
+    bucket, breasons = bucket_of(system=system, world=world, ordinary=ordinary, personal=personal, planted=planted)
     c.update(status=st, flags=flags, tier=tier, tier_reasons=why, planted=planted, control=planted,
-             verdict=T.verdict_summary(real or mock))
+             bucket=bucket, bucket_reasons=breasons, verdict=T.verdict_summary(real or mock))
     c["wording"] = dict(w, system=system, world=world)
 
 

@@ -28,8 +28,16 @@ Expression statuses (ontology v2 §4 emergence semantics, per expression, at tic
 `status` is the first applicable of planted > system_wording > world_wording > emerged > spreading > echo > new;
 `flags` lists every applicable chip (a planted phrase can also be "emerged").
 
+- "ordinary" is a FLAG, not a status: the actor model's own register (register.Background -- several
+  speakers use it in other, independent runs too). It blocks "emerged" and the convention tier.
+
 Tiers (tiers.py): `tier` is "candidate" (frequency only) -> "spreading" (>= 1 carried adopter, not system/world
-wording) -> "convention" (emerged AND a REAL judge verdict is_convention=true AND not the planted control).
+wording, not model register) -> "convention" (emerged AND a REAL judge verdict is_convention=true AND not the
+planted control).
+`bucket` (candidates.bucket_of) orders the pool: "expression" (could be culture) > "personal" (one speaker or
+one conversation) > "ordinary" (model register / stock formula) > "wording" (system or world). Everything
+stays in the pool and in every count; only the ORDER changes, so the head of `expressions` -- what the UI
+calls culture -- can hold only candidates for culture. `bucket_counts` reports the split.
 Only well-formed expressions are extracted (wording.WordClasses). Judge verdicts come from
 analysis_judgements/*.json and analysis.json; a verdict is used at tick t only if it was judged on data up to
 t (a live judge_run at tick <= t; analysis.json verdicts only at the latest tick). Mock verdicts are placeholders
@@ -48,14 +56,15 @@ import os
 import threading
 import time
 from bisect import bisect_right
-from collections import OrderedDict, defaultdict
+from collections import Counter, OrderedDict, defaultdict
 from functools import cached_property
 from pathlib import Path
 
 import yaml
 
-from backend.analysis.candidates import CandidateExtractor, tokens
-from backend.analysis.emergence import _carried, _norm, emergence_for, lexicon_flag, vocabulary, world_match
+from backend.analysis.candidates import BUCKET_RANK, BUCKETS, CandidateExtractor, bucket_of, tokens
+from backend.analysis.emergence import _carried, _norm, emergence_for, lexicon_flag, vocabulary, world_match, \
+    world_lemma_match
 from backend.analysis.rundata import RunData, chron_key, precedes, utterance_key
 from backend.analysis.tiers import STATUSES, TIERS, VerdictIndex, classify_status, forms, tier_counts, tier_of, \
     verdict_summary
@@ -481,7 +490,9 @@ class _Snap:
         return out
 
     def world_tick(self, toks: list[str]) -> tuple[int | None, str | None]:
-        """(first release tick of a world wording containing the phrase, "verbatim"|"gapped")."""
+        """(first release tick of a world wording containing the phrase, "verbatim"|"gapped"|"lemmas").
+        The third kind is a PARAPHRASE of one event fact ("soaked by the sprinklers", "backpack situation"):
+        without it one incident fills a third of the list under near-synonyms."""
         if not toks:
             return None, None
         segs = self.world_segments
@@ -489,6 +500,10 @@ class _Snap:
             if world_match(toks, [seg], normed=[normed]):
                 kind = world_match(toks, [s for _, s, _ in segs], normed=[n for _, _, n in segs])
                 return tk, kind
+        names = self.rd.name_tokens
+        for tk, seg, _normed in segs:
+            if world_lemma_match(toks, [seg], names=names):
+                return tk, "lemmas"
         return None, None
 
     def is_planted(self, c: dict) -> bool:
@@ -522,10 +537,50 @@ class _Snap:
                       "surface": {self.planted["phrase"]: len(hits)}}
                 cands += ex.group([(g, st, ex.score(g, st))])
         recs = [self.record(c) for c in cands]
-        recs.sort(key=lambda r: -r["score"])
+        self.mark_incident_talk(recs)
+        # bucket first, score second: system / world wording, the actor model's own register and one
+        # person's tic rank BELOW everything that could be culture, so the head of the list the UI shows
+        # as culture holds only candidates for culture (they stay in the pool, and keep their counts).
+        recs.sort(key=lambda r: (BUCKET_RANK.get(r["bucket"], 9), -r["score"]))
         for i, r in enumerate(recs):
             r["id"] = f"x{i:02d}"
         return recs
+
+    INCIDENT_SHARE = 0.75
+    INCIDENT_KEEP = 1
+    INCIDENT_KEEP_SURPRISE = 5.0
+
+    def mark_incident_talk(self, recs: list[dict]) -> None:
+        """One incident, retold in a dozen wordings, is one topic of conversation, not a dozen expressions.
+        Expressions whose uses (>= INCIDENT_SHARE of them) all link to the SAME referent event are collapsed:
+        the best-scoring one stays as the incident's label, the rest move to the wording bucket as
+        `incident_talk`. Meta-marked, nickname and planted expressions are never collapsed -- "inbox
+        apocalypse" is a coinage *about* an incident, "grabbed it by accident" is the incident."""
+        links = self.ref_links()
+        by_event: dict = defaultdict(list)
+        for r in recs:
+            q = r["quality"] or {}
+            if r["planted"] or q.get("meta_marked") or q.get("quoted") or q.get("novel") \
+                    or (q.get("surprise") or 0) >= self.INCIDENT_KEEP_SURPRISE:
+                continue        # a coinage ABOUT the incident ("inbox apocalypse") is not the incident
+            ev: Counter = Counter()
+            for u in r["_usages"]:
+                for e in links.get(u["utterance_id"]) or ():
+                    ev[e] += 1
+            if not ev:
+                continue
+            top, k = ev.most_common(1)[0]
+            if k >= self.INCIDENT_SHARE * len(r["_usages"]):
+                by_event[top].append(r)
+        for eid, rs in by_event.items():
+            rs.sort(key=lambda r: -r["score"])
+            for r in rs[self.INCIDENT_KEEP:]:
+                r["quality"]["incident_event_id"] = eid
+                r["bucket"] = "wording"
+                if "incident_talk" not in r["bucket_reasons"]:
+                    r["bucket_reasons"] = [*r["bucket_reasons"], "incident_talk"]
+                r["quality"]["reasons"] = r["bucket_reasons"]
+                r["quality"]["bucket"] = "wording"
 
     def record(self, c: dict) -> dict:
         rd, t, W = self.rd, self.t, int(self.p["trend_window"])
@@ -540,12 +595,24 @@ class _Snap:
         smatch = wsys.get("system_match", wsys.get("match"))
         system = bool(wsys.get("system")) or in_lex
         world = wt is not None or (factual and not system)
+        reg = dict(c.get("register") or {})
+        if not reg:
+            loc = self.extractor.bg.localness([c["canonical_form"], *(c.get("variants") or [])])
+            reg = {"ordinary": loc["ordinary"], "background_runs": loc["background_runs"], "stock": loc["stock"]}
+        ordinary = bool(reg.get("ordinary")) and not planted
         em = emergence_for(usages, self.population, in_lexicon=in_lex, in_world_text=wt is not None,
-                           in_system_text=system)
-        status, flags = classify_status(em, world=world, planted=planted, system=system)
+                           in_system_text=system, in_register=ordinary)
+        status, flags = classify_status(em, world=world, planted=planted, system=system, ordinary=ordinary)
         real, mock = self.verdict(c)
         tier, why = tier_of(em, system=system, world=world, planted=planted, verdict=(real or {}).get("verdict"),
-                            placeholder=(mock or {}).get("verdict"))
+                            placeholder=(mock or {}).get("verdict"), ordinary=ordinary)
+        n_convs = len({u.get("conversation_id") for u in usages if u.get("conversation_id")})
+        # one speaker, or one exchange -- unless the speakers themselves marked the wording (quoted it, or
+        # said they are keeping it), which is the strongest coinage evidence there is
+        marked = (reg.get("meta_marked") or 0) or (reg.get("quoted") or 0)
+        personal = len({u["speaker"] for u in usages}) < 2 or (n_convs < 2 and not marked)
+        bucket, breasons = bucket_of(system=system, world=world, ordinary=ordinary, personal=personal,
+                                     planted=planted)
         curve, seen = [], set()
         for u in usages:
             if u["speaker"] not in seen:
@@ -569,6 +636,13 @@ class _Snap:
                       "up" if recent > prev else "down" if recent < prev else "flat"},
             "status": status, "flags": flags, "planted": planted, "control": planted,
             "tier": tier, "tier_reasons": why, "verdict": verdict_summary(real or mock),
+            "bucket": bucket, "bucket_reasons": breasons,
+            "quality": {"bucket": bucket, "reasons": breasons, "n_conversations": n_convs,
+                        "ordinary_register": ordinary, "background_runs": reg.get("background_runs", 0),
+                        "stock_phrase": bool(reg.get("stock")), "meta_marked": reg.get("meta_marked", 0),
+                        "quoted": reg.get("quoted", 0),
+                        "surprise": reg.get("surprise"), "novel": reg.get("novel"),
+                        "system_use_share": (c.get("wording") or {}).get("system_use_share")},
             "recited_share": c.get("recited_share", 0.0),
             "emergence": {k: em.get(k) for k in ("originator", "n_exposed", "n_adopters", "n_adopters_carried",
                                                  "n_echo_only", "n_independent", "adopters", "carried_adopters",
@@ -577,7 +651,11 @@ class _Snap:
                               "system_match": smatch, "system_tick": (smatch or {}).get("tick", -1 if in_lex else None),
                               "in_world_text": wt is not None, "world_match": wm, "world_tick": wt,
                               "in_lexicon": in_lex, "factual_repetition": factual},
-            "score": c.get("score", 0.0),
+            # the run's own evidence of transmission is what the ontology calls culture, so it ranks:
+            # an expression exposed agents carried into another conversation beats one merely said often
+            "score": round(c.get("score", 0.0) * (1 + 0.35 * min(3, em.get("n_adopters_carried") or 0)
+                                                  + 0.1 * min(3, em.get("n_adopters") or 0)), 3),
+            "base_score": c.get("score", 0.0),
             "_usages": usages, "_adopters": detail,
         }
 
@@ -780,6 +858,8 @@ class _Snap:
             "n_utterances": len(rd.utterances), "n_conversations": len(rd.conversations),
             "n_events": len(rd.events), "n_agents_active": len(self.roster["active"]),
             "expressions": [_public(r) for r in shown], "n_expressions": len(pool), "status_counts": counts,
+            "bucket_counts": {b: sum(1 for r in pool if r["bucket"] == b) for b in BUCKETS},
+            "n_culture_candidates": sum(1 for r in pool if r["bucket"] == "expression"),
             "tier_counts": tier_counts(pool), "n_conventions": tier_counts(pool)["convention"],
             "judge": {**js, "real_judge": js["status"] == "real"},
             "transmission": {"expressions": [r["id"] for r in shown[: int(self.p["transmission_top"])]],
