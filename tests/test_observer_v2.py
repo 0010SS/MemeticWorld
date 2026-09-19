@@ -483,7 +483,9 @@ def test_planted_phrase_is_not_routine_vocabulary(tmp_path):
     habit = 'Maya has a habit of calling any mess "a full pickle".'
     extra = [{"type": "utterance", "tick": 50, "id": "c9.u0", "conversation_id": "c9", "idx": 0, "speaker": "maya",
               "listeners": ["leo"], "text": "What a full pickle.", "retrieved": []}]
-    d = _write_run(tmp_path / "run", {"controls": {"planted_phrase": {"agent": "maya", "habit": habit}}}, extra,
+    # Keep this vocabulary fixture independent of new characters' unrelated prose.
+    d = _write_run(tmp_path / "run", {"population_size": 8,
+                   "controls": {"planted_phrase": {"agent": "maya", "habit": habit}}}, extra,
                    manifest_extra={"population_lexicon": {"tokens": ["dining", "hall", "full", "pickle", "mess"]}})
     rd = RunData(d)
     v = vocabulary(rd)

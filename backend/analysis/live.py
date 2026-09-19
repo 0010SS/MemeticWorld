@@ -11,19 +11,29 @@ event facts come from `event_beat` trace records (v2 incidents and v3 co-op jobs
 orientation and farewell facts), merged with events.jsonl metadata (referent names), plus viewpoint
 renderings and the binder's fixed rendering strings.
 
-Expression statuses (ontology v2 §4 emergence semantics, per expression, at tick t):
+Expression statuses (ontology v2 §4 emergence semantics, per expression, at tick t; tiers.py):
 - exposure is causal (`rundata.precedes`); adopters used it after hearing it; a *carried* adopter used
   it in a different exchange at a strictly later tick than an exposure (emergence._carried);
   independent users used it with no prior exposure;
 - "planted": matches controls.planted_phrase (the positive control);
-- "world_wording": world-provided text (fact texts incl. co-op surfaces, viewpoint renderings, referent
-  names, cue/tally texts, binder rendering), population lexicon, or verbatim profile/world text;
+- "system_wording": text the system put into agents' heads (wording.Infrastructure: relationship lines,
+  routines, seed / ambient memories, memory frames, conversation-context lines, profile text, NPC roles,
+  place names, co-op roster / menu text) or population lexicon;
+- "world_wording": world-provided event text (fact texts incl. co-op surfaces, viewpoint renderings, referent
+  names, cue/tally texts, binder rendering) or verbatim world text;
 - "emerged": >= 2 carried adopters and more carried adopters than independent users;
 - "spreading": >= 1 carried (exposure-driven, cross-exchange) adopter;
 - "echo": others repeated it only inside the exchange where they heard it;
 - "new": used only by its originator and/or independent users so far.
-`status` is the first applicable of planted > world_wording > emerged > spreading > echo > new;
+`status` is the first applicable of planted > system_wording > world_wording > emerged > spreading > echo > new;
 `flags` lists every applicable chip (a planted phrase can also be "emerged").
+
+Tiers (tiers.py): `tier` is "candidate" (frequency only) -> "spreading" (>= 1 carried adopter, not system/world
+wording) -> "convention" (emerged AND a REAL judge verdict is_convention=true AND not the planted control).
+Only well-formed expressions are extracted (wording.WordClasses). Judge verdicts come from
+analysis_judgements/*.json and analysis.json; a verdict is used at tick t only if it was judged on data up to
+t (a live judge_run at tick <= t; analysis.json verdicts only at the latest tick). Mock verdicts are placeholders
+and never make a convention; `judge` in the snapshot says whether a real judge has run.
 
 Hidden-derived metrics (v3 ground truth: job class/cause, regime, mapping) are dicts carrying
 `"hidden": true` and are listed in `hidden_fields`; `strip_hidden()` removes them for demo mode.
@@ -47,10 +57,11 @@ import yaml
 from backend.analysis.candidates import CandidateExtractor, tokens
 from backend.analysis.emergence import _carried, _norm, emergence_for, lexicon_flag, vocabulary, world_match
 from backend.analysis.rundata import RunData, chron_key, precedes, utterance_key
+from backend.analysis.tiers import STATUSES, TIERS, VerdictIndex, classify_status, forms, tier_counts, tier_of, \
+    verdict_summary
 
-LIVE_VERSION = "live-v1"
+LIVE_VERSION = "live-v2"
 DEFAULTS = {"min_speakers": 1, "min_uses": 2, "pool": 60, "trend_window": 12, "transmission_top": 10}
-STATUSES = ("planted", "world_wording", "emerged", "spreading", "echo", "new")
 HIDDEN_FIELDS = ["v3.first_attempt_accuracy", "v3.old_regime_response", "v3.k1_vs_k2", "v3.regime"]
 TIMELINE_HIDDEN_FIELDS = ["series[].v3_hidden"]
 CACHE_SIZE = 64
@@ -149,6 +160,8 @@ class _RunCache:
         self._ref_gen = None
         self.ref_links: dict[str, list[str]] = {}
         self.results: OrderedDict = OrderedDict()
+        self._vsig = None
+        self.vindex = VerdictIndex([])
 
     def refresh(self) -> tuple:
         ms = self._meta()
@@ -157,7 +170,28 @@ class _RunCache:
         if self._ref_gen != (self.trace.generation, self.events.generation, ms):
             self.ref_links = {}           # links are stable per utterance only within one file generation
             self._ref_gen = (self.trace.generation, self.events.generation, ms)
-        return (ts, es, ms)
+        vs = self._verdicts()
+        return (ts, es, ms, vs)
+
+    def _verdicts(self):
+        """Judge verdicts (analysis_judgements/*.json + analysis.json), reloaded when those files change."""
+        d = self.dir / "analysis_judgements"
+        files = tuple(sorted((p.name, _mtime(p)) for p in d.glob("*.json"))) if d.exists() else ()
+        sig = (files, _mtime(self.dir / "analysis.json"))
+        if sig != self._vsig:
+            from backend.analysis.judge import analysis_verdicts, judgement_verdicts
+            an = None
+            if sig[1] is not None:
+                try:
+                    an = json.loads((self.dir / "analysis.json").read_text())
+                except (json.JSONDecodeError, OSError):
+                    an = None
+            try:
+                rows = judgement_verdicts(self.dir) + analysis_verdicts(self.dir, an)
+            except Exception:   # noqa: BLE001 - a malformed verdict file never breaks the live view
+                rows = []
+            self.vindex, self._vsig = VerdictIndex(rows), sig
+        return sig
 
     def _meta(self):
         mp, cp = self.dir / "manifest.json", self.dir / "config.resolved.yaml"
@@ -323,21 +357,6 @@ def roster_at(rd, tick: int) -> dict:
             "cohorts": dict(sorted(cohort.items())), "roles": {a: r for a, r in sorted(role.items()) if r},
             "active_by_cohort": dict(sorted(by_cohort.items())),
             "changes": [{k: r.get(k) for k in ("tick", "day", "agent", "kind", "role", "replaces")} for r in changes]}
-
-
-def classify_status(em: dict, *, world: bool, planted: bool) -> tuple[str, list[str]]:
-    """(status, flags). The dynamic chip: emerged (spread, not world wording) > spreading (>= 1 carried
-    adopter) > echo (adopters, none carried) > new."""
-    if em.get("spread") and not world:
-        dyn = "emerged"
-    elif (em.get("n_adopters_carried") or 0) >= 1:
-        dyn = "spreading"
-    elif (em.get("n_adopters") or 0) >= 1:
-        dyn = "echo"
-    else:
-        dyn = "new"
-    flags = (["planted"] if planted else []) + (["world_wording"] if world else []) + [dyn]
-    return flags[0], flags
 
 
 def adopters_detail(usages: list[dict], em: dict) -> list[dict]:
@@ -517,9 +536,16 @@ class _Snap:
         in_lex = lexicon_flag(" ".join(toks), self.vocab, rd.name_tokens)
         factual = bool((c.get("features") or {}).get("factual_repetition"))
         planted = self.is_planted(c)
-        world = wt is not None or in_lex or factual
-        em = emergence_for(usages, self.population, in_lexicon=in_lex, in_world_text=wt is not None)
-        status, flags = classify_status(em, world=world, planted=planted)
+        wsys = c.get("wording") or self.extractor.infra.wording(toks)
+        smatch = wsys.get("system_match", wsys.get("match"))
+        system = bool(wsys.get("system")) or in_lex
+        world = wt is not None or (factual and not system)
+        em = emergence_for(usages, self.population, in_lexicon=in_lex, in_world_text=wt is not None,
+                           in_system_text=system)
+        status, flags = classify_status(em, world=world, planted=planted, system=system)
+        real, mock = self.verdict(c)
+        tier, why = tier_of(em, system=system, world=world, planted=planted, verdict=(real or {}).get("verdict"),
+                            placeholder=(mock or {}).get("verdict"))
         curve, seen = [], set()
         for u in usages:
             if u["speaker"] not in seen:
@@ -541,15 +567,32 @@ class _Snap:
             "trend": {"window_ticks": W, "recent_uses": recent, "previous_uses": prev,
                       "direction": "new" if prev == 0 and recent == len(usages) else
                       "up" if recent > prev else "down" if recent < prev else "flat"},
-            "status": status, "flags": flags, "planted": planted,
+            "status": status, "flags": flags, "planted": planted, "control": planted,
+            "tier": tier, "tier_reasons": why, "verdict": verdict_summary(real or mock),
+            "recited_share": c.get("recited_share", 0.0),
             "emergence": {k: em.get(k) for k in ("originator", "n_exposed", "n_adopters", "n_adopters_carried",
                                                  "n_echo_only", "n_independent", "adopters", "carried_adopters",
                                                  "independents", "fisher_p", "spread", "emerged")},
-            "world_wording": {"any": world, "in_world_text": wt is not None, "world_match": wm, "world_tick": wt,
+            "world_wording": {"any": world or system, "world": world, "system": system,
+                              "system_match": smatch, "system_tick": (smatch or {}).get("tick", -1 if in_lex else None),
+                              "in_world_text": wt is not None, "world_match": wm, "world_tick": wt,
                               "in_lexicon": in_lex, "factual_repetition": factual},
             "score": c.get("score", 0.0),
             "_usages": usages, "_adopters": detail,
         }
+
+    def usable(self, row: dict) -> bool:
+        """A verdict judged on data up to tick <= t (analysis.json verdicts: on the whole run, i.e. the latest tick)."""
+        tk = row.get("tick")
+        if tk is None:
+            return self.t >= self.rc.trace.max_tick
+        try:
+            return int(tk) <= self.t
+        except (TypeError, ValueError):
+            return False
+
+    def verdict(self, c: dict) -> tuple[dict | None, dict | None]:
+        return self.rc.vindex.lookup(forms(c), self.usable)
 
     # ---------------------------------------------------------------- transmission
     def edges(self, recs: list[dict]) -> list[dict]:
@@ -729,6 +772,7 @@ class _Snap:
         for r in pool:
             counts[r["status"]] += 1
         pl = self.planted
+        js = self.rc.vindex.state()
         out = {
             "run_id": self.rc.dir.name, "live_version": LIVE_VERSION, "tick": self.t, "latest_tick": latest,
             "day": self.t // self.tpd + 1, "time_label": _label(self.man, self.t), "ticks_per_day": self.tpd,
@@ -736,6 +780,8 @@ class _Snap:
             "n_utterances": len(rd.utterances), "n_conversations": len(rd.conversations),
             "n_events": len(rd.events), "n_agents_active": len(self.roster["active"]),
             "expressions": [_public(r) for r in shown], "n_expressions": len(pool), "status_counts": counts,
+            "tier_counts": tier_counts(pool), "n_conventions": tier_counts(pool)["convention"],
+            "judge": {**js, "real_judge": js["status"] == "real"},
             "transmission": {"expressions": [r["id"] for r in shown[: int(self.p["transmission_top"])]],
                              "edges": self.edges(shown[: int(self.p["transmission_top"])])},
             "funnel": self.funnel(),
@@ -773,8 +819,10 @@ def live_snapshot(run_dir, tick: int | None = None, top: int = 20, *, trend_wind
 
     Keys: run_id, live_version, tick (clamped to the latest written tick), latest_tick, day, time_label,
     ticks_per_day, run_status, tick_complete, n_utterances, n_conversations, n_events, n_agents_active,
-    expressions (top N records), n_expressions, status_counts, transmission {expressions, edges},
-    funnel {cumulative, by_day, definitions}, planted, params, hidden_fields, and v3 (co-op runs only)."""
+    expressions (top N records: status, flags, tier, tier_reasons, verdict, world_wording{world, system, ...}),
+    n_expressions, status_counts, tier_counts, n_conventions, judge {status: real|mock_only|none, note},
+    transmission {expressions, edges}, funnel {cumulative, by_day, definitions}, planted, params,
+    hidden_fields, and v3 (co-op runs only)."""
     rc = _cache(run_dir)
     with rc.lock:
         sig = rc.refresh()
@@ -810,7 +858,7 @@ def live_timeline(run_dir, step: int | None = None, *, top: int = 20) -> dict:
     Expressions are the pool found at the latest tick, re-evaluated on their uses up to each bucket
     (an expression counts once it meets min_uses/min_speakers; world wording counts from its release
     tick). series[i]: {tick, day, n_utterances, n_conversations, n_events, n_agents_active, n_expressions,
-    status_counts, funnel (cumulative counts), v3 (public, co-op runs), v3_hidden ({"hidden": true, ...})}."""
+    status_counts, tier_counts, funnel (cumulative counts), v3 (public, co-op runs), v3_hidden ({"hidden": true, ...})}."""
     rc = _cache(run_dir)
     with rc.lock:
         sig = rc.refresh()
@@ -847,6 +895,7 @@ def _timeline(rc: _RunCache, latest: int, step: int, p: dict) -> dict:
     series = []
     for b in ticks:
         counts = {s: 0 for s in STATUSES}
+        tiers = {t: 0 for t in TIERS}
         reuse = 0
         n_expr = 0
         for r in pool:
@@ -856,13 +905,22 @@ def _timeline(rc: _RunCache, latest: int, step: int, p: dict) -> dict:
             n_expr += 1
             ww = r["world_wording"]
             in_world = ww["world_tick"] is not None and ww["world_tick"] <= b
-            em = emergence_for(us, sn.population, in_lexicon=ww["in_lexicon"], in_world_text=in_world)
-            st, _ = classify_status(em, world=in_world or ww["in_lexicon"] or ww["factual_repetition"], planted=r["planted"])
+            system = bool(ww.get("system")) and (ww.get("system_tick") is None or ww["system_tick"] <= b)
+            world = in_world or (ww["factual_repetition"] and not system)
+            em = emergence_for(us, sn.population, in_lexicon=ww["in_lexicon"], in_world_text=in_world,
+                               in_system_text=system)
+            st, _ = classify_status(em, world=world, planted=r["planted"], system=system)
             counts[st] += 1
+            real, mock = rc.vindex.lookup(forms(r), lambda row, b=b: (row.get("tick") is None and b >= latest) or
+                                          (row.get("tick") is not None and int(row["tick"]) <= b))
+            tr, _ = tier_of(em, system=system, world=world, planted=r["planted"], verdict=(real or {}).get("verdict"),
+                            placeholder=(mock or {}).get("verdict"))
+            if not r["planted"]:
+                tiers[tr] += 1
             reuse += em.get("n_adopters_carried") or 0
         row = {"tick": b, "day": b // sn.tpd + 1, "n_utterances": bisect_right(ut, b), "n_conversations": bisect_right(ct, b),
                "n_events": bisect_right(et, b), "n_agents_active": len(roster_at(rd, b)["active"]),
-               "n_expressions": n_expr, "status_counts": counts,
+               "n_expressions": n_expr, "status_counts": counts, "tier_counts": tiers,
                "funnel": {**{k: bisect_right(v, b) for k, v in med.items()}, "reuse_after_exposure": reuse}}
         if v3:
             row["v3"] = {"jobs_started": bisect_right(started, b), "jobs_delivered": bisect_right(delivered, b),

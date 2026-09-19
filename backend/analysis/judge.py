@@ -21,6 +21,13 @@ Config (read with defaults; the key is NOT in configs/default.yaml yet):
 `judge_run(run_dir, spec, top)` writes `analysis_judgements/<judge_id>.json` and nothing else (plus
 `judge_llm_calls.jsonl` for LLM judges). The analysis pipeline routes its classifier through the default
 judge (`candidates.llm_classify(..., judge=...)`), so analysis.json keeps `llm` and adds `judgements`.
+
+Provenance: a verdict from the mock judge or the mock backend (provider mock/replay, or model "mock") is a
+PLACEHOLDER (`is_real_verdict` is False). It is recorded, but it never makes an expression a convention
+(tiers.py): `llm_block` sets c["llm"]["is_convention"] = None for it (the mock answer is kept under
+c["llm"]["placeholder"]), judge_run files mark it `placeholder: true` with n_conventions = 0, and reports say
+"no real judge has run". Old analysis.json files carry only the legacy `llm` block; `analysis_verdicts` turns
+it into a prompt-v0 verdict whose provenance comes from the run's analysis_llm_calls.jsonl / config.
 """
 from __future__ import annotations
 
@@ -46,6 +53,8 @@ MAX_CONTEXTS = 8
 # provider "anthropic" takes API model ids; the short aliases the CLI accepts are mapped to current ids
 ANTHROPIC_ALIASES = {"sonnet": "claude-sonnet-5", "haiku": "claude-haiku-4-5", "opus": "claude-opus-5"}
 _MARKER = "<commentblockmarker>###</commentblockmarker>"
+MOCK_PROVIDERS = ("mock", "replay")
+NO_REAL_JUDGE = "no real judge has run"
 
 
 # ------------------------------------------------------------------------------------------------ verdicts
@@ -84,6 +93,33 @@ def validate_verdict(v) -> list[str]:
         if isinstance(v[k], bool) or not isinstance(v[k], (int, float)) or not 0.0 <= float(v[k]) <= 1.0:
             errs.append(f"{k} not a number in [0, 1]")
     return errs
+
+
+def is_real_verdict(v) -> bool:
+    """True for a verdict (or judge description) from a real LLM judge; False for the mock judge, the mock
+    backend or a replay stand-in (placeholders)."""
+    if not isinstance(v, dict):
+        return False
+    prov = str(v.get("provider") or "").strip().lower()
+    model = str(v.get("model") or "").strip().lower()
+    return bool(prov) and prov not in MOCK_PROVIDERS and not model.startswith("mock")
+
+
+def llm_block(v: dict) -> dict:
+    """analysis.json's c["llm"] for a verdict: the legacy {is_convention, gloss, confidence, raw} plus the judge's
+    provenance. A placeholder (mock) verdict leaves is_convention / gloss None and confidence 0, and keeps the
+    mock answer under "placeholder"."""
+    real = is_real_verdict(v)
+    out = {"is_convention": bool(v.get("is_convention")) if real else None,
+           "gloss": (v.get("gloss") or None) if real else None,
+           "confidence": float(v.get("confidence") or 0) if real else 0.0,
+           "raw": str(v.get("raw") or "")[:500],
+           "judge_id": v.get("judge_id"), "provider": v.get("provider"), "model": v.get("model"),
+           "prompt_version": v.get("prompt_version"), "real_judge": real}
+    if not real:
+        out["placeholder"] = {"is_convention": bool(v.get("is_convention")), "gloss": v.get("gloss") or None,
+                              "confidence": v.get("confidence"), "note": "mock judge: placeholder, never a convention"}
+    return out
 
 
 def _as_json(text: str) -> dict | None:
@@ -141,7 +177,8 @@ def make_judge_id(provider: str, model: str, prompt_version: str) -> str:
 
 class MockJudge(Judge):
     """Deterministic stand-in: the verdict is a pure function of the phrase (not of the contexts, so a
-    phrase keeps its verdict as a run grows). World wording (extra["world_wording"]) is never a convention."""
+    phrase keeps its verdict as a run grows). World or system wording (extra["world_wording"] /
+    extra["system_wording"]) is never a convention. Its verdicts are placeholders (is_real_verdict is False)."""
     provider = "mock"
 
     def __init__(self, model: str = "mock", prompt_version: str = "v1", judge_id: str | None = None):
@@ -150,9 +187,9 @@ class MockJudge(Judge):
     def judge(self, expression: dict, contexts: list[str], extra: dict | None = None) -> dict:
         phrase = str(expression.get("phrase") or expression.get("canonical_form") or "")
         h = int(hashlib.md5(f"{self.model}|{phrase}".encode()).hexdigest()[:8], 16)
-        conv = h % 3 == 0 and not (extra or {}).get("world_wording")
+        conv = h % 3 == 0 and not (extra or {}).get("world_wording") and not (extra or {}).get("system_wording")
         d = {"is_convention": conv, "function": FUNCTIONS[h % len(FUNCTIONS)],
-             "gloss": f"(mock) a locally used expression: {phrase}" if conv else f"(mock) ordinary wording: {phrase}",
+             "gloss": f"(mock placeholder) a locally used expression: {phrase}" if conv else f"(mock placeholder) ordinary wording: {phrase}",
              "meaning_consistency": ((h >> 4) % 101) / 100, "confidence": 0.5 + ((h >> 12) % 51) / 100,
              "rationale": f"mock judge; {len(contexts)} uses shown"}
         return self.verdict(d, json.dumps(d))
@@ -382,16 +419,21 @@ def judge_run(run_dir, spec=None, top: int = 30) -> dict:
     try:
         for c in cands:
             expr, ctx = judge_input(c)
-            extra = {"status": c.get("status") if source == "live" else None,
-                     "world_wording": bool((c.get("world_wording") or {}).get("any")) if source == "live" else None}
+            ww = c.get("world_wording") or {}
+            extra = {"status": c.get("status"),
+                     "world_wording": bool(ww.get("any")) if source == "live" else None,
+                     "system_wording": bool(ww.get("system")) if source == "live" else bool((c.get("wording") or {}).get("system"))}
             v = judge.judge(expr, ctx, extra)
             rows.append({"expression_id": c.get("id"), "phrase": expr["phrase"], "variants": expr["variants"],
                          "judged_at": dt.datetime.now().isoformat(timespec="seconds"), "verdict": v})
     finally:
         judge.close()
+    real = is_real_verdict(judge.describe())
+    yes = sum(1 for r in rows if r["verdict"]["is_convention"])
     doc = {"judge": judge.describe(), "run_id": run_dir.name,
            "generated_at": dt.datetime.now().isoformat(timespec="seconds"), "source": source, "tick": tick,
-           "top": top, "n_verdicts": len(rows), "n_conventions": sum(1 for r in rows if r["verdict"]["is_convention"]),
+           "top": top, "real_judge": real, "placeholder": not real, "n_verdicts": len(rows),
+           "n_conventions": yes if real else 0, "n_placeholder_yes": 0 if real else yes,
            "verdicts": rows}
     _atomic_json(run_dir / OUT_DIR / f"{judge.id}.json", doc)
     return doc
@@ -422,8 +464,96 @@ def available_judges(run_dir=None, cfg: dict | None = None) -> dict:
            "default": normalize_spec(cfg) if cfg is not None else dict(DEFAULT_SPEC),
            "functions": list(FUNCTIONS), "verdict_keys": list(VERDICT_KEYS)}
     if run_dir is not None:
-        out["ran"] = [{**{k: d.get("judge", {}).get(k) for k in ("judge_id", "provider", "model", "prompt_version")},
-                       "generated_at": d.get("generated_at"), "n_verdicts": d.get("n_verdicts"),
-                       "n_conventions": d.get("n_conventions"), "source": d.get("source"), "file": d.get("_file")}
-                      for d in load_judgements(run_dir)]
+        out["ran"] = []
+        for d in load_judgements(run_dir):
+            real = is_real_verdict(d.get("judge") or {})
+            yes = sum(1 for r in d.get("verdicts") or [] if (r.get("verdict") or {}).get("is_convention"))
+            out["ran"].append({**{k: d.get("judge", {}).get(k) for k in ("judge_id", "provider", "model", "prompt_version")},
+                               "generated_at": d.get("generated_at"), "n_verdicts": d.get("n_verdicts"),
+                               "n_conventions": yes if real else 0, "n_placeholder_yes": 0 if real else yes,
+                               "real_judge": real, "source": d.get("source"), "tick": d.get("tick"),
+                               "file": d.get("_file")})
+    return out
+
+
+# ------------------------------------------------------------------------------------------------ verdict rows
+def legacy_provenance(run_dir, analysis: dict | None) -> dict:
+    """{provider, model} of an old analysis.json's legacy classifier (`llm` blocks without `judgements`): the
+    model of the first analysis_classifier call in analysis_llm_calls.jsonl ("mock" for the mock backend), else
+    the recorded observer, else the run config's llm block."""
+    run_dir = Path(run_dir)
+    an = analysis or {}
+    obs = an.get("observer") or {}
+    model = None
+    p = run_dir / "analysis_llm_calls.jsonl"
+    if p.exists():
+        try:
+            with open(p) as f:
+                for i, line in enumerate(f):
+                    if i > 20000:
+                        break
+                    if '"analysis_classifier"' not in line:
+                        continue
+                    try:
+                        model = json.loads(line).get("model")
+                    except json.JSONDecodeError:
+                        continue
+                    break
+        except OSError:
+            pass
+    cfg = {}
+    cp = run_dir / "config.resolved.yaml"
+    if cp.exists():
+        try:
+            import yaml
+            cfg = yaml.safe_load(open(cp)) or {}
+        except Exception:   # noqa: BLE001
+            cfg = {}
+    llm = cfg.get("llm") or {}
+    provider = obs.get("backend") or llm.get("backend") or "unknown"
+    model = model or an.get("analysis_model") or obs.get("model") or llm.get("model") or "unknown"
+    if str(model).lower() == "mock" or str(provider).lower() in MOCK_PROVIDERS:
+        provider, model = "mock", "mock"
+    return {"provider": str(provider), "model": str(model)}
+
+
+def legacy_verdict(llm: dict, prov: dict) -> dict:
+    """A schema-valid prompt-v0 Verdict from a legacy c["llm"] block."""
+    return {"judge_id": make_judge_id(f"legacy_{prov['provider']}", prov["model"], "v0"),
+            "provider": prov["provider"], "model": prov["model"], "prompt_version": "v0",
+            "is_convention": bool(llm.get("is_convention")), "gloss": str(llm.get("gloss") or ""), "function": "other",
+            "meaning_consistency": 0.0, "confidence": _unit(llm.get("confidence")),
+            "rationale": "legacy pipeline classifier annotation (analysis.json llm block)",
+            "raw": str(llm.get("raw") or "")[:2000]}
+
+
+def analysis_verdicts(run_dir, analysis: dict | None) -> list[dict]:
+    """Verdict rows of analysis.json: every c["judgements"] entry, or (older analyses) the legacy `llm` block as a
+    prompt-v0 verdict. Rows: {phrase, variants, expression_id, judged_at, source, tick, verdict}; tick None = judged
+    on the whole run."""
+    out, prov = [], None
+    for c in (analysis or {}).get("candidates") or []:
+        vs = [v for v in (c.get("judgements") or {}).values() if isinstance(v, dict)]
+        if not vs and isinstance(c.get("llm"), dict) and "real_judge" not in c["llm"]:
+            prov = prov or legacy_provenance(run_dir, analysis)
+            vs = [legacy_verdict(c["llm"], prov)]
+        for v in vs:
+            out.append({"phrase": c.get("canonical_form"), "variants": c.get("variants") or [],
+                        "expression_id": c.get("id"), "judged_at": (analysis or {}).get("generated_at"),
+                        "source": "analysis.json", "tick": None, "verdict": v})
+    return out
+
+
+def judgement_verdicts(run_dir) -> list[dict]:
+    """Verdict rows of analysis_judgements/*.json (same row shape as analysis_verdicts; tick = the live tick judged,
+    None when the judge read analysis.json)."""
+    out = []
+    for doc in load_judgements(run_dir):
+        for row in doc.get("verdicts") or []:
+            if isinstance(row, dict) and isinstance(row.get("verdict"), dict):
+                out.append({"phrase": row.get("phrase"), "variants": row.get("variants") or [],
+                            "expression_id": row.get("expression_id"),
+                            "judged_at": row.get("judged_at") or doc.get("generated_at"),
+                            "source": doc.get("_file"), "tick": doc.get("tick") if doc.get("source") == "live" else None,
+                            "verdict": row["verdict"]})
     return out

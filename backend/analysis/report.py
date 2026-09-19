@@ -1,14 +1,17 @@
 """Meme report for a run (OBSERVER ONLY; no LLM calls, never written into the run).
 
 meme_report(run_dir, debug=False) merges, per expression:
-- the live (LLM-free) analysis at the latest tick (live.py): status chips, first use, adopters timeline,
-  transmission tree rooted at the originator, contexts, world-wording flags;
+- the live (LLM-free) analysis at the latest tick (live.py): status chips, tier (candidate -> spreading ->
+  convention, tiers.py), first use, adopters timeline, transmission tree rooted at the originator, contexts,
+  world- and system-wording flags;
 - analysis.json when present (pipeline: emergence, legacy card, classifier annotation, v2 probe answers,
   grounding in debug mode only);
 - every judge verdict available (analysis_judgements/*.json and analysis.json `judgements`), newest first;
 - meaning over time from v3 checkpoint probes (meaning.json / probes/C*/responses.jsonl) when the
   expression is a probe target (hidden-derived: marked {"hidden": true});
 plus a run-level summary paragraph built from the numbers by template (no LLM) and a judge_slot section.
+Mock judge verdicts are shown as placeholders (`real: false`); when no real judge has run, the summary says
+"no real judge has run" and no expression is called a convention.
 """
 from __future__ import annotations
 
@@ -18,6 +21,7 @@ from pathlib import Path
 
 from backend.analysis import judge as JG
 from backend.analysis.candidates import tokens
+from backend.analysis.tiers import NO_REAL_JUDGE
 from backend.analysis.live import live_snapshot, snapshot_context, strip_hidden, transmission_tree
 
 REPORT_VERSION = "report-v1"
@@ -59,22 +63,9 @@ def _n(k, word: str, plural: str | None = None) -> str:
 
 # ------------------------------------------------------------------------------------------------ judgements
 def collect_verdicts(run_dir: Path, analysis: dict | None) -> list[dict]:
-    """Every verdict on this run: [{phrase, variants, expression_id, judged_at, source, verdict}]."""
-    out = []
-    for doc in JG.load_judgements(run_dir):
-        for row in doc.get("verdicts") or []:
-            if isinstance(row, dict) and isinstance(row.get("verdict"), dict):
-                out.append({"phrase": row.get("phrase"), "variants": row.get("variants") or [],
-                            "expression_id": row.get("expression_id"),
-                            "judged_at": row.get("judged_at") or doc.get("generated_at"),
-                            "source": doc.get("_file"), "verdict": row["verdict"]})
-    for c in (analysis or {}).get("candidates") or []:
-        for _jid, v in (c.get("judgements") or {}).items():
-            if isinstance(v, dict):
-                out.append({"phrase": c.get("canonical_form"), "variants": c.get("variants") or [],
-                            "expression_id": c.get("id"), "judged_at": (analysis or {}).get("generated_at"),
-                            "source": "analysis.json", "verdict": v})
-    return out
+    """Every verdict on this run: [{phrase, variants, expression_id, judged_at, source, tick, verdict}]
+    (analysis_judgements/*.json, then analysis.json: its `judgements`, or an old analysis's legacy `llm` block)."""
+    return JG.judgement_verdicts(run_dir) + JG.analysis_verdicts(run_dir, analysis)
 
 
 def _card_verdicts(forms: set, verdicts: list[dict], debug: bool) -> list[dict]:
@@ -85,7 +76,8 @@ def _card_verdicts(forms: set, verdicts: list[dict], debug: bool) -> list[dict]:
         v = e["verdict"]
         row = {k: v.get(k) for k in ("judge_id", "provider", "model", "prompt_version", "is_convention", "gloss",
                                      "function", "meaning_consistency", "confidence", "rationale")}
-        row.update(judged_at=e["judged_at"], source=e["source"], expression_id=e["expression_id"])
+        row.update(judged_at=e["judged_at"], source=e["source"], expression_id=e["expression_id"],
+                   real=JG.is_real_verdict(v), placeholder=not JG.is_real_verdict(v))
         if debug:
             row["raw"] = v.get("raw")
         rows.append(row)
@@ -98,18 +90,22 @@ def judge_slot(run_dir: Path, cfg: dict, analysis: dict | None) -> dict:
     runs = list(ran.get("ran") or [])
     if analysis:
         ids = {}
-        for c in analysis.get("candidates") or []:
-            for jid, v in (c.get("judgements") or {}).items():
-                d = ids.setdefault(jid, {"judge_id": jid, "provider": v.get("provider"), "model": v.get("model"),
-                                         "prompt_version": v.get("prompt_version"),
-                                         "generated_at": analysis.get("generated_at"), "n_verdicts": 0,
-                                         "n_conventions": 0, "source": "analysis.json", "file": "analysis.json"})
-                d["n_verdicts"] += 1
-                d["n_conventions"] += int(bool(v.get("is_convention")))
+        for e in JG.analysis_verdicts(run_dir, analysis):
+            v = e["verdict"]
+            jid = v.get("judge_id")
+            real = JG.is_real_verdict(v)
+            d = ids.setdefault(jid, {"judge_id": jid, "provider": v.get("provider"), "model": v.get("model"),
+                                     "prompt_version": v.get("prompt_version"),
+                                     "generated_at": analysis.get("generated_at"), "n_verdicts": 0,
+                                     "n_conventions": 0, "n_placeholder_yes": 0, "real_judge": real,
+                                     "source": "analysis.json", "file": "analysis.json"})
+            d["n_verdicts"] += 1
+            d["n_conventions" if real else "n_placeholder_yes"] += int(bool(v.get("is_convention")))
         runs += list(ids.values())
     runs.sort(key=lambda r: str(r.get("generated_at") or ""), reverse=True)
     return {"config_key": JG.CONFIG_KEY, "configured": JG.normalize_spec(cfg), "providers": ran["providers"],
             "prompt_versions": ran["prompt_versions"], "ran": runs,
+            "has_real_judge": any(r.get("real_judge") for r in runs),
             "note": "POST a judge spec {provider, model, prompt_version} to judge_run(); verdicts land in "
                     "analysis_judgements/<judge_id>.json and appear on every card, newest first."}
 
@@ -153,7 +149,8 @@ def _analysis_block(c: dict, an: dict, debug: bool) -> dict:
     card = dict(c.get("card") or {})
     if not debug:
         card.pop("latent_alignment", None)       # pre-v2 alignment with hidden families
-    out = {"id": cid, "legacy_status": c.get("status"), "card": card, "classifier": c.get("llm"),
+    out = {"id": cid, "legacy_status": c.get("lifecycle", c.get("status")), "status": c.get("status") if "lifecycle" in c else None,
+           "tier": c.get("tier"), "tier_reasons": c.get("tier_reasons"), "card": card, "classifier": c.get("llm"),
            "emergence": (an.get("emergence") or {}).get(cid), "score": c.get("score"),
            "transmission_depth": ((an.get("transmission") or {}).get(cid) or {}).get("depth")}
     pr = (an.get("probes") or {}).get(cid)
@@ -180,6 +177,8 @@ def _card(sn, r: dict, a: dict | None, an: dict | None, verdicts: list[dict], de
     card = {
         "id": r["id"], "analysis_id": a["id"] if a else None, "phrase": r["phrase"], "display": r["display"],
         "variants": r["variants"], "status": r["status"], "flags": r["flags"],
+        "tier": r.get("tier"), "tier_reasons": r.get("tier_reasons"), "control": r.get("control"),
+        "verdict": r.get("verdict"), "recited_share": r.get("recited_share"),
         "first_use": r["first_use"], "uses": r["uses"], "n_speakers": r["n_speakers"],
         "speakers": [{"agent": s, "name": names.get(s, s)} for s in r["speakers"]],
         "last_use_tick": r["last_use_tick"], "trend": r["trend"], "adoption_curve": r["adoption_curve"],
@@ -194,6 +193,7 @@ def _card(sn, r: dict, a: dict | None, an: dict | None, verdicts: list[dict], de
         "analysis": _analysis_block(a, an, debug) if a and an else None,
         "meaning_over_time": _meaning_over_time(run_dir, rd, forms),
         "judgements": js, "latest_verdict": js[0] if js else None,
+        "latest_real_verdict": next((j for j in js if j.get("real")), None),
     }
     if not debug and card["analysis"] and "grounding" in card["analysis"]:
         card["analysis"].pop("grounding")
@@ -214,28 +214,34 @@ def _summary(snap: dict, cards: list[dict], slot: dict, debug: bool) -> dict:
              f"Agents produced {_n(snap['n_utterances'], 'utterance')} in {_n(snap['n_conversations'], 'conversation')} "
              f"among {_n(snap['n_agents_active'], 'active agent')}, and the world released {_n(snap['n_events'], 'event')}."]
     n = snap["n_expressions"]
+    tc = snap.get("tier_counts") or {}
+    judge = snap.get("judge") or {}
     if n:
         bits = [f"{c['emerged']} emerged", f"{c['spreading']} spreading after exposure",
-                f"{c['echo']} echoed only inside a conversation", f"{c['world_wording']} world or lexicon wording",
-                f"{c['new']} new"] + ([f"{c['planted']} planted"] if c.get("planted") else [])
+                f"{c['echo']} echoed only inside a conversation",
+                f"{c.get('system_wording', 0)} system wording (relationship lines, routines, memory frames, profile text)",
+                f"{c['world_wording']} world wording", f"{c['new']} new"] + ([f"{c['planted']} planted"] if c.get("planted") else [])
         parts.append(f"The observer tracks {_n(n, 'recurring expression')}: " + ", ".join(bits) + ".")
-        lead = next((x for s in ("emerged", "spreading") for x in cards if x["status"] == s or s in x["flags"]), None)
+        parts.append(f"By tier: {tc.get('candidate', 0)} candidates (frequency only), {tc.get('spreading', 0)} spreading "
+                     f"(carried into another conversation after exposure) and {_n(tc.get('convention', 0), 'convention')}.")
+        lead = next((x for t in ("convention", "spreading") for x in cards if x.get("tier") == t and not x.get("control")), None)
         if lead:
             fu = lead["first_use"]
             em = lead["emergence"]
-            parts.append(f"The most established is \"{lead['display']}\", first said by {fu['speaker_name']} "
+            parts.append(f"The most established is \"{lead['display']}\" ({lead['tier']}), first said by {fu['speaker_name']} "
                          f"({fu['time_label']}); {_n(lead['n_speakers'], 'speaker')} used it {_n(lead['uses'], 'time')}, "
                          f"{em.get('n_adopters_carried') or 0} of them after hearing it in another conversation "
                          f"(versus {em.get('n_independent') or 0} independent).")
         else:
-            parts.append("No expression has yet been carried by an exposed agent into a different conversation.")
+            parts.append("No expression outside system and world wording has yet been carried by an exposed agent "
+                         "into a different conversation.")
     else:
         parts.append("No expression has recurred yet.")
     pl = snap.get("planted")
     if pl:
         parts.append(f"The planted control \"{pl['phrase']}\" ({pl['agent']}) "
                      + (f"has been used {_n(pl['uses'], 'time')} and is {pl['status']}." if pl.get("uses")
-                        else "has not been used yet."))
+                        else "has not been used yet.") + " As the positive control it is never counted as a convention.")
     f = snap["funnel"]["cumulative"]
     parts.append(f"Mediators so far: {f['events_witnessed']} of {f['events_released']} events witnessed and "
                  f"{f['events_discussed']} discussed; {_n(f['cross_incident_links'], 'cross-incident memory link')} "
@@ -257,15 +263,21 @@ def _summary(snap: dict, cards: list[dict], slot: dict, debug: bool) -> dict:
                 parts.append(f"[debug] First-attempt accuracy on faulted jobs is {acc['acc']:.0%} (n={acc['n']}); "
                              f"current regime {v3['regime']['current']}.")
     ran = slot.get("ran") or []
-    if ran:
-        last = ran[0]
-        parts.append(f"{_n(len(ran), 'judge verdict set')} attached; the latest ({last['judge_id']}) calls "
-                     f"{last.get('n_conventions') or 0} of {last.get('n_verdicts') or 0} judged expressions conventions.")
+    real = [r for r in ran if r.get("real_judge")]
+    if real:
+        last = real[0]
+        parts.append(f"{_n(len(ran), 'judge verdict set')} attached ({len(real)} from a real judge); the latest real one "
+                     f"({last['judge_id']}) calls {last.get('n_conventions') or 0} of {last.get('n_verdicts') or 0} "
+                     f"judged expressions conventions.")
+    elif ran:
+        parts.append(f"Only mock judge verdicts are attached ({_n(len(ran), 'placeholder set')}): {NO_REAL_JUDGE}, "
+                     "so no expression is called a convention.")
     else:
-        parts.append("No LLM judge has been run on this run yet.")
+        parts.append(f"No LLM judge has been run on this run yet ({NO_REAL_JUDGE}), so no expression is called a convention.")
     numbers = {k: snap[k] for k in ("tick", "n_utterances", "n_conversations", "n_events", "n_agents_active",
                                     "n_expressions")}
-    numbers.update(status_counts=c, funnel=f, n_judge_sets=len(ran))
+    numbers.update(status_counts=c, tier_counts=tc, funnel=f, n_judge_sets=len(ran), n_real_judge_sets=len(real),
+                   judge_status="real" if real else ("mock_only" if ran else "none"))
     return {"text": " ".join(parts), "numbers": numbers}
 
 
@@ -305,8 +317,8 @@ def meme_report(run_dir, debug: bool = False, top: int = 30, tick: int | None = 
         "tick": snap["tick"], "latest_tick": snap["latest_tick"], "time_label": snap["time_label"],
         "run_status": snap.get("run_status"),
         "summary": _summary(snap, cards, slot, debug), "cards": cards, "judge_slot": slot,
-        "headline": {k: snap[k] for k in ("n_utterances", "n_conversations", "n_events", "n_agents_active",
-                                          "n_expressions", "status_counts")},
+        "headline": {k: snap.get(k) for k in ("n_utterances", "n_conversations", "n_events", "n_agents_active",
+                                              "n_expressions", "status_counts", "tier_counts", "n_conventions", "judge")},
         "funnel": snap["funnel"], "transmission": snap["transmission"], "planted": snap.get("planted"),
         "sources": {"live": True, "analysis_json": an is not None,
                     "analysis_version": (an or {}).get("analysis_version"), "observer": (an or {}).get("observer"),

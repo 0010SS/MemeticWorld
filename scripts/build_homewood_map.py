@@ -242,7 +242,8 @@ def tree(name, x, y):
 # ----------------------------------------------------------------------------- buildings (real footprints, thin walls)
 PLACES = {}
 THIN = dict(cap=0, cap2=1, bot=228, bot2=229, sideL=-1, sideR=2, tl=-153, tr=-150, bl=230, br=227, fill=76)
-BEDROOMS = {"Room 214", "Room 310", "Room 118", "Room 105", "Room 402", "Grad Apartment"}
+BEDROOMS = {"Room 214", "Room 216", "Room 310", "Room 312", "Room 118", "Room 120", "Room 105", "Room 107", "Room 402",
+            "Room 404", "Grad Apartment"}
 PATHS = ("path", "plaza", "sidewalk")
 
 
@@ -919,24 +920,44 @@ def dorm_rooms(mask):
     kinds = {"Hallway": "hall"}
     if wl:
         rooms["Hallway"].append((wl[-1], by1, wl[-1], wing_bottom))                 # west corridor, courtyard side
-        names = ["Room 310", "Room 118"]
+        names = ["Room 310", "Room 118", "Room 312", "Room 120"]      # 312/120: 16-agent population
         for k, nm in enumerate(names):
             ry0 = by1 + 1 + 5 * k
             if ry0 + 3 <= wing_bottom:
                 rooms[nm] = [(wl[0], ry0, wl[-1] - 1, ry0 + 3)]; kinds[nm] = "bedroom"
     if wr:
         rooms["Hallway"].append((wr[0], by1, wr[0], wing_bottom))                   # east corridor
-        for k, nm in enumerate(["Room 105", "Room 402"]):
+        for k, nm in enumerate(["Room 105", "Room 402", "Room 107", "Room 404"]):   # 107/404: 16-agent population
             ry0 = by1 + 1 + 5 * k
             if ry0 + 3 <= wing_bottom:
                 rooms[nm] = [(wr[0] + 1, ry0, wr[-1], ry0 + 3)]; kinds[nm] = "bedroom"
     above = {c for c in inner if c[1] < by0}
     blocks = []
-    for name, lo, hi in (("Room 214", x0, x0 + width / 3), ("Lounge", x0 + width / 3, x0 + 2 * width / 3), ("Grad Apartment", x0 + 2 * width / 3, x1 + 1)):
+    for name, lo, hi in (("Room 214", x0, x0 + width / 6), ("Room 216", x0 + width / 6, x0 + width / 3),
+                         ("Lounge", x0 + width / 3, x0 + 2 * width / 3), ("Grad Apartment", x0 + 2 * width / 3, x1 + 1)):
         cs = {c for c in above if lo <= c[0] < hi}
         r = largest_rect(cs)
         if r:
             rooms[name] = [r]; kinds[name] = "lounge" if name == "Lounge" else "bedroom"
+    # rooms added with the 16-agent population that had no fixed slot: carve each from the largest free interior
+    # rectangle left (not the hallway, one cell of wall clearance around every room already placed)
+    def cells_of(rs):
+        return {(x, y) for (a, b, c, d) in rs for x in range(a, c + 1) for y in range(b, d + 1)}
+    for name in ("Room 216", "Room 120", "Room 404"):
+        if name in rooms:
+            continue
+        taken = cells_of(rooms["Hallway"])
+        for nm, rs in rooms.items():
+            if nm != "Hallway":
+                taken |= {(x + dx, y + dy) for (x, y) in cells_of(rs) for dx in (-1, 0, 1) for dy in (-1, 0, 1)}
+        r = largest_rect(set(inner) - taken)
+        if r and (r[2] - r[0] + 1) * (r[3] - r[1] + 1) >= 4:
+            rooms[name] = [r]; kinds[name] = "bedroom"
+        elif "Lounge" in rooms and rooms["Lounge"][0][2] - rooms["Lounge"][0][0] >= 6:
+            a, b, c, d = rooms["Lounge"][0]                   # no free space left: split the wide lounge
+            m = (a + c) // 2
+            rooms["Lounge"] = [(a, b, m - 1, d)]
+            rooms[name] = [(m + 1, b, c, d)]; kinds[name] = "bedroom"
     return rooms, kinds
 
 

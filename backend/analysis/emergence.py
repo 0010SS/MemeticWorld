@@ -26,8 +26,11 @@ exchanges, more than people who use it without having heard it. Per candidate:
   wrong" matches too). Every witness perceived that wording, so its repetition is not transmission.
   `world_match` says "verbatim" or "gapped".
 
+- in_system_text: the phrase is SYSTEM wording (wording.Infrastructure: relationship lines, routines, seed and
+  ambient memories, memory frames, profile text ...; candidates.py flags it as c["wording"]["system"]).
+
 spread = n_adopters_carried >= 2 and n_adopters_carried > n_independent;
-emerged = spread and not in_lexicon and not in_world_text.
+emerged = spread and not in_lexicon and not in_world_text and not in_system_text.
 """
 from __future__ import annotations
 
@@ -171,12 +174,13 @@ def lexicon_flag(phrase: str, vocab: set, names: set) -> bool:
 
 
 def emergence_for(usages: list[dict], population: list[str], *, in_lexicon: bool = False,
-                  in_world_text: bool = False) -> dict:
+                  in_world_text: bool = False, in_system_text: bool = False) -> dict:
     """usages: [{"utterance_id", "tick", "speaker", "listeners", "conversation_id", "idx"?}]."""
     us = sorted(usages, key=chron_key)
     if not us:
         return {"emerged": False, "spread": False, "n_adopters": 0, "n_adopters_carried": 0, "n_echo_only": 0,
-                "n_independent": 0, "n_exposed": 0, "in_lexicon": in_lexicon, "in_world_text": in_world_text}
+                "n_independent": 0, "n_exposed": 0, "in_lexicon": in_lexicon, "in_world_text": in_world_text,
+                "in_system_text": in_system_text}
     orig = us[0]["speaker"]
     uses: dict[str, list] = {}
     heard: dict[str, list] = {}
@@ -210,7 +214,8 @@ def emergence_for(usages: list[dict], population: list[str], *, in_lexicon: bool
             "carried_rate": round(nc / n_exp, 3) if n_exp else None,
             "independent_rate": round(ni / n_unexp, 3) if n_unexp else None,
             "fisher_p": round(p, 5), "in_lexicon": in_lexicon, "in_world_text": in_world_text,
-            "spread": spread, "emerged": spread and not in_lexicon and not in_world_text,
+            "in_system_text": in_system_text,
+            "spread": spread, "emerged": spread and not in_lexicon and not in_world_text and not in_system_text,
             "adopters": sorted(adopters), "carried_adopters": sorted(carried), "independents": sorted(independents),
             "first_exposure_tick": first_exp}
 
@@ -236,7 +241,8 @@ def analyze_emergence(cands: list[dict], rd) -> dict:
         usages = [dict(u, idx=(rd.utt_by_id.get(u["utterance_id"]) or {}).get("idx", 0)) for u in c["usages"]]
         toks = tokens(c["canonical_form"])
         wm = world_match(toks, segs, normed=normed)
+        system = bool((c.get("wording") or {}).get("system") or (c.get("features") or {}).get("system_wording"))
         out[c["id"]] = emergence_for(usages, pop, in_lexicon=lexicon_flag(" ".join(toks), vocab["tokens"], names),
-                                     in_world_text=wm is not None)
+                                     in_world_text=wm is not None, in_system_text=system)
         out[c["id"]].update(phrase=c["canonical_form"], world_match=wm)
     return out

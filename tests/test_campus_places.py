@@ -48,7 +48,8 @@ NEW_PLACES = [p for p in ARENAS if p not in ORIGINAL_ARENAS]
 def test_new_places_are_appended_and_originals_unchanged():
     assert len(NEW_PLACES) == 10
     for loc, arenas in ORIGINAL_ARENAS.items():
-        assert ARENAS[loc] == arenas                              # default arena (ARENAS[loc][0]) unchanged
+        assert ARENAS[loc][:len(arenas)] == arenas                # originals kept in order (default arena unchanged);
+                                                                  # the 16-agent population appends dorm rooms
         assert WORLD_GRAPH[loc][:len(ORIGINAL_GRAPH[loc])] == ORIGINAL_GRAPH[loc]
     assert list(ARENAS)[:8] == list(ORIGINAL_ARENAS)
     assert set(WORLD_GRAPH) == set(ARENAS) == set(HOMEWOOD_LABELS) == set(MAP_POS)

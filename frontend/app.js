@@ -898,6 +898,14 @@ async function renderAgent(aid) {
       <div class="small"><b>felt alike:</b> ${esc(m.what_felt_alike || "—")}</div>
       <div class="small">new: ${memText(m.evidence?.[0])}</div><div class="small">earlier: ${memText(m.evidence?.[1])}</div>
       <div class="meta">${esc(labelAt(m.tick))} · importance ${m.importance ?? "—"}</div></div>`).join("") || '<div class="muted small">none yet</div>'}</details>` : "";
+  const personalLabels = { goal: "Personal goal", values: "Values", strengths: "Strengths", blind_spots: "Blind spots",
+    stress_response: "Response to stress", coping_strategy: "Coping strategy", social_energy: "Social energy",
+    trust_style: "How trust develops", conflict_style: "Approach to conflict", humor_style: "Sense of humor",
+    pet_peeves: "Pet peeves", small_joys: "Small joys" };
+  const personal = Object.entries(p.personal || {}).map(([key, value]) =>
+    `<dt>${esc(personalLabels[key] || key.replaceAll("_", " "))}</dt><dd>${esc(Array.isArray(value) ? value.join(", ") : value)}</dd>`).join("");
+  const friends = (p.friend_groups || []).map((g) =>
+    `<div class="small"><b>${esc(g.name)}</b><br>${g.members.map(esc).join(", ")}</div>`).join("");
   $("#agentPanel").innerHTML = `
     <div class="agent-head"><div class="avatar" style="background-image:url(/ga_assets/characters/${encodeURIComponent(p.sprite || "")}.png)"></div>
       <div><div style="font-weight:700">${esc(p.name || aid)} ${agentBadges(st)}</div><div class="muted small">${[demo.year, demo.major, demo.role].filter(Boolean).map(esc).join(" · ")}</div>
@@ -916,6 +924,8 @@ async function renderAgent(aid) {
       <dt>Memories</dt><dd>${d.n_memories} in stream</dd>${mods}
     </dl>
     ${coopAgentHtml(aid, st, t)}${needHtml}${wordHtml}${remHtml}
+    ${personal ? `<details open><summary>Personal traits and motivations</summary><dl class="kv">${personal}</dl></details>` : ""}
+    ${friends ? `<details open><summary>Friend groups</summary>${friends}</details>` : ""}
     <details><summary>Relationships</summary><div class="small">${rel}</div></details>
     <details><summary>Routine</summary><div class="small">${(p.routine || []).map((r) => `${esc(r.time)} ${esc(r.activity)} <span class="muted">@ ${esc(r.location)}</span>`).join("<br>")}</div></details>
     <details open><summary>Last retrieved memories ${d.retrieved?.tick != null ? `<span class="muted small">(tick ${d.retrieved.tick})</span>` : ""}</summary>${(d.retrieved?.memories || []).map(mem).join("") || '<div class="muted small">none yet</div>'}</details>

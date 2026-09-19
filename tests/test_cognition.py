@@ -160,7 +160,8 @@ def test_home_assignment_casts_from_circles_and_is_hidden(tmp_path):
     man = json.load(open(sim.run_dir / "manifest.json"))
     from backend.api.server import _strip
     stripped = json.dumps(_strip(man))
-    assert '"circles"' not in stripped and '"assignment"' not in stripped
+    # These are hidden metadata keys; ordinary vocabulary can include "assignment".
+    assert '"circles":' not in stripped and '"assignment":' not in stripped
 
 
 def test_catchup_conversations_between_close_friends(tmp_path):

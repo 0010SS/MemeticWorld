@@ -151,6 +151,8 @@ def apply(profiles: dict[str, AgentProfile], topo: dict) -> None:
     rels = topo["relationships"]
     ids = sorted(profiles)
     for a in ids:
+        # File friendships no longer describe the generated ties. Do not expose circle labels.
+        profiles[a].friend_groups = []
         profiles[a].relationships = {b: dataclasses.replace(rels.get(_key(a, b), Relationship()))
                                      for b in ids if b != a}
     for aid, adds in topo.get("routine_additions", {}).items():
