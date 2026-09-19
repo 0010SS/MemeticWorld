@@ -1,0 +1,13 @@
+extends: configs/commons.yaml
+run_name: commons_smoke
+llm:
+  backend: mock
+simulation_days: 4
+day_end: "13:00"
+memory:
+  encoding_noise: 0
+reflection:
+  enabled: false
+commons:
+  turnover_day: 2
+  change_day: 3

@@ -1,0 +1,4 @@
+extends: configs/commons.yaml
+run_name: commons_no_records_change
+commons:
+  records_enabled: false

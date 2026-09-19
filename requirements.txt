@@ -1,0 +1,6 @@
+# Direct runtime dependencies used by the validated offline environment.
+numpy==2.5.3
+fastapi==0.141.1
+uvicorn==0.53.0
+PyYAML==6.0.3
+anthropic==1.7.0

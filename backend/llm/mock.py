@@ -45,6 +45,9 @@ class MockBackend(Backend):
     def generate(self, prompt, system, max_tokens, temperature):
         p = current_purpose()
         h = _h(f"{self.seed}|{prompt}")
+        if p == "commons_action":
+            from backend.llm.commons_mock import respond
+            return respond(prompt)
         if p.startswith("poignancy"):
             base = 2 + h % 4
             if re.search(r"missed|wrong|failed|spilled|locked|late|lost|prize|praised|offered", prompt.split("Rate")[0][-400:]):

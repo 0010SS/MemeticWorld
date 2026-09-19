@@ -34,6 +34,9 @@ async function boot() {
   $("#btnFwd").onclick = () => setTick(S.tick + 1);
   $("#speed").onchange = (e) => S.speed = +e.target.value;
   $("#scrub").oninput = (e) => setTick(+e.target.value);
+  $("#worldScrub").oninput = (e) => setTick(+e.target.value);
+  $("#worldBack").onclick = () => setTick(S.tick - 1);
+  $("#worldFwd").onclick = () => setTick(S.tick + 1);
   $("#btnFirstMeme").onclick = () => jumpTo("first_meme_use");
   $("#btnFirstCross").onclick = () => jumpTo("first_cross_group_transmission");
   $("#modalClose").onclick = () => $("#modal").hidden = true;
@@ -68,6 +71,7 @@ function showView(v) {
   if (v === "culture") renderCulture();
   if (v === "trace") renderTraceSearch();
   if (v === "runs") renderRuns();
+  if (v === "world") renderWorld();
 }
 
 async function loadRun(id, keepTick = false) {
@@ -75,12 +79,23 @@ async function loadRun(id, keepTick = false) {
   S.runId = id;
   const [man, frames] = await Promise.all([api(`/runs/${id}/manifest`), api(`/runs/${id}/frames`)]);
   S.manifest = man; S.frames = frames;
+  const commons = man.world.mode === "commons";
+  $("#worldTab").hidden = !commons;
+  $("#btnFirstMeme").hidden = commons;
+  $("#btnFirstCross").hidden = commons;
+  $("#onlyConv").parentElement.hidden = commons;
+  $("#cultureHeading").textContent = commons ? "Inheritance and adaptation" : "Emerging cultural conventions";
+  $("#cultureDescription").textContent = commons
+    ? "RQ2: How do shared records affect continuity and adaptation? These measures describe behavior; semantic change is not evaluated."
+    : "Detected by the external observer only (n-gram statistics + variant grouping + LLM classifier). Nothing on this page is ever shown to agents.";
+  if (!commons && $("#view-world").classList.contains("active")) showView("campus");
   try { S.analysis = await api(`/runs/${id}/analysis`); } catch { S.analysis = null; }
   S.layout = computeLayout(man);
   for (const [aid, a] of Object.entries(man.agents)) {
     if (!S.sprites[a.sprite]) { const img = new Image(); img.src = `/ga_assets/characters/${a.sprite}.png`; S.sprites[a.sprite] = img; }
   }
   $("#scrub").max = Math.max(0, frames.length - 1);
+  $("#worldScrub").max = Math.max(0, frames.length - 1);
   if (!keepTick) setTick(0); else setTick(S.tick);
   if (S.sel) renderAgent(S.sel);
   renderCulture();
@@ -148,6 +163,7 @@ function onTickChanged() {
   $("#clock").textContent = f ? f.label : "—";
   $("#scrub").value = S.tick;
   renderFeed(); renderEvents();
+  renderWorld();
   if (S.sel) { clearTimeout(agentTimer); agentTimer = setTimeout(() => renderAgent(S.sel), S.playing ? 600 : 80); }
 }
 function jumpTo(key) {
@@ -314,6 +330,7 @@ function orderedCands() {
 function renderCulture() {
   const A = S.analysis;
   if (!A) { $("#cultureSummary").innerHTML = `<span class="muted">This run has not been analyzed yet. Use “Re-run analysis” or <code>python -m backend.cli analyze runs/${esc(S.runId)}</code>.</span>`; $("#cards").innerHTML = ""; $("#memeDetail").innerHTML = ""; return; }
+  if (A.mode === "commons") { renderCommonsResearch(A); return; }
   const s = A.summary;
   $("#cultureSummary").innerHTML = [["Utterances", s.n_utterances], ["Conversations", s.n_conversations], ["World events", s.n_events], ["Candidates", s.n_candidates], ["LLM-classified conventions", s.n_llm_conventions]]
     .map(([l, v]) => `<div class="stat"><div class="v">${v}</div><div class="l">${l}</div></div>`).join("");
@@ -500,16 +517,64 @@ async function renderRuns() {
     S.runs.map((r) => `<tr><td><a href="?run=${encodeURIComponent(r.run_id)}">${esc(r.run_id)}</a></td><td>${esc(r.status)}</td><td>${esc(r.run_name)} (seed ${r.seed}, ${r.days}d)</td><td>${esc(r.llm_backend)}</td><td>${esc((r.modules || []).join(", ") || "none")}</td>
       <td>${r.stats?.events ?? ""}</td><td>${r.stats?.conversations ?? ""}</td><td>${r.stats?.utterances ?? ""}</td><td>${r.stats?.llm?.calls ?? ""}</td><td>${r.has_analysis ? "yes" : "—"}</td></tr>`).join("");
   const cmp = await api("/compare");
-  const cols = ["condition", "events", "conversations", "utterances", "reflections", "candidates", "llm_conventions", "max_adoption", "mean_depth", "cross_group_edges", "mean_coherence", ...(S.debug ? ["mean_alignment", "mean_lift"] : []), "top_expression"];
+  const cols = cmp.some((r) => r.mode === "commons")
+    ? ["condition", "seed", "records_enabled", "change_enabled", "projects_completed", "projects_unfinished", "failed_deliveries", "record_reads", "newcomers_with_success", "post_boundary_success"]
+    : ["condition", "events", "conversations", "utterances", "reflections", "candidates", "llm_conventions", "max_adoption", "mean_depth", "cross_group_edges", "mean_coherence", ...(S.debug ? ["mean_alignment", "mean_lift"] : []), "top_expression"];
   $("#compareTable").innerHTML = `<tr>${cols.map((c) => `<th>${c.replace(/_/g, " ")}</th>`).join("")}</tr>` +
     cmp.map((r) => `<tr>${cols.map((c) => `<td>${esc(r[c] ?? "—")}</td>`).join("")}</tr>`).join("");
   const cfgs = await api("/configs");
   $("#cfgSelect").innerHTML = cfgs.map((c) => `<option>${esc(c)}</option>`).join("");
 }
 async function launchRun() {
-  const q = new URLSearchParams({ config: $("#cfgSelect").value, days: $("#cfgDays").value, backend: $("#cfgBackend").value });
+  const q = new URLSearchParams({ config: $("#cfgSelect").value, backend: $("#cfgBackend").value });
+  if ($("#cfgDays").value) q.set("days", $("#cfgDays").value);
   const r = await fetch(`/api/runs?${q}`, { method: "POST" });
   $("#launchMsg").textContent = r.ok ? "Launched — it will appear in the list shortly (refresh)." : "Launch failed.";
+}
+
+function statsHtml(items) {
+  return items.map(([label, value]) => `<div class="stat"><div class="v">${esc(value ?? "—")}</div><div class="l">${esc(label)}</div></div>`).join("");
+}
+
+function renderWorld() {
+  const frame = S.frames[S.tick], world = frame?.commons;
+  if (!world) return;
+  $("#worldClock").textContent = frame.label;
+  $("#worldScrub").value = S.tick;
+  const projects = Object.values(world.projects);
+  $("#worldSummary").innerHTML = statsHtml([
+    ["Requests completed", `${projects.filter((p) => p.completed !== null).length} / ${projects.length}`],
+    ["Components", world.supplies.components], ["Test supplies", world.supplies.test_supplies],
+    ["Archive", world.records_enabled ? "Available" : "Unavailable"], ["Outdoor conditions", world.outdoor_condition],
+  ]);
+  $("#worldProjects").innerHTML = `<table class="table"><tr><th>Project / kit</th><th>Site</th><th>State</th><th>Location / custody</th><th>Attempts</th></tr>` + projects.map((p) => {
+    const k = world.kits[p.kit];
+    const state = p.completed !== null ? `Complete at tick ${p.completed}` : !k.assembled ? "Needs assembly" : k.calibration === null ? "Needs calibration" : `Calibrated ${k.calibration}; request open`;
+    const holder = k.holder ? ` · ${S.manifest.agents[k.holder]?.name || k.holder}` : "";
+    return `<tr><td>${esc(p.title)}<div class="muted small">${esc(k.id)} · due tick ${p.due}</div></td><td>${esc(p.site)}</td><td>${esc(state)}</td><td>${esc(k.location + holder)}</td><td>${p.attempts}</td></tr>`;
+  }).join("") + "</table>";
+  $("#worldActivity").innerHTML = Object.values(world.residents).filter((r) => r.active).map((r) => {
+    const op = world.operations[r.id];
+    return `<div class="mem"><b>${esc(r.name)}</b> · ${esc(r.location)}<div class="muted small">${op ? `${esc(op.intention.action)}${op.intention.kit ? " · " + esc(op.intention.kit) : ""} · until tick ${op.due}` : "Available"}${r.joined ? ` · joined at tick ${r.joined}` : ""}</div></div>`;
+  }).join("");
+  const records = Object.values(world.records);
+  $("#worldRecords").innerHTML = !world.records_enabled ? '<p class="muted">The shared archive is unavailable in this condition.</p>'
+    : !records.length ? '<p class="muted">No shared records have been written yet.</p>'
+    : records.map((r) => `<details class="record-history"><summary>${esc(r.versions.at(-1).title)} <span class="muted">${esc(r.id)} · ${r.versions.length} version(s)</span></summary>${r.versions.map((v) => {
+      const reads = (S.analysis?.record_access || []).filter((e) => e.record === r.id && e.version === v.version && e.tick <= S.tick);
+      const readers = [...new Set(reads.map((e) => S.manifest.agents[e.actor]?.name || e.actor))];
+      return `<article class="mem"><div class="meta">Version ${v.version} · ${esc(S.manifest.agents[v.author]?.name || v.author)} · tick ${v.tick}</div><div class="record-text">${esc(v.text)}</div><div class="meta">${S.analysis?.mode === "commons" ? `Read ${reads.length} time(s) by ${esc(readers.join(", ") || "nobody yet")}` : "Read history available after analysis"}</div></article>`;
+    }).join("")}</details>`).join("");
+}
+
+function renderCommonsResearch(A) {
+  const s = A.summary;
+  $("#cultureSummary").innerHTML = statsHtml([["Projects completed", s.projects_completed], ["Unfinished", s.projects_unfinished], ["Failed deliveries", s.failed_deliveries], ["Record versions", s.record_versions], ["Explicit reads", s.record_reads], ["Local utterances", s.n_utterances]]);
+  $("#cards").innerHTML = "";
+  $("#memeDetail").innerHTML = `<div class="panel table-scroll"><h3>Before and after the common intervention boundary</h3><p class="muted small">The same boundary is used in stable controls. These are descriptive summaries, not estimates of a treatment effect.</p><table class="table"><tr><th>Period</th><th>Attempts</th><th>Successful</th><th>Failed</th><th>Success / attempt</th></tr>${Object.entries(A.phases).map(([label, p]) => `<tr><td>${esc(label.replace(/_/g, " "))}</td><td>${p.attempts}</td><td>${p.successful_deliveries}</td><td>${p.failed_deliveries}</td><td>${p.success_per_attempt ?? "—"}</td></tr>`).join("")}</table></div>
+    <div class="panel table-scroll"><h3>Newcomer participation</h3><table class="table"><tr><th>Member</th><th>Ticks to first successful delivery</th><th>Record reads</th><th>Reads of prearrival records</th></tr>${A.newcomers.map((n) => `<tr><td>${esc(S.manifest.agents[n.agent]?.name || n.agent)}</td><td>${n.ticks_to_first_success ?? "No success before run ended"}</td><td>${n.record_reads}</td><td>${n.prearrival_record_reads}</td></tr>`).join("")}</table></div>
+    <div class="panel"><h3>Research question coverage</h3>${Object.entries(A.question_status).map(([q, text]) => `<p><b>${esc(q)}</b> ${esc(text)}</p>`).join("")}</div>
+    <div class="panel"><h3>Interpretation</h3>${A.limitations.map((text) => `<p class="small">${esc(text)}</p>`).join("")}</div>`;
 }
 
 boot();

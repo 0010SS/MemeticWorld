@@ -34,6 +34,13 @@ def _retained(rd) -> dict:
 def analyze(run_dir: Path, llm_backend: str | None = None, probes: bool = True, top_probe: int = 5,
             verbose: bool = True, llm_model: str | None = None) -> dict:
     rd = RunData(run_dir)
+    if rd.cfg.get("world", {}).get("mode") == "commons":
+        from backend.analysis.commons import analyze_commons
+        out = analyze_commons(run_dir)
+        if verbose:
+            print(f"[analyze] commons: {out['summary']['projects_completed']} completed projects; "
+                  "semantic change not evaluated")
+        return out
     acfg = rd.cfg.get("analysis", {})
     embed = make_embedder(rd.cfg.get("embedding"))
     llm_cfg = dict(rd.cfg["llm"])

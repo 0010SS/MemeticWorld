@@ -13,6 +13,17 @@ def summarize(run_dir: Path) -> dict | None:
         return None
     a = json.load(open(p))
     man = json.load(open(run_dir / "manifest.json"))
+    if a.get("mode") == "commons":
+        s = a["summary"]
+        return {"run_id": run_dir.name, "mode": "commons", "condition": man["config"].get("run_name"),
+                "seed": man["config"]["seed"], "model": man["config"]["llm"].get("model"),
+                "records_enabled": a["research_design"]["records_enabled"],
+                "change_enabled": a["research_design"]["change_enabled"],
+                "projects_completed": s["projects_completed"], "projects_unfinished": s["projects_unfinished"],
+                "failed_deliveries": s["failed_deliveries"], "record_reads": s["record_reads"],
+                "post_boundary_success": a["phases"]["after_boundary"]["success_per_attempt"],
+                "newcomers_with_success": sum(n["first_success_tick"] is not None for n in a["newcomers"]),
+                "llm_calls": man["stats"]["llm"]["calls"], "llm_errors": man["stats"]["llm"]["errors"]}
     cands = a["candidates"]
     conv = [c for c in cands if c.get("llm", {}).get("is_convention")]
     pool = conv or cands[:3]
@@ -52,6 +63,15 @@ def compare(run_dirs) -> list[dict]:
 
 
 def markdown(rows: list[dict]) -> str:
+    commons = [r for r in rows if r.get("mode") == "commons"]
+    legacy = [r for r in rows if r.get("mode") != "commons"]
+    if commons:
+        cols = ["condition", "seed", "records_enabled", "change_enabled", "projects_completed",
+                "projects_unfinished", "failed_deliveries", "record_reads", "newcomers_with_success",
+                "post_boundary_success"]
+        out = "| " + " | ".join(cols) + " |\n|" + "---|" * len(cols) + "\n"
+        out += "".join("| " + " | ".join(str(r.get(c, "")) for c in cols) + " |\n" for r in commons)
+        return out + ("\n" + markdown(legacy) if legacy else "")
     cols = ["condition", "seed", "model", "events", "conversations", "utterances", "reflections", "candidates", "llm_conventions",
             "max_adoption", "mean_depth", "cross_group_edges", "mean_coherence", "mean_alignment", "mean_lift",
             "n_aligned_p05", "top_expression"]

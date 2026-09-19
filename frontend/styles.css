@@ -94,6 +94,15 @@ details { margin-top: 8px; } summary { cursor: pointer; font-weight: 600; font-s
 mark { background: color-mix(in srgb, var(--series-4) 35%, transparent); color: inherit; border-radius: 3px; padding: 0 2px; }
 .lock { color: var(--muted); font-style: italic; font-size: 12px; }
 
+/* commons */
+.commons-grid { display: grid; grid-template-columns: minmax(0, 2fr) minmax(260px, 1fr); gap: 12px; }
+.table-scroll { overflow-x: auto; }
+#worldScrub { flex: 1; min-width: 160px; }
+.record-history { padding: 8px 0; border-top: 1px solid var(--border); }
+.record-history summary span { margin-left: 8px; font-weight: 400; }
+.record-text { white-space: pre-wrap; overflow-wrap: anywhere; margin: 6px 0; }
+@media (max-width: 850px) { .commons-grid { grid-template-columns: 1fr; } }
+
 /* trace */
 .trace-search { max-width: 900px; } #traceQuery { width: 100%; margin: 6px 0; padding: 6px 8px; }
 .chain { margin-top: 12px; }

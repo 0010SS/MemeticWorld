@@ -39,6 +39,7 @@ from backend.memory.reflection import reflect, should_reflect
 from backend.memory.store import MemoryMeta, SimMemoryMeta
 from backend.modules.base import build_modules
 from backend.simulation import latent_events as LE
+from backend.simulation.commons import CommonsWorld
 from backend.simulation.scheduler import next_entry, plan_day, routine_position
 from backend.simulation.world import (ARENAS, HOMEWOOD_LABELS, MAP_POS, WORLD_GRAPH, Clock,
                                       default_arena, shortest_path)
@@ -61,7 +62,14 @@ def _seed_rng(*parts) -> np.random.Generator:
 class Simulation:
     def __init__(self, cfg: dict, run_dir: Path, replay_from: Path | None = None, progress=True):
         self.cfg = cfg
+        mode_name = cfg.get("world", {}).get("mode", "latent_events")
+        if mode_name not in ("latent_events", "commons"):
+            raise ValueError(f"Unknown world mode: {mode_name}")
+        if mode_name == "commons" and any(cfg.get("modules", {}).values()):
+            raise ValueError("Commons experiments currently require optional cognition modules to be disabled")
         self.run_dir = Path(run_dir)
+        if any((self.run_dir / name).exists() for name in ("manifest.json", "trace.jsonl", "llm_calls.jsonl")):
+            raise FileExistsError(f"Run directory already contains a recording: {self.run_dir}. Choose a new output directory.")
         self.run_dir.mkdir(parents=True, exist_ok=True)
         self.progress = progress
         yaml.safe_dump(cfg, open(self.run_dir / "config.resolved.yaml", "w"), sort_keys=False)
@@ -71,7 +79,8 @@ class Simulation:
         mode = "replay" if replay_from else "record"
         self.llm = LLMClient(backend, self.run_dir / "llm_calls.jsonl", mode=mode,
                              replay_path=Path(replay_from) if replay_from else None,
-                             fallback=None if mode == "replay" and cfg["llm"]["backend"] != "mock" else backend)
+                             fallback=None if mode_name == "commons" or (mode == "replay" and cfg["llm"]["backend"] != "mock") else backend,
+                             raise_on_error=mode_name == "commons")
         self.embed = make_embedder(cfg.get("embedding"))
         ga_compat.load(self.llm, self.embed)
         self.meta = SimMemoryMeta()
@@ -87,6 +96,9 @@ class Simulation:
         for a in self.ctx.agents.values():
             a.mods = self.ctx.mods
         self.agents = self.ctx.agents
+        self.commons = (CommonsWorld({**cfg.get("commons", {}), "seed": cfg["seed"]},
+                                    {aid: a.name for aid, a in self.agents.items()}, self.clock.ticks_per_day)
+                        if mode_name == "commons" else None)
         self.events: list[LE.EventInstance] = []
         self.pending_obs: dict[str, list[AgentObservation]] = {}
         self.overrides: dict[str, dict] = {}      # agent -> {"until": tick, pos...}
@@ -131,7 +143,8 @@ class Simulation:
             "ticks": self.clock.total_ticks, "ticks_per_day": self.clock.ticks_per_day,
             "tick_minutes": self.clock.tick_minutes,
             "start": self.clock.time_of(0).isoformat(),
-            "world": {"graph": WORLD_GRAPH, "arenas": ARENAS, "labels": HOMEWOOD_LABELS, "map_pos": MAP_POS},
+            "world": {"mode": self.cfg.get("world", {}).get("mode", "latent_events"),
+                      "graph": WORLD_GRAPH, "arenas": ARENAS, "labels": HOMEWOOD_LABELS, "map_pos": MAP_POS},
             "agents": {aid: a.profile.to_public_dict() for aid, a in self.agents.items()},
             "groups": self.groups,
             "latent_types": LE.LATENT_TYPES,
@@ -139,6 +152,17 @@ class Simulation:
             "ga_upstream": "joonspk-research/generative_agents@fe05a71",
             "stats": {**self.stats, "llm": self.llm.stats},
         }
+        if self.commons:
+            man.pop("latent_types")
+            man["research_design"] = {
+                "primary_question": "RQ2: How do shared records affect continuity and adaptation?",
+                "records_enabled": self.commons.records_enabled,
+                "change_enabled": self.commons.change_enabled,
+                "change_tick": self.commons.change_tick, "turnover_tick": self.commons.turnover_tick,
+                "schema_version": self.commons.schema_version,
+                "semantic_change_claim": False,
+                "active_agents": self.commons.active_ids(),
+            }
         if extra:
             man.update(extra)
         json.dump(man, open(self.run_dir / "manifest.json", "w"), indent=1, default=str)
@@ -456,11 +480,27 @@ class Simulation:
                               "conversation_id": u["conversation_id"]} for u in self.tick_utts],
               "beats": [{"event_id": e.id, "latent_type": e.latent_type, "location": b["location"],
                          "arena": b["arena"], "facts": [f["text"] for f in b["facts"]]} for e, b in beats]}
+        if self.commons:
+            fr["commons"] = self.commons.snapshot()
+            fr["agents"] = {aid: a for aid, a in fr["agents"].items() if self.commons.residents[aid].active}
         self.frames_fh.write(json.dumps(fr) + "\n")
         self.frames_fh.flush()
 
     # ------------------------------------------------------------------- run
     def run(self):
+        if self.commons:
+            from backend.simulation.commons_runtime import CommonsRuntime
+            try:
+                return CommonsRuntime(self).run()
+            except Exception as exc:
+                self.pool.shutdown(wait=True)
+                self.tracer.log("run_failed", error_type=type(exc).__name__, message=str(exc))
+                self.tracer.close()
+                self.frames_fh.close()
+                self.events_fh.close()
+                self.llm.close()
+                self.write_manifest("failed", {"failure": {"type": type(exc).__name__, "message": str(exc)}})
+                raise
         t_start = time.time()
         self.write_manifest("running")
         self._seed_memories()

@@ -332,6 +332,39 @@ chatter alone, and the classifier's false-positive rate for "event-driven" cultu
 
 ## 9. Things the plan asked for that are simplified
 
+**D42. Research-linked commons mode.** A separate `world.mode: commons` adds a pure
+state-transition world with consequential sensor projects, private measurements,
+finite replenished resources, exclusive equipment, multi-tick work and travel,
+explicit local speech, versioned shared records and fresh participant identities.
+The legacy mode remains available. The first factorial design targets RQ2 in the
+research review: shared records crossed with stable/changed operating conditions,
+with matched turnover and release calendars. See
+[the implementation contract](COMMONS_IMPLEMENTATION.md) for question coverage.
+
+**D43. Ground truth and records.** Commons agent input uses an explicit local-view
+allowlist. The correct calibration mapping, experimental schedule and observer
+snapshot never enter prompts. Record contents require an explicit read; available
+catalog metadata and actually encountered text are distinct. Writing or revising a
+record does not change physical law or automatically enforce an instruction.
+
+**D44. Time, conflict resolution and inheritance.** All free agents choose from one
+tick snapshot. Equipment conflicts use seed/tick/actor priority, independent of
+LLM calls and iteration order. Work consumes working-time ticks and survives day
+boundaries. Departures cancel pending operations without refunding consumed
+supplies, drop carried kits at the departure position, and leave records intact.
+New identities start without predecessor memories or relationships. Static traits
+and group opportunities can be matched; this is not a culture-free population.
+
+**D45. Validity and analysis boundary.** Commons provider failures invalidate the
+run, including failures caught by an upstream retry wrapper. Strict replay has no
+mock fallback, and existing recordings cannot be overwritten. The CLI working
+directory is the platform temporary directory rather than a Unix-only path.
+Commons analysis reports descriptive behavior and access, not E1--E4 alignment or
+semantic change. The mock policy is solely a software fixture. Daily snapshots
+are inspection artifacts; no matched-state history-swap or resume claim is made.
+
+The following simplifications refer to the original latent-event mode:
+
 - "Merge similar memories" is merge-into-existing (keep the old wording, raise importance), not an LLM merge.
 - Invitations are probabilistic (D11), not negotiated in dialogue.
 - The LLM surface generator for latent events exists but is untested at scale (off by default).

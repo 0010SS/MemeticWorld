@@ -1,14 +1,25 @@
 # MemeWorld
 
-MemeWorld is a hackathon MVP for a **controlled experiment in meme evolution**, built on top of
+MemeWorld is a research prototype for **cultural transmission and changing interpretations**, built on top of
 [Generative Agents](https://github.com/joonspk-research/generative_agents) (Park et al., 2023).
 
-Eight students live ordinary routines on a Homewood-style campus. The simulator injects hidden, recurring
+There are two world modes. The new **campus commons** connects consequential projects,
+private measurements, local speech, versioned records, participant turnover and changed
+operating conditions. Its first experiment addresses **RQ2: How do shared records affect
+continuity and adaptation?** Four matched configurations cross records/no-records with
+stable/changed conditions. All participants are agents; the interface is an observer.
+
+Read the [implementation and research contract](docs/COMMONS_IMPLEMENTATION.md) for the
+question-to-mechanism mapping, action rules, measures, commands and limitations. The
+[research review](docs/MEMEWORLD_RESEARCH_AND_DESIGN_REVIEW.md) gives the broader proposal.
+Task success and repeated words are not automatically evidence of semantic change.
+
+In the original **latent-event mode**, eight students live ordinary routines on a Homewood-style campus. The simulator injects hidden, recurring
 *latent event structures* that agents never see (a small mistake that cascades, two mistakes that cancel out, an
 independent coincidence, a beneficial failure). Agents perceive fragments of these events, form **lossy symbolic
 memories**, retrieve them stochastically, reflect, and talk.
 
-An external observer then asks: do agents spontaneously invent and converge on expressions that stand for those
+In that original mode, an external observer asks: do agents spontaneously invent and converge on expressions that stand for those
 hidden structures? It also measures how the answer changes when a single selective pressure is changed (memory
 quality, emotion, social reward, prestige, conformity).
 
@@ -45,33 +56,55 @@ through `backend/ga_compat.py`. MemeWorld reuses:
 
 All of GA's OpenAI calls are routed to Claude. Every deviation is logged in **[docs/DECISIONS.md](docs/DECISIONS.md)**.
 
-## Quick start
+## Quick start (Windows CMD)
 
-```bash
-uv venv .venv --python 3.12 && uv pip install --python .venv/bin/python numpy fastapi uvicorn pyyaml pytest anthropic
+```cmd
+uv venv .venv --python 3.12
+uv pip install --python .venv\Scripts\python.exe -r requirements-dev.txt
 
-# offline smoke run (deterministic mock LLM), then analyze it
-.venv/bin/python -m backend.cli run --config configs/smoke.yaml --out runs/smoke --analyze
+REM Offline commons run and descriptive research measures
+.venv\Scripts\python.exe -X utf8 -m backend.cli run --config configs\commons_smoke.yaml --analyze
 
-# real run: Claude Haiku via the local `claude` CLI (or set llm.backend=anthropic with ANTHROPIC_API_KEY)
-.venv/bin/python -m backend.cli run --config configs/baseline.yaml --analyze
+REM Original latent-event smoke run
+.venv\Scripts\python.exe -X utf8 -m backend.cli run --config configs\smoke.yaml --analyze
 
-# all experimental modes, same seed
-scripts/run_experiments.sh 42 5
+REM Observer interface at http://127.0.0.1:8765
+.venv\Scripts\python.exe -X utf8 -m backend.cli serve
+```
 
-# deterministic replay from recorded LLM outputs (verifies the trace hash)
-.venv/bin/python -m backend.cli replay runs/<run_id>
+In another CMD window, run tests or replay a recording. Replace `YOUR_RUN_ID` with
+the run directory printed by the run command. Existing recordings are never overwritten.
 
-# UI: http://127.0.0.1:8765
-.venv/bin/python -m backend.cli serve
+```cmd
+.venv\Scripts\python.exe -X utf8 -m pytest -q tests
+.venv\Scripts\python.exe -X utf8 -m backend.cli replay runs\YOUR_RUN_ID
+```
 
-# tests
-.venv/bin/python -m pytest -q tests
+For an actual model run, `commons.yaml` uses the configured, locally authenticated
+Claude CLI. The mock is a hand-written software test policy and supplies no research
+evidence about language-model culture.
+
+```cmd
+.venv\Scripts\python.exe -X utf8 -m backend.cli run --config configs\commons.yaml --analyze
 ```
 
 Any config value can be overridden with `--set`, e.g. `--set memory.encoding_noise=0.6 simulation_days=2`.
 
 ## Experimental modes (they differ only in config)
+
+The commons configurations use `world.mode: commons`. Their shared base fixes the
+population, resources, project calendar, turnover on day 3 and comparison boundary
+on day 5. Each condition runs eight working days by default.
+
+| Config | Shared records | Outdoor conditions change |
+|---|---|---|
+| `commons.yaml` | Yes | Yes |
+| `commons_records_stable.yaml` | Yes | No |
+| `commons_no_records_change.yaml` | No | Yes |
+| `commons_no_records_stable.yaml` | No | No |
+| `commons_smoke.yaml` | Yes | Yes; shortened offline software exercise |
+
+The following configurations retain the original latent-event world:
 
 | Config | Change relative to `default.yaml` |
 |---|---|
@@ -97,6 +130,12 @@ Prestige and conformity are available as `modules.prestige_bias` and `modules.co
 | `agents_final/<id>/associative_memory/` | final memory streams in upstream GA format |
 | `analysis.json`, `analysis_llm_calls.jsonl` | observer output |
 
+Commons runs additionally write `commons_events.jsonl`, `commons_final.json`, and
+daily `checkpoints/tick-*/` containing world and personal-memory snapshots. These are
+inspection snapshots, not a resume API. Replay re-executes the recording from its
+beginning. Commons analysis is deterministic and does not produce observer LLM calls
+or use the original four-family meaning probes.
+
 ## UI
 
 **Campus**
@@ -112,6 +151,15 @@ Prestige and conformity are available as `modules.prestige_bias` and `modules.co
 - convention cards, adoption over time, a propagation network (confidence-weighted, with cross-group edges
   marked), lexical lineage, meaning over time, private agent interpretations, and a latent-event correspondence
   panel (debug only)
+
+**World (commons runs)**
+- a synchronized timeline of projects, kit custody, calibration, supplies and active work
+- complete record versions with authorship and time-filtered read histories
+- newcomer membership and persistent work across working days
+
+For commons runs, the Culture page shows **Inheritance and adaptation**: task outcomes
+before and after the common boundary, newcomer participation, record access, and the
+implemented coverage of RQ1--RQ4. It explicitly marks semantic change as unevaluated.
 
 **Trace**
 - search utterances and expand the chain: world event → observation → memory → retrieval → utterance → listener

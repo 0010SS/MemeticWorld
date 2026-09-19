@@ -11,6 +11,7 @@
   <div class="brand">MemeWorld <span class="sub">controlled meme-evolution simulator</span></div>
   <nav class="tabs" role="tablist">
     <button class="tab active" data-view="campus">Campus</button>
+    <button class="tab" data-view="world" id="worldTab" hidden>World</button>
     <button class="tab" data-view="culture">Culture</button>
     <button class="tab" data-view="trace">Trace</button>
     <button class="tab" data-view="runs">Runs</button>
@@ -58,12 +59,29 @@
     </div>
   </section>
 
+  <section id="view-world" class="view">
+    <h2>Campus commons</h2>
+    <p class="muted">Projects, equipment and shared records at the selected time. Agents receive their own local observations.</p>
+    <div class="timeline">
+      <button id="worldBack" aria-label="Previous world tick">←</button>
+      <input id="worldScrub" type="range" min="0" max="0" value="0" aria-label="World timeline">
+      <button id="worldFwd" aria-label="Next world tick">→</button>
+      <span id="worldClock"></span>
+    </div>
+    <div id="worldSummary" class="summary-row"></div>
+    <div class="commons-grid">
+      <div class="panel table-scroll"><h3>Projects and equipment</h3><div id="worldProjects"></div></div>
+      <div class="panel"><h3>Current activity</h3><div id="worldActivity"></div></div>
+    </div>
+    <div class="panel"><h3>Shared archive</h3><div id="worldRecords"></div></div>
+  </section>
+
   <!-- CULTURE -------------------------------------------------------------->
   <section id="view-culture" class="view">
     <div class="culture-head">
       <div>
-        <h2>Emerging cultural conventions</h2>
-        <p class="muted small">Detected by the external observer only (n-gram statistics + variant grouping + LLM classifier). Nothing on this page is ever shown to agents.</p>
+        <h2 id="cultureHeading">Emerging cultural conventions</h2>
+        <p class="muted small" id="cultureDescription">Detected by the external observer only (n-gram statistics + variant grouping + LLM classifier). Nothing on this page is ever shown to agents.</p>
       </div>
       <div class="filters">
         <label class="switch"><input type="checkbox" id="onlyConv" checked> <span>LLM-classified conventions first</span></label>
@@ -92,13 +110,13 @@
     <div class="launch panel">
       <h3>Launch a new run</h3>
       <label class="field">Config <select id="cfgSelect"></select></label>
-      <label class="field">Days <input id="cfgDays" type="number" min="1" max="7" value="1"></label>
+      <label class="field">Days <input id="cfgDays" type="number" min="1" max="365" placeholder="From config"></label>
       <label class="field">LLM <select id="cfgBackend"><option value="mock">mock (offline)</option><option value="claude_cli">claude CLI</option><option value="anthropic">Anthropic API</option></select></label>
       <button id="btnLaunch" class="pill">Launch</button>
       <span id="launchMsg" class="muted small"></span>
     </div>
     <table class="table" id="runsTable"></table>
-    <h2 style="margin-top:18px">Condition comparison <span class="muted small">(analyzed runs; conventions = LLM-classified, else top-3 candidates)</span></h2>
+    <h2 style="margin-top:18px">Condition comparison <span class="muted small">(descriptive results from analyzed runs)</span></h2>
     <div class="panel"><table class="table" id="compareTable"></table></div>
   </section>
 </main>

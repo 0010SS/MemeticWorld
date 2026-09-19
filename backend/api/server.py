@@ -26,7 +26,7 @@ app = FastAPI(title="MemeWorld")
 
 HIDDEN_KEYS = {"latent_type", "latent_types", "scenario", "narrative", "holdout", "latent_distribution",
                "best_type", "originating_event_ids", "retrieved_event_ids", "event_id", "latent_type_base_rates",
-               "evaluation", "roles", "generator"}
+               "evaluation", "roles", "generator", "research", "bench_mode"}
 
 
 def _strip(obj):

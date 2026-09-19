@@ -1,0 +1,26 @@
+# RQ2 baseline: records + changed conditions, with fixed participant turnover.
+# Other factorial cells extend this file and change one treatment only.
+run_name: commons_records_change
+world:
+  mode: commons
+simulation_days: 8
+day_start: "09:00"
+day_end: "15:00"
+tick_minutes: 15
+latent_events:
+  event_rate: 0
+analysis:
+  probes: false
+  llm_classifier: false
+commons:
+  records_enabled: true
+  change_enabled: true
+  turnover_day: 3
+  change_day: 5
+  initial_components: 16
+  initial_test_supplies: 24
+  daily_components: 8
+  daily_test_supplies: 16
+  newcomers:
+    - {id: riley, name: Riley Morgan, replaces: maya}
+    - {id: alex, name: Alex Rivera, replaces: ethan}

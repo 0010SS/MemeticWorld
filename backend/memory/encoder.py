@@ -26,7 +26,7 @@ ga = ga_compat.load()
 PROMPT_DIR = ga_compat.REPO_ROOT / "backend" / "prompts"
 
 VERB = {"perception": "saw", "conversation": "heard in a conversation",
-        "overheard": "overheard", "self": "did"}
+        "overheard": "overheard", "self": "did", "record": "read in an attributed record"}
 
 
 def fidelity_instruction(noise: float, first: str) -> str:
@@ -113,7 +113,7 @@ def encode(agent, obs, rng) -> object | None:
         if not text or text.startswith("LLM_ERROR"):
             text = f"{agent.name} {VERB[obs.source_type]}: " + " ".join(f["text"] for f in facts)
         text = " ".join(text.split())[:600]
-    kind = "event" if obs.source_type == "perception" else "chat"
+    kind = "event" if obs.source_type in ("perception", "record", "self") else "chat"
     importance = ga_prompts.poignancy(agent, text, "chat" if kind == "chat" else "event")
     salience = max(f["salience"] for f in facts)
     draft = {"text": text, "importance": importance, "salience": salience, "source_type": obs.source_type,

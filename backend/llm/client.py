@@ -16,6 +16,7 @@ import hashlib
 import json
 import os
 import subprocess
+import tempfile
 import threading
 import time
 from pathlib import Path
@@ -63,6 +64,10 @@ class ReplayMiss(RuntimeError):
     pass
 
 
+class ProviderFailure(RuntimeError):
+    """A provider failure must not be interpreted as an in-world statement."""
+
+
 class Backend:
     name = "base"
 
@@ -94,7 +99,7 @@ class ClaudeCLIBackend(Backend):
         for attempt in range(4):
             try:
                 p = subprocess.run(cmd, input=prompt, capture_output=True, text=True,
-                                   timeout=self.timeout, cwd="/tmp")
+                                   encoding="utf-8", timeout=self.timeout, cwd=tempfile.gettempdir())
                 data = json.loads(p.stdout)
                 if data.get("is_error"):
                     raise RuntimeError(str(data.get("result"))[:300])
@@ -125,7 +130,7 @@ class AnthropicBackend(Backend):
 class LLMClient:
     def __init__(self, backend: Backend, cache_path: Path, mode: str = "record",
                  replay_path: Optional[Path] = None, fallback: Optional[Backend] = None,
-                 on_call: Optional[Callable[[dict], None]] = None):
+                 on_call: Optional[Callable[[dict], None]] = None, raise_on_error: bool = False):
         """mode: 'record' (call backend, store), 'replay' (read only from replay_path)."""
         self.backend = backend
         self.mode = mode
@@ -136,11 +141,14 @@ class LLMClient:
         self._replay: dict[str, str] = {}
         self.on_call = on_call
         self.fallback = fallback
+        self.raise_on_error = raise_on_error
         self.stats = {"calls": 0, "cached": 0, "errors": 0, "seconds": 0.0}
         if replay_path:
             with open(replay_path) as f:
                 for line in f:
                     rec = json.loads(line)
+                    if raise_on_error and (rec.get("error") or rec.get("response", "").startswith("LLM_ERROR")):
+                        raise ProviderFailure("Cannot replay a recording containing provider errors")
                     self._replay[rec["key"]] = rec["response"]
         self._fh = open(self.cache_path, "a")
 
@@ -171,11 +179,14 @@ class LLMClient:
         key = f"{scope}|{ph}|{n}"
         t0 = time.time()
         cached = False
+        error = None
         if key in self._replay:
             text = self._replay[key]
             cached = True
         elif self.mode == "replay":
             if self.fallback is None:
+                with self._lock:
+                    self.stats["errors"] += 1
                 raise ReplayMiss(key)
             text = self.fallback.generate(prompt, system, max_tokens, temperature)
         else:
@@ -184,7 +195,8 @@ class LLMClient:
             except Exception as e:  # noqa: BLE001
                 with self._lock:
                     self.stats["errors"] += 1
-                text = f"LLM_ERROR: {e}"
+                error = f"{type(e).__name__}: {e}"
+                text = "" if self.raise_on_error else f"LLM_ERROR: {e}"
         if stop:
             for s in stop:
                 if s and s in text:
@@ -193,6 +205,8 @@ class LLMClient:
         rec = {"key": key, "scope": scope, "purpose": purpose, "agent": current_agent(),
                "model": model, "system": system, "prompt": prompt, "response": text,
                "cached": cached, "seconds": round(dt, 3)}
+        if error:
+            rec["error"] = error
         with self._lock:
             self.stats["calls"] += 1
             self.stats["cached"] += int(cached)
@@ -201,6 +215,8 @@ class LLMClient:
             self._fh.flush()
         if self.on_call:
             self.on_call(rec)
+        if error and self.raise_on_error:
+            raise ProviderFailure(error)
         return text
 
 
