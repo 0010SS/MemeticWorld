@@ -29,15 +29,20 @@ exchanges, more than people who use it without having heard it. Per candidate:
 - in_system_text: the phrase is SYSTEM wording (wording.Infrastructure: relationship lines, routines, seed and
   ambient memories, memory frames, profile text ...; candidates.py flags it as c["wording"]["system"]).
 
+- in_register: the phrase is the ACTOR MODEL's own wording, not this campus's: several speakers use it in
+  other, independent runs too (register.Background, leave-one-out). One LLM writes every agent, so its
+  stock phrases ("coffee sounds great", "juggling a lot", "conditional probability") spread across every
+  run by construction. Population-wide style is the null hypothesis, not culture.
+
 spread = n_adopters_carried >= 2 and n_adopters_carried > n_independent;
-emerged = spread and not in_lexicon and not in_world_text and not in_system_text.
+emerged = spread and not in_lexicon and not in_world_text and not in_system_text and not in_register.
 """
 from __future__ import annotations
 
 import math
 import re
 
-from backend.analysis.candidates import STOP, tokens
+from backend.analysis.candidates import STOP, tokens, zipf
 from backend.analysis.rundata import chron_key, precedes, utterance_key
 
 
@@ -168,6 +173,43 @@ def world_match(phrase: list[str], segments: list[list[str]], max_gap: int = WOR
     return None
 
 
+#: an incident label: "<event noun> + situation/thing/mess" only re-labels the event, it coins nothing.
+#: A label counts as its own expression when it brings in a content word the event never used
+#: ("inbox apocalypse"), not when it just renames the event's own noun ("backpack situation").
+LABEL_HEADS = {"situation", "thing", "things", "stuff", "mess", "incident", "business", "saga", "deal", "story",
+               "whole thing", "affair", "episode", "matter"}
+WORLD_MIN_LEMMAS = 2
+WORLD_COMMON_ZIPF = 5.2      # a shared lemma this common ("time", "work") is not evidence of retelling
+
+
+def world_lemma_match(phrase: list[str], segments: list[list[str]], names=frozenset()) -> str | None:
+    """"lemmas" when the phrase is a PARAPHRASE of one world text: it shares all, or at least
+    WORLD_MIN_LEMMAS, of its content lemmas with a single event fact ("soaked by the sprinklers" <-
+    "stepped into the sprinklers and soaked their shoes"), or it is an incident label built on that
+    event's own words ("backpack situation"). The verbatim/gapped test only catches the wording the world
+    actually used, so the same incident is otherwise re-listed under a handful of near-synonyms."""
+    from backend.analysis.wording import content_lemmas, lemma_bag
+    toks = [t for t in phrase if t]
+    if not toks:
+        return None
+    label = toks[-1] in LABEL_HEADS
+    body = toks[:-1] if label else toks
+    want = content_lemmas(body, names)
+    if not want or (not label and len(want) < WORLD_MIN_LEMMAS):
+        return None
+    for seg in segments:
+        bag = lemma_bag(seg, names)
+        shared = [s for s in want if s & bag]
+        if label:
+            if len(shared) == len(want):
+                return "lemmas"
+            continue
+        rare = [s for s in shared if min((zipf(x) for x in s), default=9.0) < WORLD_COMMON_ZIPF]
+        if len(shared) >= WORLD_MIN_LEMMAS and rare and len(shared) >= 0.6 * len(want):
+            return "lemmas"
+    return None
+
+
 def lexicon_flag(phrase: str, vocab: set, names: set) -> bool:
     """Every content word is population vocabulary. A phrase with no content word left (a nickname construction
     such as "the leo thing": stop words and a name) is not lexicon wording."""
@@ -176,13 +218,15 @@ def lexicon_flag(phrase: str, vocab: set, names: set) -> bool:
 
 
 def emergence_for(usages: list[dict], population: list[str], *, in_lexicon: bool = False,
-                  in_world_text: bool = False, in_system_text: bool = False) -> dict:
-    """usages: [{"utterance_id", "tick", "speaker", "listeners", "conversation_id", "idx"?}]."""
+                  in_world_text: bool = False, in_system_text: bool = False, in_register: bool = False) -> dict:
+    """usages: [{"utterance_id", "tick", "speaker", "listeners", "conversation_id", "idx"?}].
+    `in_register`: the actor model says this everywhere (register.Background), so several speakers using it
+    is the null hypothesis, not emergence."""
     us = sorted(usages, key=chron_key)
     if not us:
         return {"emerged": False, "spread": False, "n_adopters": 0, "n_adopters_carried": 0, "n_echo_only": 0,
                 "n_independent": 0, "n_exposed": 0, "in_lexicon": in_lexicon, "in_world_text": in_world_text,
-                "in_system_text": in_system_text}
+                "in_system_text": in_system_text, "in_register": in_register}
     orig = us[0]["speaker"]
     uses: dict[str, list] = {}
     heard: dict[str, list] = {}
@@ -216,8 +260,9 @@ def emergence_for(usages: list[dict], population: list[str], *, in_lexicon: bool
             "carried_rate": round(nc / n_exp, 3) if n_exp else None,
             "independent_rate": round(ni / n_unexp, 3) if n_unexp else None,
             "fisher_p": round(p, 5), "in_lexicon": in_lexicon, "in_world_text": in_world_text,
-            "in_system_text": in_system_text,
-            "spread": spread, "emerged": spread and not in_lexicon and not in_world_text and not in_system_text,
+            "in_system_text": in_system_text, "in_register": in_register,
+            "spread": spread,
+            "emerged": spread and not in_lexicon and not in_world_text and not in_system_text and not in_register,
             "adopters": sorted(adopters), "carried_adopters": sorted(carried), "independents": sorted(independents),
             "first_exposure_tick": first_exp}
 
@@ -242,9 +287,10 @@ def analyze_emergence(cands: list[dict], rd) -> dict:
     for c in cands:
         usages = [dict(u, idx=(rd.utt_by_id.get(u["utterance_id"]) or {}).get("idx", 0)) for u in c["usages"]]
         toks = tokens(c["canonical_form"])
-        wm = world_match(toks, segs, normed=normed)
+        wm = world_match(toks, segs, normed=normed) or world_lemma_match(toks, segs, names=names)
         system = bool((c.get("wording") or {}).get("system") or (c.get("features") or {}).get("system_wording"))
+        register = bool((c.get("register") or {}).get("ordinary") or (c.get("features") or {}).get("ordinary_register"))
         out[c["id"]] = emergence_for(usages, pop, in_lexicon=lexicon_flag(" ".join(toks), vocab["tokens"], names),
-                                     in_world_text=wm is not None, in_system_text=system)
+                                     in_world_text=wm is not None, in_system_text=system, in_register=register)
         out[c["id"]].update(phrase=c["canonical_form"], world_match=wm)
     return out

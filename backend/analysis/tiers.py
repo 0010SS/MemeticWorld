@@ -18,6 +18,12 @@
   and it is not the planted control (the planted phrase can reach the tier only as the control: `control`
   is set on it and it is never counted among conventions).
 `tier_reasons` says why an expression stopped where it did (e.g. ["system_wording"], ["no_real_judge"]).
+
+`ordinary` (register.Background) stops an expression at "candidate" the same way wording does: a phrase
+several speakers also use in other, independent runs is the actor model's own register, so it is everyone's
+language and cannot be this campus's convention -- the judge is not asked to be the backstop for that.
+`bucket` (candidates.bucket_of) is the matching split of the ranked pool: expression > personal > ordinary
+> wording, so the top of the list can only hold things that could be culture.
 """
 from __future__ import annotations
 
@@ -28,10 +34,13 @@ TIERS = ("candidate", "spreading", "convention")
 NO_REAL_JUDGE = "no real judge has run"
 
 
-def classify_status(em: dict, *, world: bool, planted: bool, system: bool = False) -> tuple[str, list[str]]:
-    """(status, flags). The dynamic chip: emerged (spread, not world/system wording) > spreading (>= 1 carried
-    adopter) > echo (adopters, none carried) > new."""
-    if em.get("spread") and not world and not system:
+def classify_status(em: dict, *, world: bool, planted: bool, system: bool = False,
+                    ordinary: bool = False) -> tuple[str, list[str]]:
+    """(status, flags). The dynamic chip: emerged (spread, not world/system wording and not the actor
+    model's own register) > spreading (>= 1 carried adopter) > echo (adopters, none carried) > new.
+    `ordinary` also adds the "ordinary" chip to `flags` (it is not a status of its own, so the UI's seven
+    status chips are unchanged)."""
+    if em.get("spread") and not world and not system and not ordinary:
         dyn = "emerged"
     elif (em.get("n_adopters_carried") or 0) >= 1:
         dyn = "spreading"
@@ -40,19 +49,23 @@ def classify_status(em: dict, *, world: bool, planted: bool, system: bool = Fals
     else:
         dyn = "new"
     flags = (["planted"] if planted else []) + (["system_wording"] if system else []) + \
-            (["world_wording"] if world else []) + [dyn]
+            (["world_wording"] if world else []) + [dyn] + (["ordinary"] if ordinary and not planted else [])
     return flags[0], flags
 
 
 def tier_of(em: dict, *, system: bool, world: bool, planted: bool, verdict: dict | None = None,
-            placeholder: dict | None = None) -> tuple[str, list[str]]:
+            placeholder: dict | None = None, ordinary: bool = False) -> tuple[str, list[str]]:
     """(tier, reasons). `verdict`: the newest REAL judge verdict for the expression (or None); `placeholder`:
-    a mock verdict, recorded only to say why there is no real one."""
+    a mock verdict, recorded only to say why there is no real one. `ordinary`: the expression is the actor
+    model's own register or a stock formula (register.Background) -- everyone's language, so it stops at
+    "candidate" whatever a judge says about it."""
     stop = []
     if system:
         stop.append("system_wording")
     if world:
         stop.append("world_wording")
+    if ordinary and not planted:
+        stop.append("model_register")
     if (em.get("n_adopters_carried") or 0) < 1:
         stop.append("no_carried_adopter")
     if stop:

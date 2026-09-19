@@ -797,6 +797,73 @@ been calling the `claude` CLI. The UI card keeps the lifecycle in `card.status`.
 without a real verdict, and true only for the convention tier. Per-run top-25 lists on the real runs are in
 `runs/test_candidate_quality/`.
 
+**D-proposed (observer; same number as the previous entry): the list was still not culture.** A review of all
+300 top-25 rows of the twelve archived real runs found the old `remembers that Sofia` junk gone, but what
+replaced it was course vocabulary, the actor model's small talk, and paraphrases of routines and events:
+roughly 4% of the rows were genuine local expressions, and both expressions a real judge had ever accepted
+(`frisbee analogy`, `forty-seven steps`) had fallen outside the top 25. Twelve further changes:
+(1) *Units, not windows* (`candidates.not_a_unit`). An n-gram whose occurrences are followed by the same
+content word ≥ 75% of the time is a truncation (`coffee sounds` ← "coffee sounds great"), and one preceded by
+the same non-determiner function word ≥ 80% of the time is a collocation stub (`least you caught` ← "at least
+you caught"). A following preposition or copula does not count (the tray return *to* my table is a unit), and
+fewer than three occurrences say nothing. n now runs to 5, so a coined label is published whole ("The
+Brooks-Chen Cookie Experiment", not "the brooks-chen cookie").
+(2) *System wording on a content-lemma bag* (`Infrastructure.bag_match`). Matching strings let every
+paraphrase through; the bag matches when all of a candidate's content lemmas sit in one system segment, with
+inflections folded and clipped forms expanded (econ → economics, ml → machine learning, meetup → meet up). A
+one-content-word candidate matches only routine/profile/place/NPC/co-op segments.
+(3) *World wording on event lemmas* (`emergence.world_lemma_match`). A paraphrase sharing ≥ 2 content lemmas
+(one of them not ultra-common) with a single event fact is world wording, and so is an incident label built
+on the event's own noun (`backpack situation`); a label that brings a word of its own does not match
+(`inbox apocalypse`). `live.mark_incident_talk` then collapses the rest: expressions whose uses (≥ 75%) all
+link to one referent event keep one representative, the others are flagged `incident_talk`. Coinages
+(meta-marked, quoted, novel, or with high collocation surprise) are never collapsed.
+(4) *The actor model's register is the null hypothesis* (new `backend/analysis/register.py` +
+`data/register_background.json`). One LLM writes every agent, so its stock wording spreads in every run by
+construction. The table holds the n-grams of the twelve archived runs in two layers (≥ 2 speakers, and merely
+present), looked up **leave-one-out** so a run never counts towards its own background. A phrase two other
+runs share with several speakers, or three other runs contain at all, plus a short stop-list of openers and
+closers, is `ordinary`: it can never be `emerged` and never reaches the convention tier (`in_register`,
+`tiers.classify_status(ordinary=)`, `tier_of(ordinary=)`). This is what keeps `conditional probability`,
+`coffee sounds`, `juggling` and `lifesaver` out; measured on the corpus, every reviewer-identified genuine
+coinage has background 0.
+(5) *Ranking by collocation surprise, not word rarity.* The old prior multiplied by (5.5 − mean word Zipf),
+which gave technical single words the ceiling and cut coinages of everyday words to 0.2× (`style points` was
+not even in the 60-item pool). `CandidateExtractor.surprise` scores the combination — the phrase's rate in
+the run against the product of its words' general-English rates — shrunk towards no-information below six
+occurrences. Novelty is judged on the LEMMA (`memorizing`, `napkins`, `recopied` are ordinary words; the old
+test asked /usr/share/dict/words, which has no inflected forms, so half the vocabulary got the bonus).
+Metalinguistic marking (quoted, or a ratification in the same or the next turn: "is sending me", "we're
+calling it", "I'm stealing that") and use across conversations add explicit boosts; `live.record` then
+multiplies by the run's own transmission evidence (carried adopters).
+(6) *Word classes.* Added: deictic time tails (earlier/lately/recently/…); spelled-out quantities and measure
+phrases (`fifteen minutes`, `sixty bucks`) while an idiosyncratic exact number stays (`forty-seven steps`);
+clauses with a finite copula or modal inside (`pasta is decent`); personal (non-possessive) pronouns
+(`giving you the most trouble`); elongations (`pfff`). Recovered: the label construction `<content> thing`
+(`the autopilot thing`, `Maya's frisbee thing`) — the most productive local-referent frame in the corpus,
+previously killed because `thing` is a stop word; an evaluative adjective opening a longer coinage (`great
+coffee catastrophe`); nickname forms with a head noun (`classic Ethan move`, `the Brooks-Chen cookie
+experiment`); `-y` inflections fold before the rarity test (`funniest` → funny). `wording.run_names` no
+longer takes NPC descriptor phrases ("a lab technician") as person names — they are `npc` system wording, so
+`lab slot` and `dorm room` stop being rejected as names.
+(7) *Grouping.* Lemma-identical forms and single-word morphological variants merge unconditionally (the old
+rule demanded 30% shared utterances, which disjoint conversations never have). Everything else needs a shared
+head plus shared content and half the uses of the bigger variant, measured against that variant rather than
+the growing group — so a shared modifier cannot fuse `hike sounds` + `coffee sounds` + `sounds perfect`, and
+a containment chain cannot swallow half a run. The canonical form is the best-scoring variant that is NOT
+system wording, the group's score is its BEST variant (productive variation is evidence a coinage is alive,
+not a reason to average it down), and its wording flags come from the share of USES that match — so junk
+cannot hide inside a clean group, and one routine-wording variant can no longer rename and disqualify a
+genuine one (which is what buried `frisbee analogy` inside `frisbee at the quad`).
+(8) *Buckets* (`candidates.bucket_of`, `snapshot.bucket_counts`). The pool is ordered by bucket first:
+`expression` (could be culture) > `personal` (one speaker, or one exchange with no marking) > `ordinary`
+(model register) > `wording` (system or world). Nothing leaves the pool and no count changes; only the order
+does, so the head of the list the UI calls culture holds only candidates for culture. The seven status chips
+and the three tiers are unchanged; `ordinary` is an extra chip in `flags` and a `tier_reasons` stop.
+Measured on the twelve runs: genuine local expressions in the top 10 rose from ~4% to ~16%, no system- or
+world-wording row is left in any run's top 10, and both judge-confirmed conventions are back (`forty-seven
+steps` #1, `frisbee analogy` #7).
+
 ## 9. Things the plan asked for that are simplified
 
 - "Merge similar memories" is merge-into-existing (keep the old wording, raise importance), not an LLM merge.

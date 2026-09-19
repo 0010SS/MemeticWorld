@@ -13,6 +13,7 @@
 import json
 import os
 import shutil
+from collections import Counter
 from pathlib import Path
 
 import pytest
@@ -156,7 +157,12 @@ def test_demo_mock_run(tmp_path):
 
 # ------------------------------------------------------------------------------------------------ word classes
 @pytest.mark.parametrize("phrase", ["the leo thing", "pulling a maya", "leo-proof", "classic priya", "going full dev",
-                                    "maya-style", "leo'd", "glimmer toast", "forty-seven steps", "running on fumes"])
+                                    "maya-style", "leo'd", "glimmer toast", "forty-seven steps", "running on fumes",
+                                    # review fixes: label frame, evaluative opener, name coinage, possessive
+                                    "the autopilot thing", "frisbee thing", "maya's frisbee thing", "cactus thing",
+                                    "great coffee catastrophe", "classic leo move", "the most priya thing",
+                                    "the chen cookie experiment", "updating your beliefs", "style points",
+                                    "dying fish", "feral grad student", "multiply everything and hope"])
 def test_nickname_constructions_and_coinages_are_kept(phrase):
     wc = WordClasses({"leo", "maya", "priya", "dev", "chen"}, {"dorm"}, set(), {("maya", "chen")})
     toks = phrase.split()
@@ -174,11 +180,41 @@ def test_nickname_constructions_and_coinages_are_kept(phrase):
     ("9am lecture", "number_or_time"), ("room 216", "number_or_time"), ("nine-thirty lecture", "function_word_edge"),
     ("tuesday rush", "function_word_edge"), ("kettle again", "function_word_edge"), ("nooo", "function_word_edge"),
     ("dinner's", "common_unigram"), ("might've", "function_word_edge"), ("deadlines", "common_unigram"),
-    ("kettle they know each", "function_word_edge")])
+    ("kettle they know each", "function_word_edge"),
+    # --- review fixes -------------------------------------------------------------------------------
+    # deictic time tails (pattern: "assays earlier", "hikes sometime", "quad earlier")
+    ("assays earlier", "function_word_edge"), ("hikes sometime", "function_word_edge"),
+    ("kettle lately", "function_word_edge"), ("kettle recently", "function_word_edge"),
+    # spelled-out quantities and measure phrases ("fifteen minutes", "three backpacks", "sixty bucks")
+    ("fifteen minutes", "number_or_time"), ("three backpacks", "number_or_time"), ("sixty bucks", "number_or_time"),
+    ("seven pages", "number_or_time"), ("forty-five minutes", "measure_phrase"),
+    # clause fragments and clauses with a subject ("pasta is decent", "conditional probability can be tricky")
+    ("pasta is decent", "clause_fragment"), ("kettle can be tricky", "clause_fragment"),
+    # personal pronouns: a clause about participants, not a name for something
+    ("giving you the most trouble", "pronoun"), ("least you caught", "pronoun"),
+    ("glad i could help", "clause_fragment"),
+    # elongations are not rare words ("pfff" is not a coinage)
+    ("pfff", "elongation"), ("ughhh", "elongation"),
+    # -y inflections fold to the common lemma before the rarity test ("funniest" -> funny)
+    ("funniest", "common_unigram"), ("trickier", "common_unigram")])
 def test_malformed_phrases_are_rejected(phrase, why):
     wc = WordClasses({"leo", "maya", "chen"}, {"dorm", "room"}, set(), {("maya", "chen")})
     toks = [t.lower() for t in phrase.split()]
     assert wc.reject(toks, raws=[t.capitalize() for t in phrase.split()]) == why
+
+
+def test_npc_descriptors_are_not_person_names():
+    """wording.run_names took an event role holder's "name" whatever it looked like, so NPC descriptors
+    ("a lab technician") made `lab`, `dorm`, `student` person names: "lab slot" died as person_name while
+    "the lab coordinator" passed as a nickname construction."""
+    from backend.analysis.wording import _looks_like_person, role_descriptors
+
+    class _RD:
+        events = {"e0": {"roles": {"S": {"name": "a lab technician"}, "Q": {"name": "Maya Chen"},
+                                   "T": {"name": "a student nobody seemed to know"}}}}
+    assert role_descriptors(_RD()) == {"a lab technician", "a student nobody seemed to know"}
+    assert _looks_like_person("Maya Chen") and _looks_like_person("Leo")
+    assert not _looks_like_person("a lab technician") and not _looks_like_person("a friend from another dorm")
 
 
 def test_ambiguous_names_need_capitals_but_full_names_do_not():
@@ -188,6 +224,105 @@ def test_ambiguous_names_need_capitals_but_full_names_do_not():
     assert wc.reject(["park", "bench"], raws=["park", "bench"]) is None
     assert wc.reject(["miles", "carter"], raws=["miles", "carter"]) == "person_name"
     assert wc.reject(["benji", "park"], raws=["benji", "park"]) == "person_name"
+
+
+def test_system_wording_matches_a_paraphrase_of_a_routine(tmp_path):
+    """Pattern 1: the system-wording test matched strings, so a reordered, nominalised or clipped routine
+    escaped it -- "ml experiments" (the routine "running machine-learning experiments") was a top-5 row in
+    8 of 12 real runs. It is now matched on a bag of content LEMMAS with clipped forms expanded."""
+    d = _synthetic(tmp_path / "syn", routines=["running machine-learning experiments", "doing economics homework",
+                                               "meeting up with the outdoors club"])
+    ex = CandidateExtractor(RunData(d), {})
+    for p in ("ml experiments", "machine learning experiment", "experiments in machine learning",
+              "econ homework", "economics homework", "outdoors club meetup"):
+        assert ex.explain(p)["system_wording"], p
+    for p in ("glimmer toast", "snorkel dance", "purple kettle incident"):
+        assert not ex.explain(p)["system_wording"], p
+
+
+def test_event_paraphrase_and_incident_labels_are_world_wording():
+    """Pattern 2: emergence.world_match is a gapped VERBATIM test, so one incident filled a third of the
+    list under near-synonyms. A paraphrase sharing the fact's content lemmas, and a label built on the
+    event's own noun, are world wording; a label that adds a word of its own is not."""
+    from backend.analysis.emergence import world_lemma_match
+    fact = tokens("Priya grabbed a backpack that looked exactly like theirs and walked off with it")
+    sprinkler = tokens("Ethan stepped into the sprinklers and soaked their shoes")
+    for p in ("grabbed the wrong backpack", "backpack situation", "the whole backpack thing"):
+        assert world_lemma_match(tokens(p), [fact]) == "lemmas", p
+    assert world_lemma_match(tokens("soaked by the sprinklers"), [sprinkler]) == "lemmas"
+    for p in ("inbox apocalypse", "duct tape patch", "glimmer toast", "soggy socks"):
+        assert world_lemma_match(tokens(p), [fact, sprinkler]) is None, p
+
+
+def test_cross_run_register_is_not_local_culture():
+    """Pattern 3: one LLM writes every agent, so its stock phrases are used by 3-6 speakers in EVERY run
+    and scored as spreading culture. A phrase the archived runs also carry is the model's register
+    (leave-one-out, so a run never counts towards its own background) and can never be `emerged`."""
+    from backend.analysis.register import Background
+    bg = Background("event_rich_s42")
+    for p in ("conditional probability", "bayes theorem", "ml experiments", "lifesaver", "fingers crossed",
+              "sounds intense", "mind if i sit"):
+        assert bg.localness([p])["ordinary"], p
+    for p in ("style points", "dying fish", "frisbee analogy", "forty-seven steps", "inbox apocalypse",
+              "grader brain", "foam disaster", "tomorrow-dev"):
+        assert not bg.localness([p])["ordinary"], p
+    # leave-one-out: "backpack situation" is in baseline_s42 and event_rich_s42 (one world, two runs), so
+    # each of them sees a background of 1 while a run outside that pair sees 2
+    assert Background(None).runs_with("backpack situation") == 2
+    assert Background("baseline_s42").runs_with("backpack situation") == 1
+    assert Background("c2_baseline_sonnet_s1").runs_with("backpack situation") == 2
+    em = {"n_adopters_carried": 3, "n_adopters": 3, "spread": True}
+    assert tier_of(em, system=False, world=False, planted=False, ordinary=True,
+                   verdict={"provider": "claude_cli", "model": "sonnet", "is_convention": True}) == \
+        ("candidate", ["model_register"])
+
+
+def test_truncated_spans_and_collocation_stubs_are_not_units(tmp_path):
+    """Patterns 4 and 7: the n-gram window cut inside fixed compounds ("coffee sounds" <- "coffee sounds
+    great", "hyperparameters on the neural" <- "... neural network") and inside collocations ("least you
+    caught" <- "at least you caught"). Boundary entropy drops both; a following preposition or copula does
+    not count as a continuation, so a real unit ("the tray return to my table") survives."""
+    ex = CandidateExtractor(RunData(_synthetic(tmp_path / "syn")), {})
+    def st(occ, right=None, left=None):
+        return {"uses": [f"u{i}" for i in range(occ)], "speakers": {"a", "b"}, "occurrences": occ,
+                "right": Counter(right or {}), "left": Counter(left or {})}
+    assert ex.not_a_unit(("coffee", "sounds"), st(8, {"great": 7, "": 1})) == "truncated_unit"
+    assert ex.not_a_unit(("least", "you", "caught"), st(5, {"": 5}, {"at": 5})) == "collocation_stub"
+    assert ex.not_a_unit(("tray", "return"), st(4, {"to": 4})) is None       # a PP, not a longer compound
+    assert ex.not_a_unit(("glimmer", "toast"), st(2, {"please": 2})) is None  # too few to read the boundary
+    assert ex.not_a_unit(("glimmer", "toast"), st(6, {"please": 2, "": 3, "and": 1})) is None
+
+
+def test_lemma_variants_merge_but_a_shared_modifier_does_not(tmp_path):
+    """Patterns 8 and 10: morphological variants ate separate top-25 slots because grouping asked for
+    30% shared utterances, which disjoint conversations never have; and a shared modifier merged
+    "hike sounds" + "coffee sounds" + "sounds perfect" into one "emerged" group."""
+    ex = CandidateExtractor(RunData(_synthetic(tmp_path / "syn")), {})
+    grp = {"variants": ["timestamps"], "_keys": {ex._key("timestamps")}, "_uses": {"u1"}}
+    assert ex._merges("timestamp", {"uses": ["u9"]}, grp)          # no shared utterance needed
+    assert ex._merges("oversleeping", {"uses": ["u9"]}, {"variants": ["overslept"], "_keys": set(), "_uses": {"u1"}})
+    two = {"variants": ["coffee sounds"], "_keys": set(), "_uses": {"u1", "u2"}}
+    assert not ex._merges("hike sounds", {"uses": ["u1", "u2"]}, two)       # shared head only
+    assert not ex._merges("frisbee analogy", {"uses": ["u1"]}, {"variants": ["frisbee at the quad"],
+                                                               "_keys": set(), "_uses": {"u1"}})
+
+
+def test_score_prefers_a_surprising_combination_over_a_rare_inflection(tmp_path):
+    """Pattern 11: the old prior multiplied by (5.5 - mean word Zipf), so an unrecognised inflection of an
+    ordinary word ("memorizing") got the ceiling while a coinage of everyday words ("style points") was
+    cut to 0.2x and vanished. Ranking now uses the COMBINATION's surprise, and the novelty test runs on
+    the lemma."""
+    from backend.analysis.wording import NOVEL_MAX_ZIPF, lemma_zipf
+    ex = CandidateExtractor(RunData(_synthetic(tmp_path / "syn")), {})
+    ex.totals = Counter({1: 12000, 2: 12000, 3: 12000})
+    def st(uses, ids=None):
+        return {"uses": ids or [f"c{i}.u0" for i in range(uses)], "speakers": {"maya", "leo"},
+                "occurrences": uses, "conversations": {f"c{i}" for i in range(uses)}}
+    assert ex.surprise(("style", "points"), 7) > ex.surprise(("memorizing",), 7)
+    for t in ("memorizing", "napkins", "timestamps", "overslept", "juggling", "decompress"):
+        assert lemma_zipf(t) >= NOVEL_MAX_ZIPF, t          # ordinary words, not coinages
+    for t in ("yeeted", "frabjous", "glimmer"):
+        assert lemma_zipf(t) < NOVEL_MAX_ZIPF + 1.0, t
 
 
 def test_tier_rules_and_placeholder_verdicts():
@@ -211,6 +346,7 @@ def test_tier_rules_and_placeholder_verdicts():
 
 # ------------------------------------------------------------------------------------------------ synthetic run
 NAMES = {"maya": "Maya Chen", "leo": "Leo Martinez", "dev": "Dev Patel", "hana": "Hana Okafor"}
+LUNCH = "lunch at the dining hall"        # the system-wording group's canonical form (routine + place)
 PLANTED = {"agent": "maya", "habit": 'Maya has a habit of calling any mess "a full pickle".'}
 
 
@@ -236,10 +372,11 @@ def _mem(agent, tick, text, source="conversation", n=0):
             "observation": text if source == "ambient" else None, "utterance_ids": []}
 
 
-def _synthetic(d: Path) -> Path:
+def _synthetic(d: Path, routines=()) -> Path:
     d.mkdir(parents=True)
     agents = {a: {"id": a, "name": n, "background": "", "habits": [], "routine": [
-        {"time": "12:00", "location": "Dining Hall", "activity": "eating lunch"}]} for a, n in NAMES.items()}
+        {"time": "12:00", "location": "Dining Hall", "activity": "eating lunch"},
+        *({"time": "09:00", "location": "Lounge", "activity": r} for r in routines)]} for a, n in NAMES.items()}
     man = {"run_id": d.name, "status": "finished", "ticks": 120, "ticks_per_day": 60, "tick_minutes": 15,
            "start": "2026-09-14T07:30:00", "agents": agents, "groups": {}, "config": {},
            "world": {"graph": {"Dorm": [], "Dining Hall": [], "Lounge": []}, "arenas": {"Dorm": ["Room 214"]}},
@@ -327,7 +464,7 @@ def test_coinage_spreads_and_only_a_real_judge_makes_a_convention(tmp_path):
     assert kettle["recited_share"] == 0.5
 
     # a mock judge that says "yes" to everything: still no convention, and the report says no real judge ran
-    _verdict_file(d, "mock", "mock", ["glimmer toast", "snorkel dance", "lunch at the dining", "full pickle"], tick=70)
+    _verdict_file(d, "mock", "mock", ["glimmer toast", "snorkel dance", LUNCH, "full pickle"], tick=70)
     clear_cache()
     s = live_snapshot(d, top=40)
     glim = _find(s["expressions"], "glimmer toast")
@@ -338,7 +475,7 @@ def test_coinage_spreads_and_only_a_real_judge_makes_a_convention(tmp_path):
     assert all(c["tier"] != "convention" for c in rep["cards"])
 
     # a real judge: the emerged coinage becomes a convention; the rest stay where the exposure test puts them
-    _verdict_file(d, "claude_cli", "sonnet", ["glimmer toast", "snorkel dance", "lunch at the dining", "full pickle"], tick=70)
+    _verdict_file(d, "claude_cli", "sonnet", ["glimmer toast", "snorkel dance", LUNCH, "full pickle"], tick=70)
     clear_cache()
     s = live_snapshot(d, top=40)
     glim, snork = _find(s["expressions"], "glimmer toast"), _find(s["expressions"], "snorkel dance")
@@ -375,11 +512,11 @@ def test_pipeline_tiers_and_outcomes(tmp_path):
     real verdict the emerged coinage is, system wording is not, and the planted control is reported apart."""
     from backend.analysis.pipeline import analyze
     d = _synthetic(tmp_path / "syn")
-    _verdict_file(d, "mock", "mock", ["glimmer toast", "lunch at the dining", "full pickle"], tick=70)
+    _verdict_file(d, "mock", "mock", ["glimmer toast", LUNCH, "full pickle"], tick=70)
     out = analyze(d, llm_backend="mock", probes=False, verbose=False)
     assert out["summary"]["n_conventions"] == 0 and out["summary"]["judge_status"] == "mock_only"
     assert json.load(open(d / "outcomes.json"))["n_conventions"] == 0
-    _verdict_file(d, "claude_cli", "sonnet", ["glimmer toast", "lunch at the dining", "full pickle"], tick=70)
+    _verdict_file(d, "claude_cli", "sonnet", ["glimmer toast", LUNCH, "full pickle"], tick=70)
     out = analyze(d, llm_backend="mock", probes=False, verbose=False)
     by = {c["canonical_form"]: c for c in out["candidates"]}
     assert by["glimmer toast"]["tier"] == "convention" and by["glimmer toast"]["card"]["is_convention"] is True
@@ -392,4 +529,7 @@ def test_pipeline_tiers_and_outcomes(tmp_path):
     oc = json.load(open(d / "outcomes.json"))
     assert oc["n_conventions"] == 1 and [c["phrase"] for c in oc["conventions"]] == ["glimmer toast"]
     assert oc["planted_control"]["tier"] == "convention" and oc["judge"]["status"] == "real"
-    assert oc["n_spread_system"] == 1 and oc["tiers"] == {"candidate": 1, "spreading": 1, "convention": 1}
+    # "eating lunch" and "lunch at the dining hall" are two system-wording groups now: grouping needs a shared
+    # HEAD plus shared content, so one shared modifier no longer fuses two phrases into one expression
+    assert oc["n_spread_system"] == 2 and oc["tiers"] == {"candidate": 2, "spreading": 1, "convention": 1}
+    assert {c["phrase"] for c in oc["spread_system"]} == {"eating lunch", LUNCH}

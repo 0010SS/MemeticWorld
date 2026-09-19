@@ -11,11 +11,18 @@ Three pieces, shared by the pipeline (candidates.py) and the live view (live.py)
      a name that is also a common English word (Zipf >= 4.5: Miles, Park, Kim ...) only counts as a name
      where the speaker capitalized it;
    - it must not start or end with a function word, auxiliary, pronoun, conjunction, reporting / cognition
-     verb, or time word, must not contain a reporting frame ("remembers that", "thinking about how",
-     "said that") and must not end in an auxiliary frame ("is preparing", "are friends");
+     verb, or time word (an evaluative adjective may open a longer coinage: "great coffee catastrophe"),
+     must not contain a reporting frame ("remembers that", "thinking about how", "said that"), must not
+     end in an auxiliary frame ("is preparing", "are friends") and must not contain a finite copula with a
+     subject in front of it ("pasta is decent");
    - no bare relationship / role / place nouns (roommates, classmates, labmates, acquaintances, "a student");
-   - no numbers or clock times; no span across sentence punctuation, quote marks or *stage directions*;
-   - unigrams only if rare (Zipf < 3.6, judged on the base of a contraction/possessive) and not a name/place.
+   - no numbers or clock times, spelled-out quantities included ("fifteen minutes", "three backpacks"); an
+     idiosyncratic exact number stays ("forty-seven steps"); no span across sentence punctuation, quote
+     marks or *stage directions*;
+   - unigrams only if rare (Zipf < 3.6, judged on the base of a contraction/possessive, with -y inflections
+     folded) and not a name/place/elongation ("pfff", "nooo");
+   - EXCEPT the two local-reference constructions, which are kept whole: the nickname ones above and the
+     label frame "the <content> thing" / "<content> thing" ("the autopilot thing", "Maya's frisbee thing").
 
 2. The **infrastructure corpus** (`Infrastructure`): everything the system puts into agents' heads or the
    world, split into
@@ -25,8 +32,11 @@ Three pieces, shared by the pipeline (candidates.py) and the live view (live.py)
      names, NPC role phrases, co-op roster/onboarding/menu text, and the population lexicon (token level);
    - "world": event facts, referent names, viewpoint renderings (the live view adds co-op cue/tally/binder text).
    A candidate that is a substring of a system segment ("verbatim"), matches one after person names are
-   replaced by a slot ("template": "<n> <n> are roommates"), or after light inflection folding ("folded"), is
-   `system_wording`: it can never be a convention.
+   replaced by a slot ("template": "<n> <n> are roommates"), after light inflection folding ("folded"), or
+   whose CONTENT LEMMAS are all contained in one segment ("lemmas": "ml experiments" <- the routine "running
+   machine-learning experiments", "econ homework" <- "doing economics homework"), is `system_wording`: it can
+   never be a convention. The lemma bag folds inflections and expands clipped forms (econ, ml, prob, psych,
+   neuro, meetup ...), so reordering, nominalising or abbreviating the system's own wording does not escape.
 
 3. **Recitation** (`Recitation`): an occurrence is *recited* when it sits inside a run of >= RECITE_K tokens
    copied verbatim from the speaker's own earlier memory / reflection text (the memory was encoded at an
@@ -36,7 +46,7 @@ from __future__ import annotations
 
 import re
 from collections import defaultdict
-from functools import lru_cache
+from functools import cached_property, lru_cache
 from pathlib import Path
 
 from backend.analysis.candidates import STOP, _TOK, zipf
@@ -72,16 +82,50 @@ ROLE = set("""student students undergrad undergrads undergraduate undergraduates
 ta tas technician technicians newcomer newcomers member members""".split())
 TIME = set("""monday tuesday wednesday thursday friday saturday sunday mondays tuesdays wednesdays thursdays fridays
 saturdays sundays am pm a.m p.m o'clock noon midnight tonight tomorrow yesterday today mon tue tues wed thu thur
-thurs fri""".split())
+thurs fri earlier lately recently afterwards afterward beforehand meanwhile sometime sometimes nowadays
+tomorrow's yesterday's""".split())
 NUM = re.compile(r"^(\d+([.,:]\d+)*(st|nd|rd|th|s|am|pm|ish|k)?|\d+[-/]\d+)$")
 HOURS = set("one two three four five six seven eight nine ten eleven twelve".split())
 MINUTES = {"oh", "o", "fifteen", "thirty", "forty", "forty-five", "fortyfive", "twenty", "ten", "five", "o'clock"}
+#: spelled-out quantities: ordinary measurement, not a coinage ("fifteen minutes", "sixty bucks", "three
+#: backpacks"). A hyphenated exact number ("forty-seven") is NOT here: an idiosyncratic number repeated by
+#: several speakers is a ritual, so it stays a content word.
+NUMWORD = set("""one two three four five six seven eight nine ten eleven twelve thirteen fourteen fifteen sixteen
+seventeen eighteen nineteen twenty thirty forty fifty sixty seventy eighty ninety hundred thousand million billion
+dozen dozens couple few several half quarter zero none once twice thrice""".split())
+MEASURE = set("""minute minutes min mins hour hours day days week weeks month months year years second seconds
+page pages buck bucks dollar dollars cent cents euro euros mile miles foot feet inch inches yard yards pound pounds
+gram grams kilo kilos litre litres liter liters percent degrees degree block blocks floor floors""".split())
+#: finite copulas and modals: a span containing one has a subject and a predicate, i.e. it is a clause
+#: ("pasta is decent", "conditional probability can be tricky"), not a reusable unit
+FINITE = set("is are was were am isn't aren't wasn't weren't ain't".split())
+MODAL = set("""can could will would shall should may might must can't couldn't wouldn't shouldn't won't
+be been being have has had do does did""".split())
+#: personal pronouns. A span carrying a NOMINATIVE or OBJECT pronoun is a clause about participants, not a
+#: reusable name for something ("giving you the most trouble", "least you caught", "glad i could help").
+#: Possessives are left alone: they are part of coined phrases ("updating your beliefs").
+PRONOUN = set("""i me you we us they them he him she it myself yourself ourselves themselves himself herself
+itself""".split())
+POSSESSIVE = set("my mine your yours our ours their theirs his her hers its".split())
+#: evaluative adjectives that are stop words but are the natural opening of a coined label
+#: ("the great coffee catastrophe"): allowed at the left edge of a span with >= 2 further content words
+EDGE_ADJ = set("""great whole big little good bad nice cool old new first last best worst full total pure weird
+wild sad quiet loud dark bright""".split())
+#: the label / referring construction "<content> thing": the productive way agents point at a shared local
+#: referent ("the autopilot thing", "the frisbee thing", "the cactus thing"). `thing` is a stop word, so
+#: without this the whole family dies as a function-word edge.
+LABEL_HEAD = {"thing", "things"}
+LABEL_DET = {"the", "that", "this", "a", "an", "whole"}
 # nickname constructions (a person's name used as a coined word)
 NICK_VERBS = set("pull pulls pulled pulling do does did doing done".split())
-NICK_PRE = {"classic", "peak", "full", "pure", "total", "such"}
+NICK_PRE = {"classic", "peak", "full", "pure", "total", "such", "very", "most"}
+NICK_POST = {"move", "moves", "thing", "things", "energy", "moment", "special", "hour", "style", "vibe", "vibes"}
 NICK_DET = {"the", "a"}
 AMBIGUOUS_ZIPF = 4.5          # names that are also common words count as names only when capitalized
 UNIGRAM_MAX_ZIPF = 3.6
+#: a token is "novel" only when its LEMMA is this rare: an unrecognised inflection of an ordinary word
+#: ("memorizing", "recopied", "napkins") is not a coinage
+NOVEL_MAX_ZIPF = 2.3
 RECITE_K = 8
 SLOT = "<n>"
 # fallback copies of the simulation's fixed strings (the observer prefers importing them)
@@ -121,9 +165,11 @@ def norm_token(t: str) -> str:
 
 def lemma_candidates(t: str) -> list[str]:
     """The word and its likely uninflected forms ("deadlines" -> deadline, "texted" -> text, "prepping" -> prep,
-    "flagged" -> flag, "replies" -> reply), so rarity is judged on the word, not on one inflection."""
+    "flagged" -> flag, "replies" -> reply, "funniest" -> funny), so rarity is judged on the word, not on one
+    inflection."""
     out = [t]
-    for suf, reps in (("ies", ("y",)), ("es", ("", "e")), ("s", ("",)), ("ed", ("", "e")), ("ing", ("", "e")),
+    for suf, reps in (("iest", ("y",)), ("ier", ("y",)), ("ily", ("y",)), ("ied", ("y",)), ("iness", ("y",)),
+                      ("ies", ("y",)), ("es", ("", "e")), ("s", ("",)), ("ed", ("", "e")), ("ing", ("", "e")),
                       ("er", ("", "e")), ("est", ("", "e")), ("ly", ("",))):
         if t.endswith(suf) and len(t) - len(suf) >= 3:
             stem = t[: -len(suf)]
@@ -141,6 +187,40 @@ def lemma_zipf(t: str) -> float:
 def fold(t: str) -> str:
     from backend.analysis.emergence import _norm
     return _norm(t)
+
+
+#: clipped forms students use for the system's own words: the lemma bag expands them so an abbreviation
+#: does not escape the system-wording test ("econ homework" <- the routine "doing economics homework")
+CLIP = {"econ": "economics economic", "ml": "machine learning", "prob": "probability", "probs": "probability",
+        "stat": "statistics", "stats": "statistics", "bio": "biology biological", "chem": "chemistry",
+        "psych": "psychology psychological", "neuro": "neuroscience neural", "orgo": "organic chemistry",
+        "lit": "literature", "poli": "political", "sci": "science", "eng": "engineering", "cs": "computer science",
+        "meetup": "meet up meeting", "meetups": "meet up meeting", "hw": "homework", "pset": "problem set",
+        "psets": "problem set", "convo": "conversation", "sem": "seminar", "prof": "professor",
+        "profs": "professor", "uni": "university", "dorm": "dormitory", "gym": "gymnasium",
+        "lab": "laboratory", "labs": "laboratory", "ta": "teaching assistant", "genomics": "genomic genome",
+        "neuroanatomy": "neuroanatomical anatomy neural"}
+
+
+def content_lemmas(toks, names=frozenset()) -> list[set]:
+    """One set of possible lemmas per CONTENT token (stop / function words, names and digits dropped), with
+    clipped forms expanded. Used for bag matching against system and world wording."""
+    out = []
+    for t in toks:
+        if not t or t in STOP or t in FUNCTION or t in names or t.isdigit() or NUM.match(t):
+            continue
+        parts = [t] + ([p for p in t.split("-") if len(p) > 1 and p not in names] if "-" in t else [])
+        forms = {fold(x) for p in parts for x in [p, *lemma_candidates(p)]}
+        for p in parts:
+            for x in CLIP.get(p, "").split():
+                forms.add(fold(x))
+        out.append({f for f in forms if f})
+    return out
+
+
+def lemma_bag(toks, names=frozenset()) -> set:
+    """Every lemma form of every content token of a segment (the searchable side of the bag match)."""
+    return {f for s in content_lemmas(toks, names) for f in s}
 
 
 def segment(text: str) -> tuple[list[str], list[str], list[bool], list[bool]]:
@@ -186,9 +266,29 @@ def _population_file_names(p: str) -> tuple:
     return tuple(sorted(x for x in out if x))
 
 
+def _looks_like_person(name: str) -> bool:
+    """"Maya", "Jordan Kim" -- but not an NPC descriptor ("a lab technician", "a student nobody seemed to
+    know"), whose tokens would otherwise be taken for person names and hide every phrase containing them."""
+    parts = str(name).split()
+    return bool(parts) and len(parts) <= 2 and all(p[:1].isupper() and p.isalpha() for p in parts)
+
+
+def role_descriptors(rd) -> set[str]:
+    """Event role-holder "names" that are NPC descriptor phrases, not person names: system wording."""
+    out = set()
+    try:
+        for e in rd.events.values():
+            for r in (e.get("roles") or {}).values():
+                if isinstance(r, dict) and r.get("name") and not _looks_like_person(r["name"]):
+                    out.add(" ".join(str(r["name"]).split()))
+    except Exception:   # noqa: BLE001 - events are optional
+        pass
+    return out
+
+
 def run_names(rd) -> set[str]:
     """Name tokens of every agent / persona of the run: manifest agents (incl. reserves), the population file,
-    event role holders."""
+    event role holders that look like people (an NPC descriptor phrase is wording, see role_descriptors)."""
     names = set()
     for a in (rd.agents or {}).values():
         if isinstance(a, dict) and a.get("name"):
@@ -197,7 +297,7 @@ def run_names(rd) -> set[str]:
     try:
         for e in rd.events.values():
             for r in (e.get("roles") or {}).values():
-                if isinstance(r, dict) and r.get("name"):
+                if isinstance(r, dict) and r.get("name") and _looks_like_person(r["name"]):
                     names |= {norm_token(t) for t in str(r["name"]).split()}
     except Exception:   # noqa: BLE001 - events are optional
         pass
@@ -283,12 +383,14 @@ class WordClasses:
         if len(tok) < 2:
             return "num" if tok.isdigit() else "func"
         squeezed = _ELONGATED.sub(r"\1", tok)
-        if squeezed != tok and (squeezed in FUNCTION or squeezed in STOP):
-            return "func"                                       # "nooo", "sooo", "ohhh"
+        if squeezed != tok and (squeezed in FUNCTION or squeezed in STOP or zipf(squeezed) < 1.5):
+            return "func"                                       # "nooo", "sooo", "ohhh", "pfff", "ughhh"
         if NUM.match(tok) or (tok[0].isdigit() and not any(c.isalpha() for c in tok)):
             return "num"
         if tok in TIME:
             return "time"
+        if tok in NUMWORD and "-" not in tok:
+            return "num"                                        # "fifteen minutes", "three backpacks"
         if "-" in tok:
             parts = [p for p in tok.split("-") if p]
             if len(parts) >= 2 and parts[0] in HOURS and "-".join(parts[1:]) in MINUTES:
@@ -340,10 +442,12 @@ class WordClasses:
     @staticmethod
     def nickname(toks, cls) -> bool:
         """A person's name used as a coined word: the NAME X / a NAME X, pull(ing)/do(ing) a NAME, classic /
-        peak / full / pure / total NAME, going full NAME, such a NAME (the NAME is a single name token)."""
+        peak / full / pure / total / very NAME, going full NAME, such a NAME, and the same with a head noun
+        ("classic Ethan move", "the most Priya thing") -- the NAME is a single name token."""
         n = len(toks)
         if cls.count("name") != 1:
             return False
+        i = cls.index("name")
         if n == 3 and toks[0] in NICK_DET and cls[1] == "name" and toks[2] not in FUNCTION \
                 and cls[2] not in ("name", "report", "num", "time", "rel") and len(toks[2]) > 2:
             return True
@@ -353,7 +457,29 @@ class WordClasses:
             return True
         if n == 2 and toks[0] in NICK_PRE and cls[1] == "name":
             return True
+        # {classic|peak|full|such a|the most|very} NAME {move|thing|energy|moment|...}
+        if 3 <= n <= 5 and toks[0] in NICK_DET and cls[1] == "name" \
+                and all(c in ("content", "nick", "place") for c in cls[2:]):
+            return True                        # "the Brooks-Chen cookie experiment"
+        if 2 <= i <= 3 and i == n - 2 and toks[-1] in NICK_POST and toks[i - 1] in NICK_PRE \
+                and all(t in NICK_PRE | NICK_DET | {"of"} for t in toks[:i]):
+            return True
+        if i == 1 and n == 3 and toks[0] in NICK_PRE and toks[2] in NICK_POST:
+            return True
         return False
+
+    @staticmethod
+    def label(toks, cls) -> bool:
+        """The local-referent construction "<content> thing": "the autopilot thing", "frisbee thing",
+        "Maya's frisbee thing", "that cactus thing". The head is a stop word, so it needs its own rule."""
+        if len(toks) < 2 or toks[-1] not in LABEL_HEAD:
+            return False
+        body, bcls = list(toks[:-1]), list(cls[:-1])
+        if body and body[0] in LABEL_DET:
+            body, bcls = body[1:], bcls[1:]
+        if not body or any(c in ("num", "time", "report", "func") for c in bcls):
+            return False
+        return any(c in ("content", "nick", "place", "name") for c in bcls)
 
     def reject(self, toks, cls=None, raws=None) -> str | None:
         """Why this n-gram is not a plausible reusable expression, or None when it is well-formed."""
@@ -362,17 +488,30 @@ class WordClasses:
         n = len(toks)
         if not n:
             return "empty"
+        label = self.label(toks, cls)
         if "num" in cls:
             return "number_or_time"
+        for i in range(n - 1):                                  # "fifteen minutes", "sixty bucks"
+            if toks[i + 1] in MEASURE and (toks[i] in NUMWORD or "-" in toks[i] and
+                                           all(p in NUMWORD for p in toks[i].split("-") if p)):
+                return "measure_phrase"
         if "name" in cls:
-            return None if self.nickname(toks, cls) else "person_name"
+            return None if self.nickname(toks, cls) or label else "person_name"
+        if label:
+            return None
         if cls[0] in ("func", "report", "time") or cls[-1] in ("func", "report", "time"):
-            return "function_word_edge"
+            if not (cls[0] == "func" and toks[0] in EDGE_ADJ and n <= 4 and cls[-1] in ("content", "nick")
+                    and sum(1 for c in cls[1:] if c in ("content", "nick")) >= 2):
+                return "function_word_edge"                     # except "great coffee catastrophe"
         for i in range(n - 1):
             if cls[i] == "report" and toks[i + 1] in COMPLEMENTIZERS:
                 return "reporting_frame"
         if n >= 2 and toks[-2] in AUX and (toks[-1].endswith("ing") or cls[-1] == "rel"):
             return "clause_fragment"
+        if n >= 3 and any(t in FINITE or t in MODAL for t in toks[1:-1]):
+            return "clause_fragment"                            # "pasta is decent": a clause, not a unit
+        if any(t in PRONOUN for t in toks):
+            return "pronoun"                                    # "giving you the most trouble"
         if n >= 2 and toks[-1].endswith("'s"):
             return "dangling_possessive"                        # "job on the co-op's" [laser]
         content = [c for c in cls if c != "func"]
@@ -385,6 +524,8 @@ class WordClasses:
             b = self.base(t)
             if len(b) < 4:
                 return "short_unigram"
+            if _ELONGATED.search(b):
+                return "elongation"                             # "pfff", "ughhh", "aaand"
             if lemma_zipf(b) >= UNIGRAM_MAX_ZIPF:
                 return "common_unigram"
         return None
@@ -414,10 +555,12 @@ class Infrastructure:
             if not toks:
                 continue
             slotted = [SLOT if (t == "n" and r == "N") or self.wc.is_name(t, r) else t for t, r in zip(toks, raw)]
-            self._rows.append((tk, kind, text, " ".join(toks), " ".join(slotted), " ".join(fold(t) for t in toks)))
+            self._rows.append((tk, kind, text, " ".join(toks), " ".join(slotted), " ".join(fold(t) for t in toks),
+                               lemma_bag(toks, self.wc.names)))
         self._big = {m: " | ".join(r[i] for r in self._rows) for m, i in (("verbatim", 3), ("template", 4), ("folded", 5))}
         for m in self._big:
             self._big[m] = f" {self._big[m]} "
+        self._bag_tokens = {t for r in self._rows for t in r[6]}
 
     def _lexicon(self) -> set:
         try:
@@ -451,6 +594,7 @@ class Infrastructure:
             npc += list(getattr(WS, "NPC_S", [])) + list(getattr(WS, "NPC_Q", []))
         except Exception:   # noqa: BLE001
             pass
+        npc += sorted(role_descriptors(rd))          # event role holders that are descriptions, not people
         for p in npc:
             self._add(-1, "npc", p)
         w = (rd.manifest or {}).get("world") or {}
@@ -544,14 +688,38 @@ class Infrastructure:
             for tk, kind, text, *cols in self._rows:
                 if f" {s} " in f" {cols[idx - 3]} ":
                     return {"kind": kind, "match": mode, "tick": tk, "text": text[:160]}
+        return self.bag_match(toks)
+
+    #: a one-content-word candidate is system wording only against these kinds; two or more content words
+    #: may match any segment (they cannot all land in one system sentence by accident)
+    BAG_KINDS_1 = ("routine", "profile", "place", "npc", "relationship", "coop", "frame")
+
+    def bag_match(self, toks) -> dict | None:
+        """The candidate's CONTENT LEMMAS are all contained in one system segment, whatever the word order
+        ("ml experiments" <- "running machine-learning experiments", "outdoors club meetup" <- "meeting up
+        with the outdoors club"). Reordering, nominalising or clipping the system's wording does not escape."""
+        want = content_lemmas(toks, self.wc.names)
+        if not want or not all(s & self._bag_tokens for s in want):
+            return None
+        for tk, kind, text, *cols in self._rows:
+            bag = cols[3]
+            if len(want) < 2 and kind not in self.BAG_KINDS_1:
+                continue
+            if all(s & bag for s in want):
+                return {"kind": kind, "match": "lemmas", "tick": tk, "text": text[:160]}
         return None
 
+    @cached_property
+    def _lexicon_lemmas(self) -> set:
+        return {f for t in self.lexicon for f in ({fold(t)} | {fold(x) for x in lemma_candidates(t)})}
+
     def lexicon_match(self, toks) -> bool:
-        """Every content word is population vocabulary (routines, places, profiles): emergence.lexicon_flag."""
+        """Every content word is population vocabulary (routines, places, profiles), inflections and clipped
+        forms folded ("genomics datasets" <- the profile's "genomic dataset"): emergence.lexicon_flag."""
         if not self.lexicon:
             return False
-        content = [t for t in toks if t not in STOP and t not in FUNCTION and not t.isdigit() and t not in self.wc.names]
-        return bool(content) and all(t in self.lexicon for t in content)
+        want = content_lemmas(toks, self.wc.names)
+        return bool(want) and all(s & self._lexicon_lemmas for s in want)
 
     def wording(self, toks) -> dict:
         m = self.match(toks)
