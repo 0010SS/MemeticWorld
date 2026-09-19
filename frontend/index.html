@@ -43,7 +43,8 @@
           </div>
           <canvas id="minimap" class="hud" width="120" height="143" title="Click to move the camera"></canvas>
           <div class="hud map-help" id="mapHelp">drag to pan · wheel to zoom · click an agent</div>
-          <div class="debug-badge" id="debugBadge" hidden>RESEARCH DEBUG: hidden event types visible</div>
+          <div class="hud away-tray" id="awayTray" hidden></div>
+          <div class="debug-badge" id="debugBadge" hidden>RESEARCH DEBUG: hidden ground truth visible</div>
           <div class="map-loading" id="mapLoading">loading campus…</div>
         </div>
         <div class="timeline">
@@ -59,6 +60,21 @@
           <button id="btnFirstCross" class="pill">Jump: first cross-group transmission</button>
         </div>
         <div class="events-strip" id="eventsStrip"></div>
+        <!-- v3 co-op panels: shown only for runs with a co-op (frame.coop / GET /coop) -->
+        <div class="coop-grid" id="coopGrid" hidden>
+          <div class="panel coop-panel">
+            <h3>Laser jobs <span class="muted small" id="jobsHead"></span></h3>
+            <div id="jobsPanel" class="coop-scroll"></div>
+          </div>
+          <div class="panel coop-panel">
+            <h3>Co-op binder <span class="muted small" id="binderHead"></span></h3>
+            <div id="binderPanel" class="coop-scroll"></div>
+          </div>
+          <div class="panel coop-panel">
+            <h3>Roster <span class="muted small" id="rosterHead"></span></h3>
+            <div id="rosterPanel" class="coop-scroll"></div>
+          </div>
+        </div>
       </div>
       <aside class="side-col">
         <div class="panel" id="agentPanel">
@@ -91,6 +107,29 @@
 
   <!-- TRACE ---------------------------------------------------------------->
   <section id="view-trace" class="view">
+    <div class="panel trace-explorer">
+      <h3>Trace explorer <span class="muted small">every logged record, filtered on the server (types from the trace schema)</span></h3>
+      <div class="trace-filters">
+        <label class="field">Agent <select id="trAgent"><option value="">any</option></select></label>
+        <label class="field">Ticks <input id="trFrom" type="number" min="0" placeholder="from"> – <input id="trTo" type="number" min="0" placeholder="to"></label>
+        <button class="pill" id="trNow" title="Only records up to the replay's current tick">up to now</button>
+        <label class="field">Conversation <input id="trConv" placeholder="conversation id" size="14"></label>
+        <label class="field">Limit <input id="trLimit" type="number" min="1" value="500"></label>
+        <button class="pill primary" id="trLoad">Load records</button>
+      </div>
+      <div class="trace-presets">
+        <span class="muted small">Types:</span>
+        <button class="pill" data-preset="">all</button>
+        <button class="pill" data-preset="talk">talk</button>
+        <button class="pill" data-preset="memory">memory</button>
+        <button class="pill" data-preset="coop">co-op</button>
+        <button class="pill" data-preset="world">world</button>
+        <span id="trTypeCount" class="muted small"></span>
+      </div>
+      <div id="trTypes" class="type-grid"></div>
+      <div id="trInfo" class="small muted"></div>
+      <div id="trResults" class="trace-table"></div>
+    </div>
     <h2>Causal trace</h2>
     <p class="muted small">world event → partial observation → lossy memory → retrieval → utterance → listeners → listener memories → later reuse</p>
     <div class="trace-search">

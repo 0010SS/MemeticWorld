@@ -150,8 +150,35 @@ class Agent:
                 lines.append(self.relationship_line(other))
         return "\n".join(lines)
 
-    def snapshot(self) -> dict:
+    def snapshot(self, role: str | None = None, cohort: str | None = None) -> dict:
+        """Frame view of this agent (UI / observer only; never shown to an agent). `role` and `cohort` are the
+        co-op role and founder | newcomer, which the engine knows from the roster (None outside the co-op)."""
         s = self.state
         return {"id": self.id, "location": s.location, "arena": s.arena, "activity": s.activity,
                 "goal": s.current_goal, "path": s.path, "conversation": s.in_conversation,
-                "n_memories": len(self.a_mem.id_to_node), "n_reflections": len(self.a_mem.seq_thought)}
+                "n_memories": len(self.a_mem.id_to_node), "n_reflections": len(self.a_mem.seq_thought),
+                "active": bool(getattr(s, "active", True)), "role": role, "cohort": cohort,
+                "open_matters": self._n_open_matters(), "wordings": self._n_wordings()}
+
+    def _n_open_matters(self) -> int:
+        """Open matters (NEED, v2 §2.5) still on the agent's mind: memory alive and strength not faded."""
+        om = getattr(self, "open_matters", None)
+        if not om:
+            return 0
+        from backend.memory.need import MIN_STRENGTH, strength
+        now = getattr(self.scratch, "curr_time", None)
+        hl = float((self.cfg.get("need") or {}).get("half_life_hours", 24))
+        return sum(1 for m in om if m["node_id"] in self.a_mem.id_to_node
+                   and (now is None or strength(m, now, hl) >= MIN_STRENGTH))
+
+    def _n_wordings(self) -> int:
+        """Stuck wordings (WORDING, v2 §2.4) heard from others, held in the agent's live memories."""
+        meta = getattr(getattr(self, "ctx", None), "meta", None)
+        if meta is None:
+            return 0
+        n = 0
+        for nid in self.a_mem.id_to_node:
+            m = meta.get(nid)
+            if m is not None and m.wordings:
+                n += sum(1 for w in m.wordings if not w.get("self_produced"))
+        return n

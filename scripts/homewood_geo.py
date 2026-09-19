@@ -2,8 +2,9 @@
 
 Projects the OpenStreetMap features in data/homewood_osm.json onto a north-up tile grid (4 m per tile, no
 compression) and rasterises them into per-cell classes: lawns, sports fields, woods, water, parking, roads,
-walkways, plazas, buildings, and the eight experiment places. Used by build_homewood_map.py (tiles) and by the
---outline schematic.
+walkways, plazas, buildings, and the experiment places (the eight original ones plus the campus places: student
+center, auditorium, engineering and science halls, museum, theater, apartments, athletic center, admin building and
+the shuttle stop). Used by build_homewood_map.py (tiles) and by the --outline schematic.
 """
 from __future__ import annotations
 
@@ -261,10 +262,26 @@ PLACE_BUILDINGS = {
     "Cafe": ["Levering Hall"],
     "Research Lab": ["Hackerman Hall"],
     "Quad": ["Keyser Quad"],
+    # campus places (backend/simulation/world.py ARENAS); a building already claimed by an earlier place keeps its cells
+    "Student Center": ["Glass Pavilion"],
+    "Auditorium": ["Shriver Hall"],
+    "Engineering Hall": ["Malone Hall"],
+    "Science Hall": ["Mudd Hall"],
+    "Museum": ["Homewood Museum"],                 # the Garden arena is the museum's lawn (build_homewood_map.py)
+    "Theater": ["Merrick Barn"],                   # home of the student theater
+    "Apartments": ["The Charles"],
+    "Athletic Center": ["White Athletic Center"],   # shares a wall with O'Connor (the Gym keeps the shared cells)
+    "Admin Building": ["Garland Hall"],
+    "Shuttle Stop": ["Gatehouse"],                 # anchor only: the stop is the verge between the Gatehouse and N Charles St
 }
 PLACE_LABELS = {"Gym": "O'Connor Rec Center", "Dining Hall": "Hopkins Cafe (FFC)", "Dorm": "AMR II",
                 "Classroom": "Gilman Hall", "Library": "MSE Library / Brody", "Cafe": "Levering Cafe",
-                "Research Lab": "Hackerman Hall", "Quad": "Keyser Quad"}
+                "Research Lab": "Hackerman Hall", "Quad": "Keyser Quad",
+                "Student Center": "Glass Pavilion", "Auditorium": "Shriver Hall", "Engineering Hall": "Malone Hall",
+                "Science Hall": "Mudd Hall", "Museum": "Homewood Museum", "Theater": "Merrick Barn",
+                "Apartments": "The Charles", "Athletic Center": "White Athletic Center", "Admin Building": "Garland Hall",
+                "Shuttle Stop": "Gatehouse stop, N Charles St"}
+OUTDOOR = {"Quad": "lawn", "Shuttle Stop": "stop"}   # places that are open ground, not a building
 
 
 class Geo:
@@ -381,11 +398,16 @@ class Geo:
         raise KeyError(name)
 
     def _places(self):
+        claimed = set()
         for place, names in PLACE_BUILDINGS.items():
             if place == "Quad":
                 f = self.names["Keyser Quad"]
                 cells = cells_polygon(self._rings(f))
                 self.places[place] = dict(label=PLACE_LABELS[place], kind="lawn", boxes=[self._box(cells)], cells=cells)
+                continue
+            if place == "Shuttle Stop":
+                cells = self._stop_cells(names[0])
+                self.places[place] = dict(label=PLACE_LABELS[place], kind="stop", boxes=[self._box(cells)], cells=cells)
                 continue
             cells = set()
             for n in names:
@@ -399,6 +421,8 @@ class Geo:
                 for y in range(my1 + 1, by0):
                     for x in xs:
                         cells.add((x, y))
+            cells -= claimed
+            claimed |= cells
             self.places[place] = dict(label=PLACE_LABELS[place], kind="building", boxes=[self._box(cells)], cells=cells)
         for place, p in self.places.items():
             if p["kind"] == "building":
@@ -406,6 +430,20 @@ class Geo:
                     i = y * W + x
                     self.cls[i] = "place"
                     self.bid[i] = -1
+
+    def _stop_cells(self, anchor):
+        """The shuttle stop: the open verge between the anchor building's street side and the N Charles St sidewalk,
+        from a few tiles north of the building to its south wall (every cell is open ground, never road or building)."""
+        _, b = self.building_named(anchor)
+        x0, y0, x1, y1 = b["box"]
+        cells = set()
+        for y in range(y0 - 7, y1 + 2):
+            for x in range(x1 + 1, x1 + 6):
+                c = self.cls[y * W + x]
+                if c in ("road", "sidewalk", "building", "place", "water"):
+                    break
+                cells.add((x, y))
+        return cells
 
     def summary(self):
         cnt = defaultdict(int)

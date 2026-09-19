@@ -71,6 +71,10 @@ def _mins(v) -> int:
 
 _seed_rng = seed_rng       # the engine's streams use the one scheme in backend.simulation.rngs
 
+# `coop_fact` fact roles: the panel code (K1 only) and oddities (K0 only) would name a hidden class, so both are
+# `detail`; every other world-script kind is shown as is (job_start, symptom, outcome, tally, cue, farewell, ...)
+COOP_FACT_ROLE = {"code": "detail", "oddity": "detail"}
+
 
 def forced_activity(routine: dict, place: dict) -> str:
     """Activity of a beat mover (agreement c): the world moves people, it does not narrate them. Keep what
@@ -186,6 +190,8 @@ class Simulation:
         self.events_fh = open(self.run_dir / "events.jsonl", "w")
         self.pool = ThreadPoolExecutor(max_workers=int(cfg["llm"].get("max_workers", 4)))
         self.stats = {"conversations": 0, "utterances": 0, "events": 0, "reflections": 0}
+        self._job_symptom: dict[str, str | None] = {}     # frame view of co-op jobs (world text only)
+        self._job_end_shown: set[str] = set()
 
     # ------------------------------------------------------------------ utils
     def _parallel(self, jobs: list[tuple[str, callable]]):
@@ -315,11 +321,29 @@ class Simulation:
                 for o, x in self.agents.items()) else None
 
     # ----------------------------------------------------------- main phases
+    def _log_coop_fact(self, tick, e, b):
+        """Public trace of a co-op beat's world text (`coop_fact`; its hidden twin is `event_beat`), plus the
+        `farewell` record (ontology v3 §3.3) when a departing member's farewell fact is released. Fact kinds
+        that exist only for one hidden job class (panel code, oddity) are shown as `detail`."""
+        kind = getattr(e, "kind", None) or "coop"
+        facts = [{"id": f["id"], "text": f["text"], "role": COOP_FACT_ROLE.get(f.get("kind"), f.get("kind") or kind)}
+                 for f in b["facts"]]
+        self.tracer.log("coop_fact", ref=e.id, kind=kind, beat=b["idx"], location=b["location"],
+                        arena=b["arena"], facts=facts, movers=list(b.get("movers") or []))
+        if kind == "farewell":
+            who = next((a for f in b["facts"] for a in f.get("involves", []) if a in self.agents), None)
+            if who is not None:
+                self.tracer.log("farewell", agent=who, day=self.clock.day_of(tick),
+                                role=self.agents[who].profile.role, location=b["location"], arena=b["arena"],
+                                text=b["facts"][0]["text"])
+
     def _perceive(self, tick, beats):
         obs_by_agent: dict[str, list[AgentObservation]] = {}
         for e, b in beats:
             self.tracer.log("event_beat", event_id=e.id, latent_type=e.latent_type, beat=b["idx"],
                             location=b["location"], arena=b["arena"], facts=b["facts"])
+            if e.latent_type == "coop" and b["facts"]:
+                self._log_coop_fact(tick, e, b)
             for aid in sorted(self.agents):
                 a = self.agents[aid]
                 if a.state.location != b["location"]:
@@ -358,6 +382,17 @@ class Simulation:
                         add_simple_event(a, text, 2 if a.profile.rel(oid).familiarity > 0.3 else 1, [oid])
         return obs_by_agent
 
+    def _log_queued_observation(self, aid, o):
+        """`observation` record for a v3 job episode or binder read queued by CoopWorld, which (unlike beats and
+        speech) is not traced where it is made. Facts are world text (`world_text` when the operator's own facts
+        were already viewpoint-rendered in phase 4b)."""
+        keep = ("record_id", "speaker")
+        facts = [{"id": f["id"], "text": f.get("world_text", f["text"]), "salience": f.get("salience"),
+                  **{k: f[k] for k in keep if f.get(k) is not None}} for f in o.facts]
+        extra = {"episode": "job"} if getattr(o, "coop_episode", False) else {}
+        self.tracer.log("observation", agent=aid, observation_id=o.id, source_type=o.source_type, facts=facts,
+                        originating_event_ids=list(o.event_ids), **extra)
+
     def _cognition(self, tick, obs_by_agent):
         rc = self.cfg["reaction"]
 
@@ -365,6 +400,8 @@ class Simulation:
             a = self.agents[aid]
             out = {"decisions": []}
             for o in obs_by_agent[aid]:
+                if getattr(o, "coop_episode", False) or o.source_type == "record":
+                    self._log_queued_observation(aid, o)   # never traced at perception time (v3 §2.3, §4.2)
                 if getattr(o, "coop_episode", False):  # v3 job episode: render only its unrendered facts
                     from backend.agents import work as WK
                     WK.render_pending(a, o)
@@ -639,17 +676,71 @@ class Simulation:
                               for aid in ids])
         self.stats["reflections"] += sum(len(r) for r in res)
 
+    def _coop_people(self, day: int) -> tuple[dict, dict]:
+        """({agent: co-op role}, {agent: founder | newcomer}) for the frame; both empty outside the co-op. With the
+        roster: its roles (a departed member keeps the role they had) and cohorts; without it: the population
+        file's coop_role, else the workshop's fixed crews, and no cohort."""
+        coop = getattr(self, "coop", None)
+        if not coop:
+            return {}, {}
+        R = getattr(coop, "roster", None)
+        if R is not None:
+            return ({aid: R.base_role.get(aid) or self.agents[aid].profile.role for aid in self.agents},
+                    {aid: ("founder" if R.cohort.get(aid) == "founder" else "newcomer") if aid in R.cohort else None
+                     for aid in self.agents})
+        cache = getattr(self, "_crew_roles", None)
+        if cache is None or cache[0] != day:
+            from backend.simulation import workshop as W
+            crews = W.default_roster({aid: a.profile for aid, a in self.agents.items()})(day)
+            cache = self._crew_roles = (day, {a: W.ROLE_KEYS[k] for k in ("am", "pm", "stores") for a in crews[k]})
+        return {aid: a.profile.role or cache[1].get(aid) for aid, a in self.agents.items()}, {}
+
+    def _coop_jobs(self, tick: int, beats) -> list[dict]:
+        """Public view of the co-op's jobs in progress at this tick (a job that ended is shown once, with its
+        result). Only released world text and released outcomes: an attempt's outcome is resolved when it is
+        decided but happens at the next tick, so the pending attempt is counted without its outcome. No class,
+        cause, regime or ground truth."""
+        sym, shown = self._job_symptom, self._job_end_shown
+        for e, b in beats:
+            if getattr(e, "kind", None) == "job" and b["idx"] == 0:
+                sym[e.id] = next((f["text"] for f in b["facts"] if f.get("kind") == "symptom"), None)
+        out = []
+        for jid in sorted(self.coop.jobs):
+            js = self.coop.jobs[jid]
+            if js.ended and jid in shown:
+                continue
+            atts = list(js.attempts)
+            released = atts[:-1] if js.pending is not None else atts
+            if js.ended:
+                shown.add(jid)
+                status = "delivered" if js.delivered else \
+                    ("defer" if atts and atts[-1].get("action") == "stop" else "failed")
+            elif js.pending is not None:
+                status = "running"
+            elif js.questions and js.decide_at is not None and js.decide_at > tick:
+                status = "asking"
+            else:
+                status = "deciding"
+            j = js.job
+            out.append({"id": jid, "day": j.day, "slot": j.slot, "shift": j.shift, "operator": j.operator,
+                        "project": j.project, "symptom": sym.get(jid), "attempt": len(atts), "status": status,
+                        "tried": [{k: x[k] for k in ("attempt", "action", "outcome")} for x in released]})
+        return out
+
     def _frame(self, tick, beats):
+        roles, cohorts = self._coop_people(self.clock.day_of(tick))
+        agents = {aid: {**a.snapshot(role=roles.get(aid), cohort=cohorts.get(aid)),
+                        "modules": self.ctx.mods.frame_state(aid)} for aid, a in self.agents.items()}
         fr = {"tick": tick, "time": self.clock.time_of(tick).isoformat(), "day": self.clock.day_of(tick),
               "label": self.clock.label(tick),
-              "agents": {aid: {**a.snapshot(), "modules": self.ctx.mods.frame_state(aid)}
-                         for aid, a in self.agents.items()},
+              "agents": agents,
+              "away": sorted(aid for aid, s in agents.items() if not s["active"]),
               "utterances": [{"id": u["id"], "speaker": u["speaker"], "text": u["text"], "listeners": u["listeners"],
                               "conversation_id": u["conversation_id"]} for u in self.tick_utts],
               "beats": [{"event_id": e.id, "latent_type": e.latent_type, "location": b["location"],
                          "arena": b["arena"], "facts": [f["text"] for f in b["facts"]]} for e, b in beats]}
         if getattr(self, "coop", None):
-            fr["coop"] = self.coop.frame_state()
+            fr["coop"] = {**self.coop.frame_state(), "jobs": self._coop_jobs(tick, beats)}
         self.frames_fh.write(json.dumps(fr) + "\n")
         self.frames_fh.flush()
 

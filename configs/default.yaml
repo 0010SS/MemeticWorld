@@ -130,6 +130,10 @@ conversation:
 routine:
   jitter_minutes: 20
   deviation_prob: 0.08
+  errands_per_day: 2        # short trips to public places, inserted into free gaps of the routine (0 = v2.0 plans)
+  errand_places: null       # null -> the public places (backend.simulation.world.PUBLIC_PLACES)
+  errand_minutes: [30, 45]
+  errand_window: ["08:00", "21:00"]
 
 latent_events:
   event_rate: 0.12          # instances per usable tick. A start in a day's last 4 ticks would cross the day end,
@@ -225,6 +229,8 @@ branch: {parent: null, at_day: null, salt: null}
 probe: {backend: claude_cli, model: haiku, workers: 8, k: 6, tau: 0.7, framings: [note, text, overheard]}
 
 analysis:
+  judge: {provider: claude_cli, model: sonnet, prompt_version: v1}   # LLM-as-judge (backend/analysis/judge.py); swap for a stronger judge
+  live: {min_speakers: 1, min_uses: 2, pool: 60, trend_window: 12, transmission_top: 10}
   coder: {backend: claude_cli, model: sonnet, second: haiku, blind: true, human_sample: 120}
   llm_classifier: true
   probes: true

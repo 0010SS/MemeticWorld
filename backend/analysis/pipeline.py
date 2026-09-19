@@ -4,7 +4,8 @@ transmission graph -> semantics -> lineage -> probes -> emergence / grounding / 
 
 Writes runs/<id>/analysis.json and runs/<id>/outcomes.json. Reads the run directory only; nothing
 here can reach an agent (the simulation is finished, and probe answers are only written to
-analysis.json). Uses its own LLM log: analysis_llm_calls.jsonl. The observer LLM is fixed by
+analysis.json). Uses its own LLM log: analysis_llm_calls.jsonl; the convention classifier runs through the
+default judge (judge.py; LLM judges log to judge_llm_calls.jsonl). The observer LLM is fixed by
 `analysis.observer` (or an explicit override) and recorded, so conditions are never compared under
 different observers.
 """
@@ -21,6 +22,8 @@ from backend.analysis.emergence import analyze_emergence
 from backend.analysis.evaluation import base_rates, evaluate, status
 from backend.analysis.funnel import diagnose
 from backend.analysis.grounding import analyze_grounding
+from backend.analysis.judge import get_judge
+from backend.analysis.judge import pipeline_spec as pipeline_judge_spec
 from backend.analysis.lineage import candidate_lineage, centroid, variant_tree
 from backend.analysis.rundata import RunData
 from backend.analysis.semantics import analyze_semantics
@@ -57,7 +60,7 @@ def analyze(run_dir: Path, llm_backend: str | None = None, probes: bool = True, 
     cands = ex.extract()
     if verbose:
         print(f"[analyze] {len(rd.utterances)} utterances -> {len(cands)} candidates")
-    discovered = []
+    discovered, judge_info = [], None
     if acfg.get("llm_classifier", True) and rd.utterances:
         with llm_scope("analysis:discover"):
             discovered = C.llm_discover(rd, llm)
@@ -78,8 +81,16 @@ def analyze(run_dir: Path, llm_backend: str | None = None, probes: bool = True, 
         cands.sort(key=lambda c: -c["score"])
         for i, c in enumerate(cands):
             c["id"] = f"m{i:02d}"
-        with llm_scope("analysis:classify"):
-            C.llm_classify(cands, llm)
+        # the classifier is the default judge (analysis.judge, else the observer's backend/model; an explicit
+        # llm_backend/llm_model override also overrides the judge); LLM judges cache in judge_llm_calls.jsonl
+        judge = get_judge(pipeline_judge_spec(rd.cfg, observer, llm_backend is not None or llm_model is not None),
+                          run_dir=run_dir)
+        judge_info = judge.describe()
+        try:
+            with llm_scope("analysis:classify"):
+                C.llm_classify(cands, llm, judge=judge)
+        finally:
+            judge.close()
 
     retained = _retained(rd)
     rates = base_rates(rd)
@@ -135,7 +146,8 @@ def analyze(run_dir: Path, llm_backend: str | None = None, probes: bool = True, 
     outcomes = O.build(rd, cands, emergence, grounding, diag, observer)
     out = {
         "run_id": rd.dir.name, "analysis_version": O.ANALYSIS_VERSION, "observer": observer,
-        "analysis_model": observer["model"], "generated_at": dt.datetime.now().isoformat(timespec="seconds"),
+        "analysis_model": observer["model"], "judge": judge_info,
+        "generated_at": dt.datetime.now().isoformat(timespec="seconds"),
         "summary": {"n_utterances": len(rd.utterances), "n_conversations": len(rd.conversations),
                     "n_events": len(rd.events), "n_candidates": len(cands),
                     "n_llm_conventions": sum(1 for c in cands if c.get("llm", {}).get("is_convention")),

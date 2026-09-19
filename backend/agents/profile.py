@@ -129,11 +129,11 @@ def load_population(path: str | Path, n: int | None = None, include_reserves: bo
     if include_reserves:
         raw += [dict(a, _reserve=True) for a in (data.get("reserves") or [])]
     ids = {a["id"] for a in raw}
-    from backend.simulation.world import WORLD_GRAPH
+    from backend.simulation.world import PUBLIC_PLACES, WORLD_GRAPH
     profiles = {}
     for a in raw:
         routine = [RoutineEntry(**r) for r in a["routine"]]
-        known = sorted({r.location for r in routine} | {"Quad", "Dining Hall", "Cafe", "Library"})
+        known = sorted({r.location for r in routine} | {"Quad", "Dining Hall", "Cafe", "Library"} | set(PUBLIC_PLACES))
         known = [k for k in known if k in WORLD_GRAPH]
         prof = AgentProfile(id=a["id"], name=a["name"], demographics=a["demographics"],
                             background=a["background"], personality=a["personality"],

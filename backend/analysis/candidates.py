@@ -217,15 +217,18 @@ Identify expressions (words, phrases, nicknames, numbers, metaphors) that appear
 Answer with a JSON object only: {{"expressions": [{{"expression": "<exact wording as used>", "reason": "<short>"}}]}}  (an empty list is fine)"""
 
 
-def llm_classify(cands: list[dict], llm, top: int = 30) -> None:
-    from backend.agents.ga_prompts import as_json
+def llm_classify(cands: list[dict], llm, top: int = 30, judge=None) -> None:
+    """Classify the top candidates through a judge (backend/analysis/judge.py). Keeps the legacy
+    c["llm"] = {is_convention, gloss, confidence, raw} and adds c["judgements"][judge_id] = Verdict.
+    judge=None: the legacy classifier prompt (judge prompt v0) on `llm`, i.e. the pre-judge behaviour."""
+    from backend.analysis.judge import LLMJudge, judge_input
+    judge = judge or LLMJudge.legacy(llm)
     for c in cands[:top]:
-        uses = "\n".join(f"{i + 1}. " + u["context"].replace("\n", " / ") for i, u in enumerate(c["usages"][:8]))
-        with llm_purpose("analysis_classifier"):
-            raw = llm.complete(CLASSIFY.format(expr=c["canonical_form"], uses=uses), max_tokens=200, temperature=0)
-        d = as_json(raw) or {}
-        c["llm"] = {"is_convention": bool(d.get("is_convention", False)), "gloss": d.get("gloss"),
-                    "confidence": float(d.get("confidence", 0) or 0), "raw": raw[:500]}
+        expr, contexts = judge_input(c)
+        v = judge.judge(expr, contexts, {"n_uses": c.get("usage_count"), "n_speakers": len(c.get("speakers") or [])})
+        c["llm"] = {"is_convention": v["is_convention"], "gloss": v["gloss"] or None,
+                    "confidence": v["confidence"], "raw": v["raw"][:500]}
+        c.setdefault("judgements", {})[v["judge_id"]] = v
 
 
 def llm_discover(rd, llm, max_chars: int = 14000) -> list[str]:

@@ -10,12 +10,18 @@ v3 (docs/ONTOLOGY_V3.md §6.2): per-tick digests. Every trace line written while
 feeds sha256 digest t; when `tick` moves on (the engine assigns `tracer.tick` at the start of each tick)
 or the logger closes, the digest is appended to `digests.jsonl` as {"tick", "sha256", "n"}. A branch's
 ticks < T must have the parent's digests (`compare_digests`, `prefix_digest`).
+
+Record types and their fields are registered in `backend/tracing/schema.py` (docs/TRACE_SCHEMA.md). With
+`check=True` or the environment variable MEMEWORLD_TRACE_CHECK=1, `log` validates every record against the
+registry and warns (never fails) once per unregistered type or missing required field.
 """
 from __future__ import annotations
 
 import hashlib
 import json
+import os
 import threading
+import warnings
 from pathlib import Path
 
 from backend.llm.client import current_scope
@@ -24,7 +30,7 @@ _EMPTY = hashlib.sha256().hexdigest()
 
 
 class TraceLogger:
-    def __init__(self, run_dir: Path, digests: bool = True):
+    def __init__(self, run_dir: Path, digests: bool = True, check: bool | None = None):
         self.run_dir = Path(run_dir)
         self.fh = open(self.run_dir / "trace.jsonl", "w")
         self._lock = threading.Lock()
@@ -37,6 +43,8 @@ class TraceLogger:
         self._dn = 0
         self.digests: dict[int, str] = {}
         self.late_writes = 0
+        self.check = os.environ.get("MEMEWORLD_TRACE_CHECK", "") not in ("", "0") if check is None else bool(check)
+        self._warned: set[str] = set()
 
     # the engine sets `tracer.tick = t` at the start of every tick; moving on closes the previous digest
     @property
@@ -74,7 +82,17 @@ class TraceLogger:
             rid = f"{scope}#{n}"
             rec = {"id": rid, "type": type_, "tick": self._tick, "time": self.time, **fields}
             self._buffers.setdefault(scope, []).append(rec)
+            if self.check:
+                self._check_locked(rec)
         return rid
+
+    def _check_locked(self, rec: dict):
+        """Debug mode: warn once per problem (unregistered type, missing required field); never raise."""
+        from backend.tracing.schema import validate
+        for problem in validate(rec):
+            if problem not in self._warned:
+                self._warned.add(problem)
+                warnings.warn(f"trace record {rec.get('id')}: {problem}", RuntimeWarning, stacklevel=3)
 
     def flush(self):
         with self._lock:

@@ -13,6 +13,11 @@ grounding and family-matching output. v3 adds job truth, regime, mapping,
 symptom-class and cause ids, uniforms, the binder manipulation, rotation and
 tree/branch names (HIDDEN_* below). `?debug=1` (Research Debug Mode) returns
 everything.
+
+Trace records are also stripped by the trace registry (backend/tracing/schema.py, docs/TRACE_SCHEMA.md): a type
+registered as hidden is dropped and a public type loses its registered hidden fields, before the generic
+HIDDEN_KEYS / HIDDEN_VALUE / HIDDEN_PATHS filters run. GET /api/schema serves the registry (public part in demo
+mode), GET /api/runs/<id>/coop the co-op view of a v3 run (jobs, binder timeline, roster, tallies).
 """
 from __future__ import annotations
 
@@ -30,6 +35,7 @@ from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 
 from backend.ga_compat import GA_ASSETS, REPO_ROOT
+from backend.tracing import schema as TS
 
 RUNS = Path(os.environ.get("MEMEWORLD_RUNS_ROOT") or REPO_ROOT / "runs").resolve()
 FRONTEND = REPO_ROOT / "frontend"
@@ -57,8 +63,8 @@ HIDDEN_KEYS = {
     "cause", "causes", "class", "klass", "classes", "gt", "u_attempt", "fault", "surface", "code", "p_success",
     "branch", "branches", "arm", "arms", "salt", "at_day", "replay_until_tick",
 }
-# v3: whole trace record types that exist only for the observer (hidden ground truth)
-HIDDEN_TRACE_TYPES = {"world_event_start", "event_beat", "job_truth", "regime_active"}
+# whole trace record types that exist only for the observer (hidden ground truth): the registry's hidden types
+HIDDEN_TRACE_TYPES = {"world_event_start", "event_beat", "job_truth", "regime_active"} | set(TS.HIDDEN_TYPES)
 # v3: hidden ids as keys or scalar values (K0-K3, causes, mappings) are dropped wherever they occur
 HIDDEN_VALUE = re.compile(r"^(K[0-3]|LENS|DAMP|BELT|AIR|WARP|M[12])$")
 # Dropped only at these paths (the key names are too generic to drop everywhere).
@@ -86,6 +92,10 @@ def _strip(obj, path: tuple = ()):
     if isinstance(obj, dict):
         if obj.get("type") in HIDDEN_TRACE_TYPES and "tick" in obj:
             return None
+        if TS.is_trace_record(obj):              # registry: the type's hidden fields go first
+            obj = TS.strip(obj)
+            if obj is None:
+                return None
         return {k: _strip(v, path + (k,)) for k, v in obj.items()
                 if k not in HIDDEN_KEYS and path + (k,) not in HIDDEN_PATHS
                 and not _hidden_value(k) and not _hidden_value(v)}
@@ -227,19 +237,39 @@ def events(run_id: str, debug: int = 0):
     return data(run_id)["events"]
 
 
+# fields naming one agent / lists of agents: a record "involves" an agent through any of them (trace ?agent=)
+AGENT_FIELDS = ("agent", "speaker", "speaker_id", "operator", "target", "ask_target", "stores", "outgoing",
+                "incoming", "heard_from")
+AGENT_LIST_FIELDS = ("listeners", "listener_ids", "participants", "invited", "movers")
+
+
+def _involves(r: dict, agent: str) -> bool:
+    return any(r.get(f) == agent for f in AGENT_FIELDS) or \
+        any(agent in (r.get(f) or []) for f in AGENT_LIST_FIELDS if isinstance(r.get(f), list))
+
+
 @app.get("/api/runs/{run_id:path}/trace")
 def trace(run_id: str, types: str = "", start: int = 0, end: int = 10 ** 9, agent: str = "", debug: int = 0,
-          limit: int = 5000):
+          limit: int = 5000, type_: str = Query("", alias="type"), tick_from: int | None = None,
+          tick_to: int | None = None, conversation: str = ""):
+    """Trace records, oldest first. Filters: `type` (or the older `types`; comma-separated), `agent` (any record
+    involving the agent: agent/speaker/operator/target/... or listeners/participants/invited/...), `tick_from` /
+    `tick_to` (inclusive; the older `start` / `end`), `conversation` (the conversation record and everything
+    carrying its conversation_id), `limit` (after filtering; hidden types never count)."""
     D = data(run_id)
-    ts = set(types.split(",")) if types else None
+    ts = {t for t in (types + "," + type_).split(",") if t} or None
+    lo = start if tick_from is None else tick_from
+    hi = end if tick_to is None else tick_to
     out = []
     for r in D["trace"]:
         if ts and r["type"] not in ts:
             continue
-        if not (start <= r["tick"] <= end):
+        if not (lo <= r["tick"] <= hi):
             continue
-        if agent and agent not in (r.get("agent"), r.get("speaker"), r.get("speaker_id")) and \
-                agent not in (r.get("listeners") or []) and agent not in (r.get("participants") or []):
+        if agent and not _involves(r, agent):
+            continue
+        if conversation and conversation not in (r.get("conversation_id"),
+                                                 r["id"] if r["type"] == "conversation" else None):
             continue
         if not debug and r["type"] in HIDDEN_TRACE_TYPES:
             continue
@@ -247,6 +277,140 @@ def trace(run_id: str, types: str = "", start: int = 0, end: int = 10 ** 9, agen
         if len(out) >= limit:
             break
     return out if debug else _strip(out)
+
+
+def _rec(r: dict, keys=None) -> dict:
+    """A trace record without its envelope id/type (tick and time kept); only `keys` if given."""
+    if keys is None:
+        return {k: v for k, v in r.items() if k not in ("id", "type")}
+    return {"tick": r.get("tick"), "time": r.get("time"), **{k: r.get(k) for k in keys}}
+
+
+@app.get("/api/runs/{run_id:path}/coop")
+def coop(run_id: str, debug: int = 0):
+    """The co-op (ontology v3) view of a run, built from its trace: jobs (job_* records, the job's world text from
+    coop_fact), the binder timeline and its reconstructed state (record_*), roster changes, onboarding, farewells,
+    tallies, cues, handovers, meetings, day digests and checkpoints. Demo mode strips hidden fields; `?debug=1`
+    adds each job's ground truth (`truth`, from job_truth) and the day regimes (`regimes`). A v2 run (or one from
+    before the co-op existed) returns the same shape with empty lists and enabled=false."""
+    D = data(run_id)
+    idx = D["idx"]
+    man = json.load(open(_run_dir(run_id) / "manifest.json"))
+    cfg = man.get("config") or {}
+    names = {aid: (p.get("name") or aid).split(" ")[0] for aid, p in (man.get("agents") or {}).items()}
+
+    # the jobs' released world text: coop_fact (by ref and beat), else (older runs) perceived fact ids
+    facts = {(r.get("ref"), r.get("beat")): r.get("facts") or [] for r in idx.get("coop_fact", [])}
+    seen = {}
+    if not facts:
+        for o in idx.get("observation", []):
+            if o.get("source_type") == "perception":
+                for f in o.get("facts") or []:
+                    if isinstance(f, dict) and f.get("id"):
+                        seen.setdefault(f["id"], f.get("text"))
+
+    def fact_text(job: str, beat: int, role: str):
+        fs = facts.get((job, beat))
+        if fs is not None:
+            return next((f.get("text") for f in fs if f.get("role") == role), None)
+        return seen.get(f"{job}.b{beat}.f{1 if role == 'symptom' else 0}")
+
+    jobs = {}
+    for r in idx.get("job_start", []):
+        jobs[r["job"]] = {"job": r["job"], "day": r.get("day"), "slot": r.get("slot"), "shift": r.get("shift"),
+                          "operator": r.get("operator"), "project": r.get("project"), "start_tick": r.get("tick"),
+                          "symptom": fact_text(r["job"], 0, "symptom"), "decisions": [], "clarifications": [],
+                          "attempts": [], "end": None, "writes": []}
+    for r in idx.get("job_decision", []):
+        if r.get("job") in jobs:
+            jobs[r["job"]]["decisions"].append(_rec(r, ("attempt", "choice", "action", "question", "ask_target",
+                                                         "says_aloud", "reason", "valid", "consult", "binder_shown",
+                                                         "binder_chosen", "binder_entry_ids")))
+    for r in idx.get("clarification", []):
+        if r.get("job") in jobs:
+            jobs[r["job"]]["clarifications"].append(_rec(r, ("attempt", "agent", "target", "question")))
+    for r in idx.get("job_attempt", []):
+        if r.get("job") in jobs:
+            jobs[r["job"]]["attempts"].append({**_rec(r, ("attempt", "action", "outcome")),
+                                               "text": fact_text(r["job"], r.get("attempt"), "outcome")})
+    # scheduled / repair talk: the conversation each clarification, handover and meeting became (by its trigger)
+    tpd = int(man.get("ticks_per_day") or 0)
+    talk = defaultdict(list)
+    for r in idx.get("conversation", []):
+        tr = r.get("trigger") or {}
+        if tr.get("topic") in ("clarify", "handover", "meeting"):
+            talk[(tr["topic"], tr.get("job"), (r["tick"] // tpd + 1) if tpd else None)].append(r)
+
+    def conv_of(topic: str, day, job=None, who=()):
+        for c in talk.get((topic, job, day), []):
+            if set(who) <= set(c.get("participants") or []):
+                return c["id"]
+        return None
+
+    for j in jobs.values():
+        for q in j["clarifications"]:
+            q["conversation_id"] = conv_of("clarify", j["day"], j["job"], (q["agent"], q["target"]))
+    ended = {}
+    for r in idx.get("job_end", []):
+        if r.get("job") in jobs:
+            jobs[r["job"]]["end"] = _rec(r, ("delivered", "result"))
+            ended[(r.get("operator"), r.get("tick"))] = r["job"]
+
+    # binder: timeline of reads, writes and transitions in trace order, and the state they add up to
+    timeline = []
+    state = {"binder_id": "binder-1", "front": [], "log": [], "archived": []}
+    n_binder = 1
+    for r in D["trace"]:
+        t = r["type"]
+        if t == "record_write":
+            job = ended.get((r.get("agent"), r.get("tick"))) if r.get("offer") == "job" else None
+            ev = {**_rec(r, ("agent", "offer", "choice", "entry_id", "rev_id", "text", "truncated")), "kind": "write",
+                  "author_name": names.get(r.get("agent"), r.get("agent")), "job": job}
+            timeline.append(ev)
+            item = {k: ev[k] for k in ("tick", "time", "author_name", "text", "offer")}
+            if ev["choice"] == "log" and ev["entry_id"]:
+                state["log"].append({"entry_id": ev["entry_id"], "author": ev["agent"], **item})
+            elif ev["choice"] == "front" and ev["rev_id"]:
+                state["front"].append({"rev_id": ev["rev_id"], "author": ev["agent"], **item})
+            if job and (ev["entry_id"] or ev["rev_id"]):
+                jobs[job]["writes"].append(ev["entry_id"] or ev["rev_id"])
+        elif t == "record_transition":
+            if r.get("mode") == "wipe":
+                state["archived"].append({"binder_id": state["binder_id"], "archived_tick": r.get("tick"),
+                                          "front": state["front"], "log": state["log"]})
+                n_binder += 1
+                state.update(binder_id=f"binder-{n_binder}", front=[], log=[])
+            timeline.append({**_rec(r, ("day", "mode", "archived_binder_id")), "kind": "transition",
+                             "binder_id": state["binder_id"]})
+        elif t == "record_read":
+            timeline.append({**_rec(r, ("agent", "context", "view_mode", "new_ids")), "kind": "read",
+                             "shown_ids": list(r.get("rev_ids") or []) + list(r.get("entry_ids") or [])})
+
+    mech = {k: bool((cfg.get(k) or {}).get("enabled")) for k in ("workshop", "records", "roster", "turnover")}
+    out = {"run_id": run_id, "mechanisms": mech,
+           "jobs": sorted(jobs.values(), key=lambda j: (j["start_tick"] or 0, j["job"])),
+           "binder": {"timeline": timeline, "state": state},
+           "roster_changes": [_rec(r) for r in idx.get("roster_change", [])],
+           "onboarding": [_rec(r) for r in idx.get("onboarding", [])],
+           "farewells": [_rec(r) for r in idx.get("farewell", [])],
+           "tallies": [_rec(r) for r in idx.get("tally", [])],
+           "cues": [_rec(r) for r in idx.get("cue_event", [])],
+           "handovers": [{**_rec(r), "conversation_id": conv_of("handover", r.get("day"), None,
+                                                                (r.get("outgoing"), r.get("incoming")))}
+                         for r in idx.get("handover", [])],
+           "meetings": [{**_rec(r), "conversation_id": conv_of("meeting", r.get("day"))}
+                        for r in idx.get("meeting", [])],
+           "days": [_rec(r) for r in idx.get("coop_day", [])],
+           "checkpoints": [{"id": r.get("id"), "tick": r.get("tick"), "time": r.get("time")}
+                           for r in idx.get("checkpoint", [])]}
+    out["enabled"] = any(mech.values()) or bool(jobs or timeline or out["roster_changes"])
+    if not debug:
+        return _strip(out)
+    truth = {r.get("job"): _rec(r) for r in idx.get("job_truth", [])}
+    for j in out["jobs"]:
+        j["truth"] = truth.get(j["job"])
+    out["regimes"] = [_rec(r) for r in idx.get("regime_active", [])]
+    return out
 
 
 @app.get("/api/runs/{run_id:path}/agent/{agent_id}")
@@ -410,6 +574,14 @@ def compare_runs(debug: int = 0):
     if not debug:
         rows = [{k: v for k, v in _strip(r).items() if k not in ("cell", "levels")} for r in rows]
     return rows
+
+
+@app.get("/api/schema")
+def trace_schema(debug: int = 0):
+    """The trace record registry (backend/tracing/schema.py) and the frame fields. Demo mode lists only public
+    record types and their public fields; `?debug=1` adds hidden types, hidden fields and the hidden flags."""
+    reg = TS.public_registry(debug=bool(debug))
+    return reg if debug else _strip(reg)
 
 
 @app.get("/api/configs")
