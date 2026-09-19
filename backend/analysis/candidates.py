@@ -17,7 +17,6 @@ Hybrid method:
 """
 from __future__ import annotations
 
-import json
 import math
 import re
 from collections import Counter, defaultdict
@@ -68,7 +67,7 @@ class CandidateExtractor:
         self.rd = rd
         self.cfg = cfg
         self.dict = _dictionary()
-        self.wc = W.WordClasses(W.run_names(rd), W.run_places(rd), W.run_roles(rd))
+        self.wc = W.WordClasses(W.run_names(rd), W.run_places(rd), W.run_roles(rd), W.run_full_names(rd))
         self.names = self.wc.names
         self.locs = self.wc.places
         self.emb = HashEmbedder(256)

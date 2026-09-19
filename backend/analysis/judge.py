@@ -347,10 +347,13 @@ def get_judge(cfg_or_spec=None, run_dir: Path | None = None) -> Judge:
 def pipeline_spec(cfg: dict, observer: dict, explicit_override: bool = False) -> dict:
     """The judge the analysis pipeline uses: analysis.judge when configured, else the observer's
     backend/model with prompt v1. An explicit analyze(llm_backend=/llm_model=) override also overrides the
-    judge's provider/model, so a mock re-analysis never calls a paid model."""
+    judge's provider/model, and a mock observer (a mock run analysed with its own mock LLM) makes the judge
+    mock too, so a mock (re-)analysis never calls a paid model; run `judge_run` for a real judge."""
     js = dict(((cfg.get("analysis") or {}).get("judge")) or {})
     obs = {"provider": observer.get("backend"), "model": observer.get("model")}
     obs = {k: v for k, v in obs.items() if v}
+    if str(obs.get("provider") or "").lower() in MOCK_PROVIDERS:
+        explicit_override = True
     if js and not explicit_override:
         spec = js
     else:

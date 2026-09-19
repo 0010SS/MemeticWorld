@@ -1,0 +1,15 @@
+<!doctype html><meta charset="utf-8"><title>realmap test</title>
+<style>body{margin:0}canvas{display:block}</style>
+<canvas id="c" width="1200" height="900"></canvas>
+<script type="module">
+import { loadRealMap, drawRealMap } from "./realmap.js";
+const q = new URLSearchParams(location.search);
+const cv = document.getElementById("c"), ctx = cv.getContext("2d");
+await loadRealMap("./homewood_vector.json");
+const zoom = +(q.get("zoom") || 0.075);
+const cam = { x: +(q.get("x") || 0), y: +(q.get("y") || 0), zoom };
+drawRealMap(ctx, cam, { dpr: 1, labels: true, attribution: true });
+// agent-style marker at a place entrance to check alignment with the tile frame
+ctx.fillStyle = "#e33"; ctx.beginPath(); ctx.arc(253 * 32 + 16, 169 * 32 + 16, 6 / zoom, 0, 7); ctx.fill();
+document.title = "ready";
+</script>

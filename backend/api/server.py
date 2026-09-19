@@ -547,6 +547,21 @@ def analysis(run_id: str, debug: int = 0):
     return a
 
 
+@app.get("/api/runs/{run_id:path}/trends/meme/{meme_id}")
+def trends_meme(run_id: str, meme_id: str, tick: int | None = None, window: int = 4):
+    from backend.analysis import trends as TR
+    d = TR.meme_detail(_run_dir(run_id), meme_id, tick, window=max(1, window))
+    if d is None:
+        raise HTTPException(404, f"no meme {meme_id}")
+    return {"run_id": run_id, **d}
+
+
+@app.get("/api/runs/{run_id:path}/trends")
+def trends(run_id: str, tick: int | None = None, window: int = 4, top: int = 20):
+    from backend.analysis import trends as TR
+    return {"run_id": run_id, **TR.run_trends(_run_dir(run_id), tick, window=max(1, window), top=max(1, min(top, 60)))}
+
+
 @app.get("/api/runs/{run_id:path}/llm_calls")
 def llm_calls(run_id: str, agent: str = "", purpose: str = "", start: int = 0, limit: int = 200):
     out = []

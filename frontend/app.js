@@ -1,6 +1,9 @@
 // MemeWorld frontend: pixel-art Homewood campus replay, culture dashboard, causal trace explorer.
 // Normal demo mode never requests hidden ground truth; Research Debug Mode adds ?debug=1.
 
+import { renderCultureTrends } from "./culture.js";
+import { loadRealMap, drawRealMap, drawRealMapLabels, REALMAP_ATTRIBUTION } from "./realmap.js";
+
 const $ = (s, el = document) => el.querySelector(s);
 const $$ = (s, el = document) => [...el.querySelectorAll(s)];
 const esc = (s) => String(s ?? "").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
@@ -78,6 +81,15 @@ async function boot() {
     if (e.key === "-") zoomBy(-1);
   });
   const mapReady = loadMap();
+  // real-world (OpenStreetMap) layer: Tiles | Real map toggle, remembered per viewer
+  try { S.mapMode = localStorage.getItem("mw.mapMode") === "real" ? "real" : "tiles"; } catch { S.mapMode = "tiles"; }
+  loadRealMap().catch(() => {});
+  const mm = $("#mapMode");
+  if (mm) {
+    const sync = () => { mm.textContent = S.mapMode === "real" ? "tiles" : "real map"; const at = $("#mapAttrib"); if (at) { at.hidden = S.mapMode !== "real"; at.textContent = REALMAP_ATTRIBUTION; } };
+    mm.onclick = () => { S.mapMode = S.mapMode === "real" ? "tiles" : "real"; try { localStorage.setItem("mw.mapMode", S.mapMode); } catch {} sync(); };
+    sync();
+  }
   S.runs = await api("/runs");
   const sel = $("#runSelect");
   sel.innerHTML = S.runs.map((r) => `<option value="${r.run_id}">${esc(r.run_id)} (${r.status}${r.has_analysis ? ", analyzed" : ""})</option>`).join("");
@@ -101,7 +113,7 @@ async function boot() {
 function showView(v) {
   $$(".tab").forEach((b) => b.classList.toggle("active", b.dataset.view === v));
   $$(".view").forEach((s) => s.classList.toggle("active", s.id === "view-" + v));
-  if (v === "culture") renderCulture();
+  if (v === "culture") { renderCulture(); drawTrends(); }
   if (v === "trace") { renderTraceSearch(); renderTypeFilter(); }
   if (v === "runs") renderRuns();
   if (v === "campus") resizeMap();
@@ -133,7 +145,7 @@ async function loadRun(id, keepTick = false) {
   if (S.sel && !man.agents[S.sel]) { S.sel = null; $("#agentPanel").innerHTML = `<div class="muted">Click an agent on the map to inspect their profile, memories, retrieval and reflections.</div>`; }
   if (!keepTick) setTick(0); else setTick(S.tick);
   if (S.sel) renderAgent(S.sel);
-  renderCulture();
+  renderCulture(); drawTrends();
   resetTraceExplorer();
 }
 
@@ -395,6 +407,7 @@ function onTickChanged() {
   $("#clock").textContent = f ? f.label : "—";
   $("#scrub").value = S.tick;
   renderFeed(); renderEvents(); renderAwayTray(); renderCoop();
+  if ($("#view-culture").classList.contains("active")) drawTrends();
   if (S.sel) { clearTimeout(agentTimer); agentTimer = setTimeout(() => renderAgent(S.sel), S.playing ? 600 : 80); }
 }
 function jumpTo(key) {
@@ -457,7 +470,7 @@ function draw() {
   ctx.setTransform(z, 0, 0, z, -cam.x * z, -cam.y * z);
   ctx.imageSmoothingEnabled = cam.zoom < 0.75;
   chunkBudget = 6;
-  drawChunks(ctx, false);
+  if (S.mapMode === "real") drawRealMap(ctx, cam, { dpr }); else drawChunks(ctx, false);
   // active-event outline on buildings (every box of a multi-part place)
   const active = new Set((frame?.beats || []).map((b) => b.location));
   for (const loc of active) {
@@ -482,11 +495,12 @@ function draw() {
     } else if (img?.complete && img.naturalWidth) ctx.drawImage(img, fx, a.dir * 32, 32, 32, Math.round(a.x - 16), Math.round(a.y - 22), 32, 32);
     else { ctx.fillStyle = "#2a78d6"; ctx.beginPath(); ctx.arc(a.x, a.y - 6, 9, 0, 7); ctx.fill(); }
   }
-  drawChunks(ctx, true);
+  if (S.mapMode !== "real") drawChunks(ctx, true);
   // screen-space overlays (labels, names, bubbles, badges)
   ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
   const sx = (wx) => (wx - cam.x) * cam.zoom, sy = (wy) => (wy - cam.y) * cam.zoom;
-  drawContextLabels(ctx, sx, sy, vw, vh);
+  if (S.mapMode === "real") drawRealMapLabels(ctx, cam, { dpr }); else drawContextLabels(ctx, sx, sy, vw, vh);
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
   const occ = {};
   for (const aid of ids) { const l = frame.agents[aid]?.location; occ[l] = (occ[l] || 0) + 1; }
   drawPlaceLabels(ctx, sx, sy, active, occ, vw, vh);
@@ -937,6 +951,8 @@ async function renderAgent(aid) {
 }
 
 // ---------------------------------------------------------------- culture
+// trends dashboard (culture.js); debounced inside, follows the replay tick
+function drawTrends() { if (S.runId) renderCultureTrends($("#cultureTrends"), { runId: S.runId, tick: S.tick, api }); }
 const STATUS = { established: "●", spreading: "▲", emerging: "○", fading: "▽" };
 function orderedCands() {
   const cs = [...(S.analysis?.candidates || [])];

@@ -53,7 +53,7 @@ though while whereas unless whether once when whenever where wherever why how am
 has had having do does did doing done will would shall should can could may might must ought gonna wanna gotta not
 no oh ok okay yeah yep yes hey hi hello well like um uh wow just really very also too still even again always never
 ever maybe right sure totally honestly actually literally basically seriously anyway anyways kinda sorta else
-there here""".split())
+there here instead rather anymore ago almost already quite enough soon later""".split())
 AUX = set("am is are was were be been being have has had do does did will would shall should can could may might must "
           "gets got get becomes became become".split())
 REPORT = set("""remember remembers remembered remembering recall recalls recalled recalling think thinks thinking thought
@@ -71,8 +71,11 @@ neighbor neighbors neighbour neighbours partner partners""".split())
 ROLE = set("""student students undergrad undergrads undergraduate undergraduates freshman freshmen sophomore sophomores
 ta tas technician technicians newcomer newcomers member members""".split())
 TIME = set("""monday tuesday wednesday thursday friday saturday sunday mondays tuesdays wednesdays thursdays fridays
-saturdays sundays am pm a.m p.m o'clock noon midnight tonight tomorrow yesterday today""".split())
+saturdays sundays am pm a.m p.m o'clock noon midnight tonight tomorrow yesterday today mon tue tues wed thu thur
+thurs fri""".split())
 NUM = re.compile(r"^(\d+([.,:]\d+)*(st|nd|rd|th|s|am|pm|ish|k)?|\d+[-/]\d+)$")
+HOURS = set("one two three four five six seven eight nine ten eleven twelve".split())
+MINUTES = {"oh", "o", "fifteen", "thirty", "forty", "forty-five", "fortyfive", "twenty", "ten", "five", "o'clock"}
 # nickname constructions (a person's name used as a coined word)
 NICK_VERBS = set("pull pulls pulled pulling do does did doing done".split())
 NICK_PRE = {"classic", "peak", "full", "pure", "total", "such"}
@@ -100,16 +103,39 @@ _FRAMES = [
     "in the middle of", "started a conversation with N N", "are catching up on how things have been going lately",
     "N is not completely sure about some of the details", "N misremembers one minor detail", "it seems that",
     "what has been happening lately", "what has happened lately that stood out", "N N is already",
+    # the co-op binder's fixed rendering (backend/simulation/records.py)
+    "front page kept by the shop manager", "front page last rewritten", "earlier front page", "replaced",
+    "front page nothing written on it yet", "log newest first", "log no notes yet",
 ]
 _CONTEXT_FRAME_ONLY = [re.compile(r"^(.*? still has on their mind):"), re.compile(r"^(Things .*? has heard people say lately):"),
                        re.compile(r"^(.*? just noticed):")]
 _SPEECH_LINE = re.compile(r"^[A-Z][\w'\-]*( [A-Z][\w'\-]*)?: ")
 _BREAK = re.compile(r"[.!?;:,\"“”‘’()\[\]{}…—–]|\s-+\s|(^|\s)'|'(\s|$)")
 _STAGE = re.compile(r"\*[^*\n]{1,80}\*")
+_ELONGATED = re.compile(r"(.)\1{2,}")
 
 
 def norm_token(t: str) -> str:
     return t.lower().strip("'-")
+
+
+def lemma_candidates(t: str) -> list[str]:
+    """The word and its likely uninflected forms ("deadlines" -> deadline, "texted" -> text, "prepping" -> prep,
+    "flagged" -> flag, "replies" -> reply), so rarity is judged on the word, not on one inflection."""
+    out = [t]
+    for suf, reps in (("ies", ("y",)), ("es", ("", "e")), ("s", ("",)), ("ed", ("", "e")), ("ing", ("", "e")),
+                      ("er", ("", "e")), ("est", ("", "e")), ("ly", ("",))):
+        if t.endswith(suf) and len(t) - len(suf) >= 3:
+            stem = t[: -len(suf)]
+            out += [stem + r for r in reps]
+            if len(stem) >= 4 and stem[-1] == stem[-2] and stem[-1] not in "aeiouls":
+                out.append(stem[:-1])                      # prepping -> prep, flagged -> flag
+    return out
+
+
+@lru_cache(maxsize=65536)
+def lemma_zipf(t: str) -> float:
+    return max(zipf(c) for c in lemma_candidates(t))
 
 
 def fold(t: str) -> str:
@@ -178,6 +204,33 @@ def run_names(rd) -> set[str]:
     return {n for n in names if n and not n.isdigit()}
 
 
+def run_full_names(rd) -> set[tuple]:
+    """(first, last) token pairs of every agent / persona: a full name is a name whatever its case."""
+    out = set()
+    names = [str(a.get("name")) for a in (rd.agents or {}).values() if isinstance(a, dict) and a.get("name")]
+    p = (rd.cfg or {}).get("population")
+    if p:
+        names += list(_population_file_fullnames(str(p)))
+    for n in names:
+        t = [norm_token(x) for x in n.split()]
+        out |= {(t[i], t[i + 1]) for i in range(len(t) - 1)}
+    return out
+
+
+@lru_cache(maxsize=16)
+def _population_file_fullnames(p: str) -> tuple:
+    import yaml
+    path = Path(p)
+    if not path.is_absolute():
+        path = Path(__file__).resolve().parents[2] / path
+    try:
+        data = yaml.safe_load(path.read_text()) or {}
+    except (OSError, yaml.YAMLError):
+        return ()
+    return tuple(str(a["name"]) for a in list(data.get("agents") or []) + list(data.get("reserves") or [])
+                 if isinstance(a, dict) and a.get("name"))
+
+
 def run_places(rd) -> set[str]:
     locs = set()
     w = (rd.manifest or {}).get("world") or {}
@@ -205,8 +258,9 @@ def run_roles(rd) -> set[str]:
 class WordClasses:
     """Per-token classes and the well-formedness rule for one run."""
 
-    def __init__(self, names: set, places: set = frozenset(), roles: set = frozenset()):
+    def __init__(self, names: set, places: set = frozenset(), roles: set = frozenset(), full_names: set = frozenset()):
         self.names = set(names)
+        self.full_names = set(full_names)
         self.ambiguous = {n for n in self.names if zipf(n) >= AMBIGUOUS_ZIPF}
         self.places = set(places)
         self.roles = set(roles) | ROLE
@@ -228,12 +282,17 @@ class WordClasses:
         """num | name | nick | func | report | time | rel | place | content."""
         if len(tok) < 2:
             return "num" if tok.isdigit() else "func"
+        squeezed = _ELONGATED.sub(r"\1", tok)
+        if squeezed != tok and (squeezed in FUNCTION or squeezed in STOP):
+            return "func"                                       # "nooo", "sooo", "ohhh"
         if NUM.match(tok) or (tok[0].isdigit() and not any(c.isalpha() for c in tok)):
             return "num"
         if tok in TIME:
             return "time"
         if "-" in tok:
             parts = [p for p in tok.split("-") if p]
+            if len(parts) >= 2 and parts[0] in HOURS and "-".join(parts[1:]) in MINUTES:
+                return "time"                                   # "nine-thirty", "ten-fifteen"
             rparts = [p for p in (raw or tok).strip("'-").split("-") if p]
             if len(rparts) != len(parts):
                 rparts = parts
@@ -263,15 +322,20 @@ class WordClasses:
             return "report"
         if tok in FUNCTION or tok in STOP:
             return "func"
-        if tok in RELATION or tok in self.roles:
+        sing = tok[:-1] if tok.endswith("s") and len(tok) > 3 else tok
+        if tok in RELATION or tok in self.roles or sing in self.roles:
             return "rel"
-        if tok in self.places:
+        if tok in self.places or sing in self.places:
             return "place"
         return "content"
 
     def classes(self, toks, raws=None) -> list[str]:
         raws = raws or [None] * len(toks)
-        return [self.token_class(t, r) for t, r in zip(toks, raws)]
+        cls = [self.token_class(t, r) for t, r in zip(toks, raws)]
+        for i in range(len(toks) - 1):
+            if (toks[i], toks[i + 1]) in self.full_names:        # "jordan kim", "miles carter" in any case
+                cls[i] = cls[i + 1] = "name"
+        return cls
 
     @staticmethod
     def nickname(toks, cls) -> bool:
@@ -309,6 +373,8 @@ class WordClasses:
                 return "reporting_frame"
         if n >= 2 and toks[-2] in AUX and (toks[-1].endswith("ing") or cls[-1] == "rel"):
             return "clause_fragment"
+        if n >= 2 and toks[-1].endswith("'s"):
+            return "dangling_possessive"                        # "job on the co-op's" [laser]
         content = [c for c in cls if c != "func"]
         if all(c in ("rel", "place", "time", "report") for c in content):
             return "bare_role_or_place"
@@ -319,7 +385,7 @@ class WordClasses:
             b = self.base(t)
             if len(b) < 4:
                 return "short_unigram"
-            if zipf(b) >= UNIGRAM_MAX_ZIPF:
+            if lemma_zipf(b) >= UNIGRAM_MAX_ZIPF:
                 return "common_unigram"
         return None
 
@@ -332,7 +398,7 @@ class Infrastructure:
 
     def __init__(self, rd, wc: WordClasses | None = None, lexicon: set | None = None):
         self.rd = rd
-        self.wc = wc or WordClasses(run_names(rd), run_places(rd), run_roles(rd))
+        self.wc = wc or WordClasses(run_names(rd), run_places(rd), run_roles(rd), run_full_names(rd))
         self.lexicon = set(lexicon) if lexicon is not None else self._lexicon()
         self.segments: list[tuple[int, str, str]] = []      # (tick, kind, text)
         self._build()
@@ -469,7 +535,9 @@ class Infrastructure:
         raw = " ".join(toks)
         slotted = " ".join(SLOT if self.wc.is_name(t, t.capitalize()) else t for t in toks)
         folded = " ".join(fold(t) for t in toks)
-        probes = [("verbatim", 3, raw), ("template", 4, slotted), ("folded", 5, folded)]
+        probes = [("verbatim", 3, raw), ("template", 4, slotted)]
+        if len(toks) > 1:              # a single word is system wording only verbatim ("clicked" is not "click much")
+            probes.append(("folded", 5, folded))
         for mode, idx, s in probes:
             if f" {s} " not in self._big[mode]:
                 continue

@@ -215,7 +215,6 @@ def _summary(snap: dict, cards: list[dict], slot: dict, debug: bool) -> dict:
              f"among {_n(snap['n_agents_active'], 'active agent')}, and the world released {_n(snap['n_events'], 'event')}."]
     n = snap["n_expressions"]
     tc = snap.get("tier_counts") or {}
-    judge = snap.get("judge") or {}
     if n:
         bits = [f"{c['emerged']} emerged", f"{c['spreading']} spreading after exposure",
                 f"{c['echo']} echoed only inside a conversation",

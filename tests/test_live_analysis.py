@@ -215,8 +215,9 @@ def test_snapshot_counts_are_monotone_in_t(v2_run):
     tr = [json.loads(l) for l in open(v2_run / "trace.jsonl")]
     assert final["n_utterances"] == sum(r["type"] == "utterance" for r in tr)
     assert final["n_conversations"] == sum(r["type"] == "conversation" for r in tr)
-    assert final["expressions"] and all(e["status"] in ("planted", "world_wording", "emerged", "spreading", "echo", "new")
-                                        for e in final["expressions"])
+    assert final["expressions"] and all(e["status"] in ("planted", "system_wording", "world_wording", "emerged",
+                                                        "spreading", "echo", "new") for e in final["expressions"])
+    assert all(e["tier"] in ("candidate", "spreading", "convention") for e in final["expressions"])
     assert final["planted"]["phrase"] == "a full pickle"       # control configured (the mock never says it)
     assert "v3" not in final and final["hidden_fields"]
 
@@ -388,10 +389,16 @@ def test_pipeline_routes_classifier_through_default_judge(v2_run, tmp_path):
     judged = [c for c in out["candidates"] if "judgements" in c]
     assert judged
     for c in judged:
-        assert set(c["llm"]) == {"is_convention", "gloss", "confidence", "raw"}           # legacy fields kept
+        assert set(c["llm"]) >= {"is_convention", "gloss", "confidence", "raw"}           # legacy fields kept
         v = c["judgements"][jid]
-        assert JG.validate_verdict(v) == [] and c["llm"]["is_convention"] == v["is_convention"]
-    assert out["summary"]["n_llm_conventions"] == sum(c["llm"]["is_convention"] for c in judged)
+        # a mock verdict is a placeholder: recorded with its provenance, never a convention
+        assert JG.validate_verdict(v) == [] and c["llm"]["placeholder"]["is_convention"] == v["is_convention"]
+        assert c["llm"]["is_convention"] is None and c["llm"]["real_judge"] is False and c["llm"]["judge_id"] == jid
+        assert c["tier"] != "convention" and c["card"]["is_convention"] is None
+    assert out["summary"]["n_llm_conventions"] == 0 and out["summary"]["n_conventions"] == 0
+    assert out["summary"]["n_llm_conventions_placeholder"] == sum(v["is_convention"] for c in judged
+                                                                  for v in c["judgements"].values())
+    assert out["summary"]["judge_status"] == "mock_only" and "no real judge has run" in out["summary"]["judge_note"]
     assert not (d / "judge_llm_calls.jsonl").exists()        # the mock judge makes no LLM calls
 
 
@@ -407,7 +414,8 @@ def test_legacy_classifier_path_is_prompt_v0(tmp_path):
     rec = json.loads((tmp_path / "calls.jsonl").read_text().splitlines()[0])
     assert rec["purpose"] == "analysis_classifier"
     assert rec["prompt"] == CLASSIFY.format(expr="glimmer toast", uses="1. A: grab a glimmer toast\n2. B: one glimmer toast / A: ok")
-    assert set(c["llm"]) == {"is_convention", "gloss", "confidence", "raw"}
+    assert set(c["llm"]) >= {"is_convention", "gloss", "confidence", "raw"}
+    assert c["llm"]["is_convention"] is None and c["llm"]["provider"] == "mock"      # mock backend: placeholder
     assert c["judgements"]["mock-mock-v0"]["prompt_version"] == "v0"
 
 

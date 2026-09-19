@@ -39,11 +39,13 @@
             <button id="zoomIn" title="Zoom in (+)">+</button>
             <button id="zoomFit" title="Fit the whole campus">fit</button>
             <button id="zoomQuad" title="Centre on Keyser Quad">quad</button>
+            <button id="mapMode" title="Switch between the game tile map and the real-world OpenStreetMap map">real map</button>
             <label class="follow" title="Keep the camera on the selected agent"><input type="checkbox" id="followSel"> follow</label>
           </div>
           <canvas id="minimap" class="hud" width="120" height="143" title="Click to move the camera"></canvas>
           <div class="hud map-help" id="mapHelp">drag to pan · wheel to zoom · click an agent</div>
           <div class="hud away-tray" id="awayTray" hidden></div>
+          <div class="hud map-attrib" id="mapAttrib" hidden></div>
           <div class="debug-badge" id="debugBadge" hidden>RESEARCH DEBUG: hidden ground truth visible</div>
           <div class="map-loading" id="mapLoading">loading campus…</div>
         </div>
@@ -100,9 +102,13 @@
         <button id="btnAnalyze" class="pill">Re-run analysis</button>
       </div>
     </div>
-    <div id="cultureSummary" class="summary-row"></div>
-    <div id="cards" class="cards"></div>
-    <div id="memeDetail" class="meme-detail"></div>
+    <div id="cultureTrends" class="culture-trends"></div>
+    <details class="legacy-culture">
+      <summary>Analysis report cards (classic view)</summary>
+      <div id="cultureSummary" class="summary-row"></div>
+      <div id="cards" class="cards"></div>
+      <div id="memeDetail" class="meme-detail"></div>
+    </details>
   </section>
 
   <!-- TRACE ---------------------------------------------------------------->

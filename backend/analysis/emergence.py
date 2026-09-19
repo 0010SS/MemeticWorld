@@ -169,8 +169,10 @@ def world_match(phrase: list[str], segments: list[list[str]], max_gap: int = WOR
 
 
 def lexicon_flag(phrase: str, vocab: set, names: set) -> bool:
+    """Every content word is population vocabulary. A phrase with no content word left (a nickname construction
+    such as "the leo thing": stop words and a name) is not lexicon wording."""
     content = [t for t in phrase.split() if t not in STOP and not t.isdigit() and t not in names]
-    return all(t in vocab for t in content)
+    return bool(content) and all(t in vocab for t in content)
 
 
 def emergence_for(usages: list[dict], population: list[str], *, in_lexicon: bool = False,
