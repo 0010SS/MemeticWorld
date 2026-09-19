@@ -1,0 +1,29 @@
+encode_memory_v2.txt  (MemeWorld, non-GA: lossy reconstructive memory encoding; v2 adds the self-experience
+line and the sampled memory lens, D43/D44)
+
+Variables:
+!<INPUT 0>! -- persona name
+!<INPUT 1>! -- persona ISS (upstream Scratch.get_str_iss)
+!<INPUT 2>! -- current time
+!<INPUT 3>! -- location
+!<INPUT 4>! -- how it was experienced ("saw", "experienced first-hand", "heard in a conversation", ...)
+!<INPUT 5>! -- observation text
+!<INPUT 6>! -- memory-fidelity instruction (set by memory.encoding_noise, jittered by the lens)
+!<INPUT 7>! -- what the persona knows about the people involved
+!<INPUT 8>! -- sampled memory lens (focus, length, uncertainty, distortion)
+!<INPUT 9>! -- self-experience note (empty unless the persona took part)
+
+<commentblockmarker>###</commentblockmarker>
+Here is a brief description of !<INPUT 0>!.
+!<INPUT 1>!
+!<INPUT 7>!
+
+It is !<INPUT 2>! and !<INPUT 0>! is at the !<INPUT 3>!. This is what !<INPUT 0>! just !<INPUT 4>!:
+!<INPUT 5>!
+!<INPUT 9>!
+
+People do not store experiences word for word; they keep a reconstructed version, shaped by what they noticed and cared about.
+!<INPUT 6>!
+!<INPUT 8>!
+
+Write the memory that !<INPUT 0>! keeps of this, in the third person, starting with "!<INPUT 0>!". Output only the memory.

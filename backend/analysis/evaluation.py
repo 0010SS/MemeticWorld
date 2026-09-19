@@ -1,13 +1,15 @@
-"""Ground-truth evaluation of candidates against hidden latent event types
+"""LEGACY ground-truth evaluation of candidates against hidden latent event types
 (OBSERVER ONLY; the mapping is never exposed to agents).
 
-A usage is linked to world events through simulator-side metadata: the
-originating_event_ids of the memories the speaker retrieved when producing the
-utterance (plus the private trigger of reaction-initiated conversations).
+Superseded by grounding.py (ontology v2 §4) and kept only so analysis.json keeps its old
+`evaluation` block for the UI and for comparison with pre-v2 analyses. It links a usage to world
+events through retrieval metadata (the originating_event_ids of the memories the speaker retrieved,
+plus the private trigger of reaction-initiated conversations), which over-attributes (D26);
+grounding uses the lexical `referent_event_ids` instead.
 """
 from __future__ import annotations
 
-from collections import Counter, defaultdict
+from collections import Counter
 
 import numpy as np
 
@@ -35,30 +37,37 @@ def base_rates(rd) -> dict:
 
 
 def _best_precision(usages: list, label: dict) -> float:
-    """Share of usages linked to the most common latent type (the post-hoc 'best type')."""
+    """Weighted share of the post-hoc best latent type: each usage spreads 1 over its linked events
+    (the old version counted a usage as a hit when *any* link had the best type, a ceiling that
+    multi-linked usages pushed towards 1)."""
     dist = Counter()
     for u in usages:
         ids = [e for e in u.get("retrieved_event_ids", []) if e in label]
         for e in ids:
             dist[label[e]] += 1.0 / len(ids)
-    if not dist:
+    if not dist or not usages:
         return 0.0
-    z = max(dist, key=lambda k: dist[k])
-    return sum(1 for u in usages if any(label.get(e) == z for e in u.get("retrieved_event_ids", []))) / len(usages)
+    return max(dist.values()) / len(usages)
 
 
 def permutation_null(usages: list, events: dict, n: int = 500, seed: int = 0) -> dict:
     """Chance baseline for alignment: shuffle latent-type labels across the run's events (keeping the
-    type counts and every usage's event links fixed) and recompute best-type precision. The best type
-    is chosen post hoc, so the null picks it post hoc too. p = P(null >= observed)."""
+    type counts and every usage's event links fixed) and recompute the best-type weighted share. The
+    best type is chosen post hoc, so the null picks it post hoc too. p = P(null >= observed)."""
+    from backend.analysis.grounding import best_share, link_weights, stratified_permutations
     ids = sorted(events)
-    types = [events[e]["latent_type"] for e in ids]
-    obs = _best_precision(usages, dict(zip(ids, types)))
+    fams = sorted({events[e]["latent_type"] for e in ids})
+    if not fams:
+        return None
+    labels = np.array([fams.index(events[e]["latent_type"]) for e in ids], dtype=int)
+    obs = _best_precision(usages, {e: events[e]["latent_type"] for e in ids})
+    v, _ = link_weights([u.get("retrieved_event_ids", []) for u in usages], {e: i for i, e in enumerate(ids)})
     rng = np.random.default_rng(seed)
-    null = np.array([_best_precision(usages, dict(zip(ids, rng.permutation(types)))) for _ in range(n)])
+    perms = stratified_permutations(labels, np.zeros(len(ids), dtype=int), n, rng)
+    null = best_share(v[None, :], perms, len(fams))[0][0] / max(1, len(usages))
     return {"observed": round(obs, 3), "null_mean": round(float(null.mean()), 3),
             "null_p95": round(float(np.quantile(null, 0.95)), 3),
-            "p_value": round(float((1 + (null >= obs - 1e-12).sum()) / (n + 1)), 4)}
+            "p_value": round(float((1 + (null >= obs - 1e-9).sum()) / (n + 1)), 4)}
 
 
 def evaluate(cand: dict, rd, probes: dict | None, rates: dict) -> dict:

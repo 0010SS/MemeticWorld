@@ -16,7 +16,7 @@ import numpy as np
 
 from backend import ga_compat
 from backend.agents.agent import Agent
-from backend.agents.profile import load_population
+from backend.analysis.rundata import simulated_profiles
 from backend.llm.client import llm_purpose, llm_scope
 from backend.memory.retrieval import merged_nodes, retrieve
 from backend.memory.store import MemoryStream
@@ -32,8 +32,15 @@ class _Ctx:
         self.agents = agents
 
 
+def probe_profiles(rd) -> dict:
+    """The profiles as simulated (rundata.simulated_profiles: population file, generated topology, planted
+    habit, then the manifest's record of each profile), so the probed persona's ISS (lifestyle,
+    daily-plan line) is the one the agent had in every prompt."""
+    return simulated_profiles(rd.cfg, rd.manifest)
+
+
 def load_probe_agents(rd, embed) -> dict:
-    profiles, _ = load_population(rd.cfg["population"], rd.cfg.get("population_size"))
+    profiles = probe_profiles(rd)
     end = dt.datetime.fromisoformat(rd.manifest["start"]) + dt.timedelta(
         days=rd.cfg["simulation_days"] - 1, hours=15)
     agents = {}
@@ -50,27 +57,69 @@ def load_probe_agents(rd, embed) -> dict:
     return agents
 
 
-def holdout_options(rng) -> list[tuple[str, str]]:
-    """One surface-novel situation per latent family (held-out templates, NPC roles)."""
+NODE_ORDER = ("n0", "n0_private", "n1", "n2")
+ROLE_FILL = {"P": "a student", "S": "a friend", "Q": "another student"}
+
+
+def _fill(text: str, subst: dict) -> str:
+    out = text
+    for k, v in subst.items():
+        out = out.replace("{" + k + "}", v)
+    return out[:1].upper() + out[1:]
+
+
+def _v2_options(rng, families: list[str]) -> list[tuple[str, str]]:
+    """One held-out skin per family (v2 skins: held-out topics and wording), NPC roles, first slot values."""
+    from backend.simulation.referents import CATEGORIES
+    from backend.simulation.skins import load_skins
+    skins = [s for s in load_skins() if s.get("holdout")]
     opts = []
-    for fam in sorted(LE.LATENT_TYPES):
+    for fam in families:
+        pool = sorted((s for s in skins if s["family"] == fam), key=lambda s: s["key"])
+        if not pool:
+            return []
+        sk = pool[int(rng.integers(len(pool)))]
+        subst = dict(ROLE_FILL, R=CATEGORIES[sk["domain"]][0])
+        subst.update({k: v[0] for k, v in (sk.get("slots") or {}).items()})
+        opts.append((fam, " ".join(_fill(sk["facts"][n], subst) for n in NODE_ORDER if n in sk["facts"])))
+    return opts
+
+
+def _v1_options(rng, families: list[str]) -> list[tuple[str, str]]:
+    opts = []
+    for fam in families:
         pool = LE.scenarios_for(fam, True)
         scn = pool[int(rng.integers(len(pool)))]
-        subst = {"P": "a student", "S": "a friend", "Q": "another student"}
+        subst = dict(ROLE_FILL)
         for slot, vals in (scn.get("slots") or {}).items():
             subst[slot] = vals[0]
-        text = " ".join(LE._fill(f["text"], subst) for b in scn["beats"] for f in b["facts"])
-        opts.append((fam, text))
+        opts.append((fam, " ".join(LE._fill(f["text"], subst) for b in scn["beats"] for f in b["facts"])))
+    return opts
+
+
+def holdout_options(rng, families: list[str] | None = None, v2: bool = True) -> list[tuple[str, str]]:
+    """One surface-novel situation per latent family (held-out skins / templates, NPC roles), shuffled.
+    v2 runs are probed with v2 skins, v1 runs with the v1 held-out scenario templates."""
+    families = sorted(families or ["E1", "E2", "E3", "E4"])
+    opts = []
+    for build in ((_v2_options, _v1_options) if v2 else (_v1_options,)):
+        try:
+            opts = build(rng, families)
+        except Exception:        # skins or legacy scenarios unavailable
+            opts = []
+        if opts:
+            break
     order = rng.permutation(len(opts))
     return [opts[i] for i in order]
 
 
-def probe_candidate(cand: dict, agents: dict, llm, heard: dict, seed: int) -> dict:
+def probe_candidate(cand: dict, agents: dict, llm, heard: dict, seed: int, families: list[str] | None = None,
+                    v2: bool = True) -> dict:
     expr = cand["canonical_form"]
     out = {}
     rng = np.random.default_rng(seed)
-    options = holdout_options(rng)
-    letters = "ABCD"
+    options = holdout_options(rng, families, v2)
+    letters = "ABCDEFGH"[:len(options)]
     opt_text = "\n".join(f"{letters[i]}. {t}" for i, (_, t) in enumerate(options))
     for aid in sorted(agents):
         a = agents[aid]
@@ -80,9 +129,11 @@ def probe_candidate(cand: dict, agents: dict, llm, heard: dict, seed: int) -> di
             p1 = ga.gs.generate_prompt([a.iss(), a.name, mem, expr], str(PDIR / "probe_meaning_v1.txt"))
             with llm_purpose("probe_meaning", aid):
                 meaning = llm.complete(p1, max_tokens=120, temperature=0).strip()
-            p2 = ga.gs.generate_prompt([a.iss(), a.name, mem, expr, opt_text], str(PDIR / "probe_match_v1.txt"))
-            with llm_purpose("probe_match", aid):
-                ans = llm.complete(p2, max_tokens=5, temperature=0).strip().upper()
+            ans = ""
+            if options:
+                p2 = ga.gs.generate_prompt([a.iss(), a.name, mem, expr, opt_text], str(PDIR / "probe_match_v1.txt"))
+                with llm_purpose("probe_match", aid):
+                    ans = llm.complete(p2, max_tokens=5, temperature=0).strip().upper()
         letter = next((ch for ch in ans if ch in letters), None)
         fam = options[letters.index(letter)][0] if letter else None
         out[aid] = {"meaning": meaning, "heard_before": aid in heard.get("heard", set()),

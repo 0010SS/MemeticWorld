@@ -1,5 +1,7 @@
-# Negative control: identical agents and routines, but no latent world events at all.
+# Negative control: identical agents and routines, but an empty world script (no latent world events).
 # Measures how many "conventions" arise from ordinary chatter alone, and the observer's false-positive rate.
+# With the NEED/LINK/WORDING mechanisms on, use the design control cell instead
+# (configs/designs/bottleneck_factorial.yaml: control-no_events).
 run_name: no_events
 latent_events:
   event_rate: 0.0

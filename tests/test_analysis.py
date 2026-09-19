@@ -38,3 +38,19 @@ def test_transmission_edges_and_inventors():
     assert {i["agent"] for i in t["inventors"]} == {"a", "d"}
     assert t["depth"] == 2
     assert edges[("b", "c")]["exposures"][0]["retained_in_memory"]
+
+
+def test_transmission_needs_causal_exposure():
+    """Same-tick remarks are decided in parallel and a tick-t remark reaches memory only after tick t's
+    conversations: neither creates an edge. An earlier turn of the same conversation does."""
+    R = lambda t, s, ls: {"utterance_id": f"t{t:04d}:remark:{s}:ev1.b0", "tick": t, "speaker": s, "listeners": ls,
+                          "conversation_id": None}
+    C = lambda cid, i, t, s, ls: {"utterance_id": f"{cid}.u{i}", "tick": t, "speaker": s, "listeners": ls,
+                                  "conversation_id": cid, "idx": i}
+    cand = {"id": "m0", "variants": ["chopsticks"], "usages": [
+        R(7, "a", ["b", "c"]), R(7, "b", ["a", "c"]),         # simultaneous witness remarks
+        C("k1", 0, 7, "c", ["d"]),                           # tick-7 conversation: cannot have heard tick-7 remarks
+        C("k1", 1, 7, "d", ["c"])]}                          # heard c's turn just before: an edge c -> d
+    t = analyze_transmission(cand, _RD(), {})
+    assert {(e["source_agent"], e["target_agent"]) for e in t["edges"]} == {("c", "d")}
+    assert {i["agent"] for i in t["inventors"]} == {"a", "b", "c"}

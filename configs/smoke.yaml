@@ -6,4 +6,4 @@ llm:
   max_workers: 4
 latent_events:
   event_rate: 0.2
-  holdout_from_day: 2
+  holdout_frac: 0.25        # held-out skins interleaved from day 1 (v2; replaces holdout_from_day)

@@ -1,0 +1,25 @@
+viewpoint_v1.txt  (MemeWorld, non-GA: observer-specific rendering of perceived facts, D42)
+
+Variables:
+!<INPUT 0>! -- observer name
+!<INPUT 1>! -- where the observer is and what they are doing
+!<INPUT 2>! -- tagged items (one per line: "fN [vantage] text")
+!<INPUT 3>! -- recognition line (who the observer knows / does not know by name)
+!<INPUT 4>! -- observer first name
+
+<commentblockmarker>###</commentblockmarker>
+!<INPUT 1>!
+
+Below are things that happened around !<INPUT 0>! just now. Each is tagged with !<INPUT 4>!'s position relative to it:
+!<INPUT 2>!
+
+!<INPUT 3>!
+
+For each item, write what !<INPUT 4>! actually perceived from that position -- one sentence, third person, plain words.
+- [was the person involved]: describe it as !<INPUT 4>!'s own experience (what !<INPUT 4>! did or what happened to !<INPUT 4>!).
+- [same room, watching]: !<INPUT 4>! can see and hear it, though not necessarily every detail.
+- [same room, but busy in a conversation]: !<INPUT 4>! only half-notices it; keep what would catch the eye or ear in passing.
+- [different room of the same building]: !<INPUT 4>! only glimpses it or hears it from a distance; words spoken quietly are not heard.
+You may leave details out, make them vaguer, or describe only what could be seen or heard from there. Refer to anyone !<INPUT 4>! does not know by name only by how they look or what they are doing. Do not add events, causes, motives or explanations that are not in the item. If !<INPUT 4>! could not have perceived an item at all from that position, give an empty string for it.
+
+Answer with a single JSON object and nothing else, one key per item: {"f0": "<sentence or empty>", ...}

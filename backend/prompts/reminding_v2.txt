@@ -1,0 +1,25 @@
+reminding_v2.txt  (MemeWorld, non-GA: spontaneous reminding of an earlier experience, D48; v2 makes "nothing comes to mind" the easy default and asks for a similarity in what happened, not in place, people or topic)
+
+Variables:
+!<INPUT 0>! -- persona ISS
+!<INPUT 1>! -- persona name
+!<INPUT 2>! -- current time and place
+!<INPUT 3>! -- what the persona just noticed / experienced / heard (their own perceived version)
+!<INPUT 4>! -- numbered earlier memories
+!<INPUT 5>! -- persona first name
+!<INPUT 6>! -- how it reached the persona ("just noticed", "just experienced", "just talked with X", "just overheard")
+
+<commentblockmarker>###</commentblockmarker>
+!<INPUT 0>!
+
+It is !<INPUT 2>!. !<INPUT 1>! !<INPUT 6>!:
+!<INPUT 3>!
+
+Some earlier things !<INPUT 5>! remembers:
+!<INPUT 4>!
+
+Most of what happens in a day is ordinary and brings nothing in particular to mind.
+First, is what just happened ordinary for !<INPUT 5>!? If so, nothing comes to mind: answer with "ordinary": true and null for the rest.
+Being in the same place, with the same people, or about the same subject as an earlier experience is not enough. Only if the way things actually went -- what happened and how it turned out -- is genuinely like one of the earlier experiences, even with completely different details, does that one come to mind. Then give its number and say in a few plain words what went the same way. If nothing really comes to mind, use null. Most of the time the answer is null.
+
+Answer with a single JSON object and nothing else: {"ordinary": <true or false>, "reminded_of": <number or null>, "what_felt_alike": "<a few words, or null>"}
