@@ -116,6 +116,11 @@ def _context(speaker, other, started_by_speaker: bool, trigger_text: str | None,
     lines = [speaker.relationship_line(other)]
     if topic == "catchup":
         lines.append(f"{s.name} and {o.name} are catching up on how things have been going lately.")
+    elif topic in ("clarify", "handover"):
+        from backend.agents import coop_talk
+        tl = coop_talk.speaker_topic_line(topic, speaker, other, started_by_speaker)
+        if tl:
+            lines.append(tl)
     lines += _mind_lines(speaker, conv_id)
     if trigger_text:
         lines.append(f"{s.name} just noticed: {trigger_text}")
@@ -147,6 +152,9 @@ def run_conversation(conv_id: str, init, target, bystanders: list, rng, *, openi
     k = int(init.cfg["retrieval"]["top_k"])
     topic = (trigger or {}).get("topic")
     n_max = int(cc.get("catchup_max_utterances", cc["max_utterances"])) if topic == "catchup" else int(cc["max_utterances"])
+    if topic in ("clarify", "handover"):                  # v3 co-op talk budgets (§4.5)
+        from backend.agents import coop_talk
+        n_max = int(coop_talk.max_utterances(init.cfg, topic) or n_max)
     for i in range(n_max):
         speaker, other = parts[i % 2], parts[(i + 1) % 2]
         trig = trigger["text"] if trigger and trigger["agent"] == speaker.id and i < 2 else None

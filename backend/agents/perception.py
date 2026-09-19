@@ -59,7 +59,10 @@ def attention_prob(agent, fact: dict, beat: dict, cfg: dict) -> float:
     if agent.id in fact["involves"]:
         return 1.0                                   # participation
     vis = fact["visibility"]
-    if vis != "all" and agent.id not in vis:
+    if vis == "arena":                               # v3: only agents in the beat's arena (participants above)
+        if agent.state.location != beat.get("location") or agent.state.arena != beat.get("arena"):
+            return 0.0
+    elif vis != "all" and agent.id not in vis:
         return 0.0
     p = pc["base_attention"] * (0.5 + 0.5 * fact["salience"])
     if beat.get("arena") and agent.state.arena != beat["arena"]:

@@ -128,6 +128,46 @@ class MockBackend(Backend):
                 return json.dumps({"action": "TALK", "target": names[h % len(names)],
                                    "utterance": f"Did you see that? {snippet}.", "reason": "share"})
             return json.dumps({"action": "CONTINUE", "target": None, "utterance": None, "reason": "alone"})
+        # ---- v3 battery probes (O3-battery; analysis/battery/runner.py): probe_act / probe_apply / probe_note ----
+        if p in ("probe_act", "probe_apply", "probe_note"):
+            letters = re.findall(r"^([A-F])\) ", prompt, re.M) or list("ABCDEF")
+            if p == "probe_apply":
+                nums = re.findall(r"^(\d+)\. ", prompt.split("For every number")[0], re.M)
+                opts = ["fits", "doesn't fit", "not sure"]
+                return json.dumps({n: opts[_h(f"{h}|{n}") % 3] for n in nums})
+            choice = letters[h % len(letters)]
+            if p == "probe_act":
+                return json.dumps({"describe": "the laser acted up again", "choice": choice, "confidence": 1 + h % 5})
+            return json.dumps({"meaning": "something is off with the laser today", "choice": choice,
+                               "heard_before": ["yes", "no", "not sure"][(h // 7) % 3]})
+        # ---- end v3 battery probes ----
+        # ---- v3 records (R; agents/record_write.py, record_write_v1.txt): echo a remembered line, never ids ----
+        if p == "record_write":
+            mem = [l[2:].strip() for l in _section(prompt, "remembers of it:\n", "Next to the laser").splitlines()
+                   if l.startswith("- ") and "(nothing in particular)" not in l]
+            r = h % 4
+            if r < 2 or not mem:
+                return json.dumps({"choice": "none", "text": None})
+            frag = " ".join(re.sub(r"^[A-Z][a-z]+ [A-Z][a-z]+ remembers that ", "", mem[h % len(mem)]).split()[:24])
+            choice = "front" if (r == 3 and '"front"' in prompt) else "log"
+            return json.dumps({"choice": choice, "text": frag.rstrip(".,") + "."})
+        # ---- end v3 records ----
+        # ---- v3 work (A; agents/work.py, job_decision_v1.txt): pick a listed letter; sometimes ask ----
+        if p == "job_decision":
+            opts = re.findall(r"^([A-L])\. (.+)$", _section(prompt, "do next?\n", "Answer with"), re.M)
+            if not opts:
+                return json.dumps({"choice": None})
+            acts = [(k, t) for k, t in opts if not t.startswith("ask ") and not t.startswith("look through")]
+            asks = [k for k, t in opts if t.startswith("ask ")]
+            noticed = [l[2:] for l in _section(prompt, "noticed so far:\n", "remembers").splitlines() if l.startswith("- ")]
+            snip = " ".join((noticed[0] if noticed else "this").split()[:8]).rstrip(".,")
+            if asks and h % 5 == 0:
+                return json.dumps({"choice": asks[h % len(asks)], "question": f"Have you seen this before? {snip}.",
+                                   "says_aloud": None, "reason": "not sure what it is"})
+            k, _t = acts[h % len(acts)] if acts else opts[h % len(opts)]
+            says = f"Huh, {snip[0].lower() + snip[1:]}." if snip and h % 4 == 1 else None
+            return json.dumps({"choice": k, "question": None, "says_aloud": says, "reason": "seemed worth a try"})
+        # ---- end v3 work ----
         if p == "probe_meaning":
             return "I am not sure; I think I heard it in passing."
         if p == "probe_match":

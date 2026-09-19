@@ -122,13 +122,14 @@ class MemoryStream(ga_compat.load().AssociativeMemory):
 class MemoryMeta:
     """Simulator-side metadata for one memory node. NEVER shown to agents."""
     agent_id: str
-    source_type: str                     # perception | conversation | overheard | reflection | reminding | seed | ambient
+    source_type: str                     # perception | conversation | overheard | reflection | reminding | seed | ambient | record | self
     salience: float = 0.5
     originating_event_ids: list[str] = field(default_factory=list)
     speakers: list[str] = field(default_factory=list)
     source_ids: list[str] = field(default_factory=list)   # observation / utterance / memory ids
     links: list[dict] = field(default_factory=list)       # LINK: [{"from", "to", "mechanism", "reason", ...}]
     wordings: list[dict] = field(default_factory=list)    # WORDING: [{"phrase", "heard_from", "utterance_id", "tick", ...}]
+    record_ids: list[str] = field(default_factory=list)   # v3: binder entry / revision ids read or written (§2.3)
 
 
 class SimMemoryMeta:

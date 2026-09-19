@@ -42,8 +42,14 @@ PROMPT_DIR = ga_compat.REPO_ROOT / "backend" / "prompts"
 ENCODE_PROMPT = "encode_memory_v2.txt"
 
 VERB = {"perception": "saw", "conversation": "heard in a conversation",
-        "overheard": "overheard", "self": "did"}
-HEARD = ("conversation", "overheard")      # sources whose wording can stick verbatim
+        "overheard": "overheard", "self": "did",
+        "record": "read in the co-op binder"}         # v3 §2.3: binder reads (backend/simulation/records.py)
+HEARD = ("conversation", "overheard")      # default sources whose wording can stick verbatim
+
+
+def verbatim_sources(agent) -> tuple:
+    """Sources whose wording may stick (`memory.verbatim.on_sources`, default HEARD; v3_base adds record)."""
+    return tuple((agent.cfg["memory"].get("verbatim") or {}).get("on_sources") or HEARD)
 
 
 def fidelity_instruction(noise: float, first: str) -> str:
@@ -350,7 +356,7 @@ def encode(agent, obs, rng) -> object | None:
         vc = mc.get("verbatim") or {}
         people = "\n".join(agent.relationship_line(ctx.agents[a]) for a in named)
         lens = sample_lens(noise, float(mc.get("encoding_variability", 1.0)), first, agent.stream("lens"))
-        if obs.source_type in HEARD:
+        if obs.source_type in verbatim_sources(agent):
             stuck = sticky_phrases(agent, facts, agent.stream("verbatim"))
         render = bool(stuck) and vc.get("render_in_text", True)
         if stuck:
@@ -381,7 +387,8 @@ def encode(agent, obs, rng) -> object | None:
             if ph.lower() not in text.lower():            # the model dropped it: the wording still stuck
                 text += f' {first} remembers the words "{ph}".'
 
-    kind = "event" if obs.source_type == "perception" else "chat"
+    kind = "event" if obs.source_type in ("perception", "record") else "chat"
+    record_ids = [f["record_id"] for f in facts if f.get("record_id")]     # v3 binder items (§2.3)
     importance = ga_prompts.poignancy(agent, text, "chat" if kind == "chat" else "event")
     salience = max(f["salience"] for f in facts)
     draft = {"text": text, "importance": importance, "salience": salience, "source_type": obs.source_type,
@@ -407,6 +414,7 @@ def encode(agent, obs, rng) -> object | None:
                     if e not in m.originating_event_ids:
                         m.originating_event_ids.append(e)
                 m.source_ids.append(obs.id)
+                m.record_ids.extend(r for r in record_ids if r not in m.record_ids)
             ctx.tracer.log("memory_merged", agent=agent.id, node_id=best.node_id, into_text=best.description,
                            dropped_text=draft["text"], similarity=round(best_sim, 3), observation_id=obs.id,
                            originating_event_ids=list(obs.event_ids))
@@ -419,13 +427,15 @@ def encode(agent, obs, rng) -> object | None:
 
     s_name = agent.name
     o_name = obs.partner or (ctx.agents[named[0]].name if named else obs.location)
-    pred = {"perception": "saw", "conversation": "chat with", "overheard": "overheard"}.get(obs.source_type, "noticed")
+    pred = {"perception": "saw", "conversation": "chat with", "overheard": "overheard",
+            "record": "read"}.get(obs.source_type, "noticed")
     node = agent.a_mem.add(kind, now, s_name, pred, o_name, draft["text"],
                            _keywords(agent, draft["text"], named), draft["importance"], emb, [])
     ctx.meta.set(node.node_id, MemoryMeta(agent_id=agent.id, source_type=obs.source_type, salience=salience,
                                           originating_event_ids=list(obs.event_ids),
                                           speakers=list(obs.speakers),
-                                          source_ids=[obs.id] + list(obs.utterance_ids)))
+                                          source_ids=[obs.id] + list(obs.utterance_ids),
+                                          record_ids=record_ids))
     agent.scratch.importance_trigger_curr -= draft["importance"]
     agent.scratch.importance_ele_n += 1
     ctx.tracer.log("memory_encoded", agent=agent.id, node_id=node.node_id, kind=kind, text=node.description,
@@ -433,7 +443,7 @@ def encode(agent, obs, rng) -> object | None:
                    observation_id=obs.id, observation=raw, encoding_ops=ops, prompt=prompt, lens=lens,
                    self_experience=self_part,
                    originating_event_ids=list(obs.event_ids), speakers=list(obs.speakers),
-                   utterance_ids=list(obs.utterance_ids))
+                   utterance_ids=list(obs.utterance_ids), **({"record_ids": record_ids} if record_ids else {}))
     if stuck:
         wording.record(agent, node.node_id, stuck, obs)
     if assoc is not None:

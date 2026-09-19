@@ -45,7 +45,7 @@ import yaml
 
 from backend.config import REPO_ROOT, check_keys, deep_merge, load_config, observer_spec
 
-DESIGN_KEYS = {"name", "description", "base", "seeds", "days", "observer", "common", "factors", "controls",
+DESIGN_KEYS = {"name", "description", "kind", "base", "seeds", "days", "observer", "common", "factors", "controls",
                "outcomes", "runs_root"}
 NAME_RE = re.compile(r"^[A-Za-z0-9]+(_[A-Za-z0-9]+)*$")   # no '-' or '__': they separate cell-id parts
 RESERVED_COLUMNS = {"cell", "control", "seed", "n", "observer", "inactive", "status", "run_dir"}
@@ -121,12 +121,17 @@ def _check_overlay(ov, where: str):
     check_keys(ov, where)
 
 
-def load_design(path: str | Path, runs_root: str | Path | None = None) -> Design:
+def load_design(path: str | Path, runs_root: str | Path | None = None) -> "Design | TreeDesign":
     """Parse and validate a design file. Factors must be orthogonal (no two factors may set the same
     config key), or the full factorial would silently collapse cells."""
     p = _abs(path)
     text = p.read_text()
     raw = yaml.safe_load(text) or {}
+    kind = raw.get("kind", "factorial")
+    if kind == "tree":
+        return load_tree(p, raw, text, runs_root)
+    if kind != "factorial":
+        raise ValueError(f"{p}: unknown design kind {kind!r} (factorial | tree)")
     extra = set(raw) - DESIGN_KEYS
     if extra:
         raise ValueError(f"{p}: unknown design keys {sorted(extra)}; allowed: {sorted(DESIGN_KEYS)}")
@@ -195,6 +200,8 @@ def load_design(path: str | Path, runs_root: str | Path | None = None) -> Design
 # ---------------------------------------------------------------------------------------- expansion
 def cell_specs(design: Design) -> list[tuple[str, dict, str | None, dict]]:
     """(cell_id, levels, control, merged overlay) for every cell, factorial cells first, in file order."""
+    if isinstance(design, TreeDesign):
+        return [(n, {}, None, t.set) for n, t in design.nodes.items()]
     names = list(design.factors)
     out = []
     for combo in itertools.product(*(list(design.factors[f]) for f in names)):
@@ -227,6 +234,8 @@ def design_dir(design: Design, backend_override: str | None = None) -> Path:
 def expand(design: Design, backend_override: str | None = None) -> list[Cell]:
     """All cell x seed runs, seed-major (every cell of seed 1 first), so an interrupted design still
     leaves complete replicates. `backend_override` switches both the agents and the observer."""
+    if isinstance(design, TreeDesign):
+        return expand_tree(design, backend_override)
     root = design_dir(design, backend_override)
     observer = dict(design.observer)
     if backend_override:
@@ -309,7 +318,8 @@ def cell_status(cell: Cell) -> str:
 
 
 def status(design: Design, backend_override: str | None = None, cells: list[Cell] | None = None) -> list[dict]:
-    return [{"cell": c.cell_id, "seed": c.seed, "status": cell_status(c), "run_dir": str(c.run_dir)}
+    return [{"cell": c.cell_id, "seed": c.seed, "status": node_status(c) if isinstance(c, NodeRun) else cell_status(c),
+             "run_dir": str(c.run_dir)}
             for c in (cells if cells is not None else expand(design, backend_override))]
 
 
@@ -392,6 +402,8 @@ def run_design(design: Design, cells: list[Cell], parallel: int = 1, backend_ove
                dry_run: bool = False, log: Callable[[str], None] = print) -> list[dict]:
     """Run every cell that is not analyzed (or running elsewhere), one subprocess per cell x seed so a
     crash in one run cannot take the others down. Output goes to <run_dir>/design_cell.log."""
+    if isinstance(design, TreeDesign):
+        return run_tree(design, cells, backend_override=backend_override, dry_run=dry_run, log=log)
     plan = [(c, cell_status(c)) for c in cells]
     todo = [(c, st) for c, st in plan if st in ACTIONS]
     counts = {s: sum(1 for _, st in plan if st == s) for s in STATUSES}
@@ -511,3 +523,378 @@ def write_csv(design: Design, rows: list[dict], path: str | Path):
         w = csv.DictWriter(f, fieldnames=cols, extrasaction="ignore")
         w.writeheader()
         w.writerows(rows)
+
+
+# =========================================================================================== trees
+# docs/ONTOLOGY_V3.md §6.3: `kind: tree` designs. A tree names a trunk and branches; every node x seed is one
+# run in `<runs_root>/<design>/<node>/s<seed>`. A branch replays its parent's prefix (days < at_day) from the
+# parent's llm_calls.jsonl (backend.experiment.branch) and runs live from T(at_day). Nodes run one at a time,
+# in dependency order, seed-major.
+TREE_KEYS = {"name", "description", "kind", "base", "seeds", "observer", "common", "freeze", "tree", "targets",
+             "probes", "prereg", "outcomes", "runs_root"}
+NODE_KEYS = {"parent", "at_day", "days", "set", "seeds"}
+TREE_STATUSES = ("missing", "waiting_parent", "running", "paused", "failed", "finished", "stale", "analyzed")
+
+
+@dataclass
+class TreeNode:
+    name: str
+    parent: str | None
+    at_day: int | None
+    days: int
+    set: dict
+    seeds: list[int] | None                  # None: all of the design's seeds
+
+
+@dataclass
+class TreeDesign:
+    name: str
+    path: Path
+    base: str
+    seeds: list[int]
+    observer: dict
+    common: dict
+    freeze: dict
+    nodes: dict[str, TreeNode]               # dependency order (parents first)
+    targets: dict
+    probes: dict
+    prereg: str | None
+    outcomes: list[str]
+    runs_root: Path
+    sha256: str
+    kind: str = "tree"
+    days: int | None = None
+    factors: dict = None                     # empty: keeps the factorial table/markdown helpers working
+    controls: dict = None
+
+    def __post_init__(self):
+        self.factors = self.factors or {}
+        self.controls = self.controls or {}
+
+
+@dataclass
+class NodeRun:
+    design: str
+    node: str
+    seed: int
+    parent: str | None
+    at_day: int | None
+    days: int
+    base: str
+    overrides: dict                          # base + common + fixed (trunk) or the node's `set` (branch)
+    run_dir: Path
+    parent_run: "NodeRun | None" = None
+    freeze: bool = True
+    condition: dict = None
+
+    # Cell-compatible surface (status, select, CLI run-cell)
+    @property
+    def cell_id(self) -> str:
+        return self.node
+
+    @property
+    def levels(self) -> dict:
+        return {}
+
+    @property
+    def control(self):
+        return None
+
+    def config(self) -> dict:
+        if self.parent_run is None:
+            return load_config(self.base, self.overrides)
+        from backend.experiment import branch as B
+        cfg = B.branch_config(self.parent_run.config(), self.parent_run.run_dir, self.at_day, self.overrides,
+                              days=self.days, condition=self.condition)
+        cfg["run_name"] = f"{self.design}__{self.node}"
+        return cfg
+
+
+def _topo(nodes: dict[str, TreeNode], where) -> dict[str, TreeNode]:
+    out: dict[str, TreeNode] = {}
+    pending = dict(nodes)
+    while pending:
+        ready = [n for n, t in pending.items() if t.parent is None or t.parent in out]
+        if not ready:
+            raise ValueError(f"{where}: tree has a cycle or unknown parents among {sorted(pending)}")
+        for n in ready:
+            out[n] = pending.pop(n)
+    return out
+
+
+def load_tree(p: Path, raw: dict, text: str, runs_root=None) -> TreeDesign:
+    from backend.experiment import branch as B
+    extra = set(raw) - TREE_KEYS
+    if extra:
+        raise ValueError(f"{p}: unknown tree design keys {sorted(extra)}; allowed: {sorted(TREE_KEYS)}")
+    name = str(raw.get("name") or p.stem)
+    _check_name(name, "design name")
+    base = str(raw.get("base") or "configs/v3_base.yaml")
+    if not _abs(base).exists():
+        raise FileNotFoundError(f"{p}: base config {base} not found")
+    seeds = [int(s) for s in raw.get("seeds") or []]
+    if not seeds or len(set(seeds)) != len(seeds):
+        raise ValueError(f"{p}: seeds must be a non-empty list of distinct integers")
+    observer = {"backend": None, "model": None, **(raw.get("observer") or {})}
+    if set(observer) != {"backend", "model"}:
+        raise ValueError(f"{p}: observer takes only backend and model, got {sorted(observer)}")
+    common = raw.get("common") or {}
+    _check_overlay(common, f"{name}: common")
+    nodes: dict[str, TreeNode] = {}
+    for n, spec in (raw.get("tree") or {}).items():
+        n = str(n)
+        _check_name(n, "tree node")
+        spec = spec or {}
+        bad = set(spec) - NODE_KEYS
+        if bad:
+            raise ValueError(f"{p}: node {n}: unknown keys {sorted(bad)}; allowed: {sorted(NODE_KEYS)}")
+        parent = spec.get("parent")
+        if parent is None and spec.get("at_day") is not None:
+            raise ValueError(f"{p}: node {n}: a root node has no at_day")
+        if parent is not None and spec.get("at_day") is None:
+            raise ValueError(f"{p}: node {n}: a branch needs at_day")
+        if "days" not in spec:
+            raise ValueError(f"{p}: node {n}: days is required")
+        nseeds = [int(s) for s in spec["seeds"]] if spec.get("seeds") is not None else None
+        if nseeds and not set(nseeds) <= set(seeds):
+            raise ValueError(f"{p}: node {n}: seeds {nseeds} are not all design seeds")
+        ov = spec.get("set") or {}
+        if parent is not None:
+            B.check_overlay(ov, int(spec["at_day"]))          # whitelist, rejected at load
+        else:
+            _check_overlay(ov, f"{name}: node {n}")           # a root's set is a free overlay (own world)
+        nodes[n] = TreeNode(name=n, parent=str(parent) if parent is not None else None,
+                            at_day=int(spec["at_day"]) if spec.get("at_day") is not None else None,
+                            days=int(spec["days"]), set=ov, seeds=nseeds)
+    if not nodes:
+        raise ValueError(f"{p}: tree has no nodes")
+    for t in nodes.values():
+        if t.parent is not None and t.parent not in nodes:
+            raise ValueError(f"{p}: node {t.name}: unknown parent {t.parent}")
+    nodes = _topo(nodes, p)
+    # dated-entry consistency against the parent's merged config (seed-independent parts)
+    merged: dict[str, dict] = {}
+    for t in nodes.values():
+        if t.parent is None:
+            merged[t.name] = load_config(base, deep_merge(deep_merge(common, t.set), {"simulation_days": t.days}))
+        else:
+            B.check_overlay(t.set, t.at_day, merged[t.parent])
+            if t.at_day > int(merged[t.parent]["simulation_days"]) + 1:
+                raise ValueError(f"{p}: node {t.name}: at_day {t.at_day} is after its parent's last day + 1")
+            merged[t.name] = deep_merge(merged[t.parent], {**t.set, "simulation_days": t.at_day - 1 + t.days})
+    outcomes = [str(o) for o in raw.get("outcomes") or []]
+    root = runs_root or os.environ.get("MEMEWORLD_RUNS_ROOT") or raw.get("runs_root") or "runs"
+    freeze = raw.get("freeze") or {}
+    return TreeDesign(name=name, path=p, base=base, seeds=seeds, observer=observer, common=common, freeze=freeze,
+                      nodes=nodes, targets=raw.get("targets") or {}, probes=raw.get("probes") or {},
+                      prereg=raw.get("prereg"), outcomes=outcomes, runs_root=_abs(root),
+                      sha256=hashlib.sha256(text.encode()).hexdigest())
+
+
+def expand_tree(design: TreeDesign, backend_override: str | None = None) -> list[NodeRun]:
+    """Every node x seed run, seed-major and in dependency order (a parent always precedes its branches)."""
+    root = design_dir(design, backend_override)
+    observer = dict(design.observer)
+    if backend_override:
+        observer["backend"] = backend_override
+    freeze = bool(design.freeze.get("git_sha") or design.freeze.get("prompt_hashes"))
+    out: list[NodeRun] = []
+    for s in design.seeds:
+        by_name: dict[str, NodeRun] = {}
+        for t in design.nodes.values():
+            if t.seeds is not None and s not in t.seeds:
+                continue
+            if t.parent is not None and t.parent not in by_name:
+                continue                                   # the parent does not run for this seed
+            cond = {"design": design.name, "node": t.name, "parent": t.parent, "at_day": t.at_day, "seed": s,
+                    "design_sha256": design.sha256}
+            if backend_override:
+                cond["backend_override"] = backend_override
+            if t.parent is None:
+                fixed = {"seed": s, "world_seed": s, "run_name": f"{design.name}__{t.name}",
+                         "simulation_days": t.days, "analysis": {"observer": observer}, "_condition": cond}
+                if backend_override:
+                    fixed["llm"] = {"backend": backend_override}
+                ov = deep_merge(deep_merge(copy.deepcopy(design.common), t.set), fixed)
+                parent_run = None
+            else:
+                ov = copy.deepcopy(t.set)
+                parent_run = by_name[t.parent]
+            nr = NodeRun(design=design.name, node=t.name, seed=s, parent=t.parent, at_day=t.at_day, days=t.days,
+                         base=design.base, overrides=ov, run_dir=root / t.name / f"s{s}", parent_run=parent_run,
+                         freeze=freeze, condition=cond)
+            by_name[t.name] = nr
+            out.append(nr)
+    return out
+
+
+def node_status(nr: NodeRun) -> str:
+    """cell_status plus `paused` (manifest status paused, no live process) and `waiting_parent` (missing
+    while the parent has not finished)."""
+    d = nr.run_dir
+    man, side = _read(d / "manifest.json"), _read(d / SIDECAR)
+    if man and man.get("status") == "paused" and not (side and _alive(side) and not side.get("error")):
+        return "paused"
+    st = cell_status(nr)
+    if st == "missing" and nr.parent_run is not None and node_status(nr.parent_run) not in (
+            "finished", "analyzed", "stale"):
+        return "waiting_parent"
+    return st
+
+
+def _prepare_node(nr: NodeRun) -> tuple[str, dict | None]:
+    """Status after clearing the way; for a paused run returns the resume overlay (prefix replay from its own
+    partial llm_calls.jsonl up to last_complete_tick + 1, §6.1)."""
+    st = node_status(nr)
+    d = nr.run_dir
+    if st == "paused":
+        man = _read(d / "manifest.json") or {}
+        aside = _move_aside(d)
+        T = int(man.get("last_complete_tick", -1)) + 1
+        return "missing", {"llm": {"replay_from": str(aside / "llm_calls.jsonl"), "replay_until_tick": T}}
+    partial = st == "missing" and d.exists() and any(p.name != LOG for p in d.iterdir())
+    if st == "failed" or partial:
+        _move_aside(d)
+        return "missing", None
+    return st, None
+
+
+def _select_targets(design: TreeDesign, nr: NodeRun, log=print):
+    sel = (design.targets or {}).get("select_at") or {}
+    if sel.get("node") != nr.node:
+        return None
+    try:
+        from backend.analysis.battery.targets import select_targets
+    except ImportError:
+        log(f"  {nr.node} s{nr.seed}: backend.analysis.battery.targets not available; target selection skipped")
+        return None
+    return select_targets(nr.run_dir, sel.get("checkpoint", "C3"))
+
+
+def run_node(nr: NodeRun, progress: bool = False, analyze: bool = True, design: TreeDesign | None = None) -> str:
+    """Simulate (if needed) and analyze one node x seed in this process. A branch first checks its parent
+    (finished, zero LLM errors, frozen code) and afterwards verifies prefix identity."""
+    from backend.experiment import branch as B
+    st, resume = _prepare_node(nr)
+    if st in ("analyzed", "running", "waiting_parent"):
+        return st
+    cfg = nr.config()
+    if resume:
+        cfg = deep_merge(cfg, resume)
+    if nr.parent_run is not None and st == "missing":
+        man = B.check_parent(nr.parent_run.run_dir, freeze=nr.freeze)
+    nr.run_dir.mkdir(parents=True, exist_ok=True)
+    side = {"pid": os.getpid(), "host": socket.gethostname(), "started": _now(),
+            "stage": "simulate" if st == "missing" else "analyze", "cell": nr.node, "seed": nr.seed}
+    write = lambda: (nr.run_dir / SIDECAR).write_text(json.dumps(side, indent=1))  # noqa: E731
+    if st == "missing":
+        try:
+            fd = os.open(nr.run_dir / SIDECAR, os.O_CREAT | os.O_EXCL | os.O_WRONLY)
+        except FileExistsError:
+            return "running"
+        with os.fdopen(fd, "w") as fh:
+            fh.write(json.dumps(side, indent=1))
+    else:
+        write()
+    try:
+        if st == "missing":
+            if nr.parent_run is not None:
+                ov = nr.overrides
+                (nr.run_dir / "branch.json").write_text(json.dumps(
+                    B.branch_record(cfg, nr.parent_run.run_dir, ov, man), indent=1, sort_keys=True))
+            from backend.simulation.engine import Simulation
+            Simulation(cfg, nr.run_dir, progress=progress).run()
+            if nr.parent_run is not None:
+                B.assert_prefix(nr.parent_run.run_dir, nr.run_dir, nr.at_day)
+            if design is not None:
+                _select_targets(design, nr)
+            side["stage"] = "analyze"
+            write()
+        if analyze:
+            from backend.analysis.pipeline import analyze as _analyze
+            backend, model = observer_spec(cfg)
+            _analyze(nr.run_dir, llm_backend=backend, llm_model=model, verbose=progress)
+    except BaseException as e:
+        side.update(error=f"{type(e).__name__}: {e}", ended=_now())
+        write()
+        raise
+    side.update(stage="done", ended=_now())
+    write()
+    return node_status(nr)
+
+
+def run_tree(design: TreeDesign, nodes: list[NodeRun], backend_override: str | None = None, dry_run: bool = False,
+             log: Callable[[str], None] = print, analyze: bool = True) -> list[dict]:
+    """Run every node x seed not yet analyzed, ONE simulation at a time (§6.6), in dependency order; one
+    subprocess per node (`design run-cell`). A node whose parent failed in this pass is skipped."""
+    plan = [(n, node_status(n)) for n in nodes]
+    counts = {s: sum(1 for _, st in plan if st == s) for s in TREE_STATUSES}
+    todo = [(n, st) for n, st in plan if (st in ACTIONS or st in ("waiting_parent", "paused"))
+            and not (st == "finished" and not analyze)]
+    log(f"{design.name}: {len(plan)} node runs; " + ", ".join(f"{k} {v}" for k, v in counts.items() if v)
+        + f"; to do: {len(todo)}")
+    if dry_run:
+        for n, st in todo:
+            log(f"  {n.node} s{n.seed}: {st}" + (f" (after {n.parent})" if n.parent else ""))
+        return [{"cell": n.node, "seed": n.seed, "status": st, "parent": n.parent, "run_dir": str(n.run_dir),
+                 "cmd": cell_command(design, n, backend_override)} for n, st in todo]
+    env = {**os.environ, "PYTHONUNBUFFERED": "1"}
+    results, failed = [], set()
+    for i, (n, st) in enumerate(todo, 1):
+        key = (n.parent, n.seed)
+        if n.parent is not None and key in failed:
+            failed.add((n.node, n.seed))
+            results.append({"cell": n.node, "seed": n.seed, "before": st, "rc": None, "status": "waiting_parent",
+                            "seconds": 0.0, "log": ""})
+            log(f"[{i}/{len(todo)}] {n.node} s{n.seed}: skipped (parent failed)")
+            continue
+        t0 = time.time()
+        n.run_dir.mkdir(parents=True, exist_ok=True)
+        cmd = cell_command(design, n, backend_override) + ([] if analyze else ["--no-analyze"])
+        with open(n.run_dir / LOG, "a") as fh:
+            fh.write(f"# {_now()} {' '.join(cmd)}\n")
+            fh.flush()
+            rc = subprocess.run(cmd, cwd=REPO_ROOT, env=env, stdout=fh, stderr=subprocess.STDOUT,
+                                stdin=subprocess.DEVNULL).returncode
+        now = node_status(n)
+        if rc != 0 or now not in ("finished", "analyzed"):
+            failed.add((n.node, n.seed))
+        results.append({"cell": n.node, "seed": n.seed, "before": st, "rc": rc, "status": now,
+                        "seconds": round(time.time() - t0, 1), "log": str(n.run_dir / LOG)})
+        log(f"[{i}/{len(todo)}] {n.node} s{n.seed}: {st} -> {now} ({round(time.time() - t0, 1)}s)"
+            + ("" if rc == 0 else f"  FAILED rc={rc}, see {n.run_dir / LOG}"))
+    return results
+
+
+def tree_contrasts(design: TreeDesign, rows: list[dict]) -> list[dict]:
+    """Seed-paired contrasts from the prereg file's `contrasts: [{name, a, b, outcome}]` (a - b per seed)."""
+    if not design.prereg or not _abs(design.prereg).exists():
+        return []
+    pre = yaml.safe_load(_abs(design.prereg).read_text()) or {}
+    out = []
+    for c in pre.get("contrasts") or []:
+        o = c["outcome"]
+        by = {(r["cell"], r["seed"]): _num(r.get(o)) for r in rows}
+        diffs = [by[(c["a"], s)] - by[(c["b"], s)] for s in design.seeds
+                 if by.get((c["a"], s)) is not None and by.get((c["b"], s)) is not None]
+        mean = sum(diffs) / len(diffs) if diffs else None
+        out.append({"name": c["name"], "a": c["a"], "b": c["b"], "outcome": o, "n": len(diffs), "mean_diff": mean,
+                    "diffs": diffs})
+    return out
+
+
+def probe_plan(design: TreeDesign, nodes: list[NodeRun], checkpoint: str | None = None) -> list[dict]:
+    """(probe spec, node run, checkpoint id) for every `probes:` entry whose node run has finished."""
+    plan = []
+    for pname, spec in (design.probes or {}).items():
+        ckpt = spec.get("checkpoint") or pname
+        if checkpoint and ckpt != checkpoint and pname != checkpoint:
+            continue
+        want = spec.get("nodes") or ([spec["node"]] if spec.get("node") else [])
+        seeds = spec.get("seeds")
+        for n in nodes:
+            if n.node in want and (not seeds or n.seed in seeds):
+                plan.append({"probe": pname, "checkpoint": ckpt, "node": n.node, "seed": n.seed,
+                             "run_dir": str(n.run_dir), "battery": spec.get("battery"),
+                             "ablated": spec.get("ablated"), "status": node_status(n)})
+    return plan

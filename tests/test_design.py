@@ -229,9 +229,13 @@ def test_table_summary_markdown_csv(tmp_path):
 
 
 def test_experiment_controller_is_not_imported_by_agent_side_code():
+    # One allowed exception (v3): the checkpoint serializer (engine day-end writer; observer read-only loader), a
+    # read-only serializer of simulation state that never feeds anything back to agents (ONTOLOGY_V3 §5.1).
+    import re
     for sub in ["backend/agents", "backend/memory", "backend/simulation", "backend/modules", "backend/analysis"]:
         for f in (ROOT / sub).rglob("*.py"):
-            assert "backend.experiment" not in f.read_text(), f
+            src = re.sub(r"backend\.experiment\.checkpoint", "", f.read_text())
+            assert "backend.experiment" not in src, f
 
 
 # ----------------------------------------------------------------------------------------- end to end

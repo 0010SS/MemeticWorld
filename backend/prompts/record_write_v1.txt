@@ -1,0 +1,22 @@
+record_write_v1.txt  (MemeWorld v3, non-GA: whether a member writes in the co-op binder; ONTOLOGY_V3 §2.4)
+
+Variables:
+!<INPUT 0>! -- persona ISS
+!<INPUT 1>! -- current time ("Thursday 10:30")
+!<INPUT 2>! -- situation sentence (after a job | at the tally | on the last shift)
+!<INPUT 3>! -- persona first name
+!<INPUT 4>! -- what the persona remembers of it (own job facts | tally facts | retrieved memories)
+!<INPUT 5>! -- the binder as rendered (records.py, identical format in every arm)
+!<INPUT 6>! -- the options sentence (lengths in characters only)
+!<INPUT 7>! -- allowed values of "choice"
+
+<commentblockmarker>###</commentblockmarker>
+!<INPUT 0>!
+It is !<INPUT 1>!. !<INPUT 2>!
+What !<INPUT 3>! remembers of it:
+!<INPUT 4>!
+Next to the laser cutter hangs the co-op binder. It has a front page that any member can rewrite and a log where members add dated notes. Members look at it before running jobs. It currently reads:
+!<INPUT 5>!
+Is there anything !<INPUT 3>! wants the next person at the laser to know? !<INPUT 6>!
+Answer with one JSON object and nothing else:
+{"choice": !<INPUT 7>!, "text": "<exactly what !<INPUT 3>! writes, or null>"}

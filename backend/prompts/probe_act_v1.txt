@@ -1,0 +1,26 @@
+probe_act_v1.txt  (v3 OBSERVER probe, formats P / P-sit; answers never enter agent memory)
+
+Variables:
+!<INPUT 0>! -- persona ISS (or the persona-free responder's description)
+!<INPUT 1>! -- weekday of the checkpoint
+!<INPUT 2>! -- who: e.g. Maya, or "the student"
+!<INPUT 3>! -- retrieved memories, one "- " line each
+!<INPUT 4>! -- the situation (battery item text)
+!<INPUT 5>! -- lettered action menu (order drawn per call)
+!<INPUT 6>! -- situated block: the current binder view, or empty
+
+<commentblockmarker>###</commentblockmarker>
+!<INPUT 0>!
+It is !<INPUT 1>! evening; !<INPUT 2>! is thinking about the co-op's laser cutter.
+What !<INPUT 2>! remembers:
+!<INPUT 3>!
+!<INPUT 6>!
+Suppose this happens on !<INPUT 2>!'s next shift: !<INPUT 4>!
+
+1) In a few words, how would !<INPUT 2>! describe what's going on to another member?
+2) What would !<INPUT 2>! do first?
+!<INPUT 5>!
+3) How sure is !<INPUT 2>!, from 1 (not at all) to 5 (completely)?
+
+Answer as !<INPUT 2>! would, with JSON only:
+{"describe": "...", "choice": "<letter>", "confidence": <1-5>}
