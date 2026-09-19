@@ -8,9 +8,11 @@ The map is a Smallville-style (Generative Agents) 32 px tile map at true scale: 
 from the OpenStreetMap features in data/homewood_osm.json (see scripts/homewood_geo.py for the extent and the
 rasterisation). Every tile and every piece of furniture comes from the tilesets vendored in
 third_party/generative_agents (CuteRPG World, Room Builder, Modern Interiors), and furniture is copied as patches
-from Smallville's own Tiled map. The eight places of the experiment are furnished buildings drawn at their real
-footprints; every other building is a grey footprint with its name; roads, footpaths, lawns, fields, woods and
-Stony Run are drawn from the map data.
+from Smallville's own Tiled map. The places of the experiment (backend/simulation/world.py ARENAS) are furnished
+buildings drawn at their real footprints (the Quad is Keyser Quad's lawn, the Shuttle Stop a paved verge on N Charles
+St by the Gatehouse, the Museum's Garden its lawn); every other building is a grey footprint with its name; roads,
+footpaths, lawns, fields, woods and Stony Run are drawn from the map data. Every arena gets >= 8 standing spots
+reachable over the walk-cost grid. The build is deterministic (fixed seeds, no hash()).
 
     python3 scripts/build_homewood_map.py [--preview out.png] [--grid]
 """
@@ -20,6 +22,7 @@ import argparse
 import json
 import random
 import sys
+import zlib
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
@@ -239,7 +242,8 @@ def tree(name, x, y):
 # ----------------------------------------------------------------------------- buildings (real footprints, thin walls)
 PLACES = {}
 THIN = dict(cap=0, cap2=1, bot=228, bot2=229, sideL=-1, sideR=2, tl=-153, tr=-150, bl=230, br=227, fill=76)
-BEDROOMS = {"Room 214", "Room 310", "Room 118", "Room 105", "Room 402", "Grad Apartment"}
+BEDROOMS = {"Room 214", "Room 216", "Room 310", "Room 312", "Room 118", "Room 120", "Room 105", "Room 107", "Room 402",
+            "Room 404", "Grad Apartment"}
 PATHS = ("path", "plaza", "sidewalk")
 
 
@@ -283,11 +287,16 @@ def largest_rect(cells):
 
 KIND_FLOOR = {"bedroom": "beige", "lounge": "wood", "hall": "wood", "dining": "peach", "cafe": "wood", "lecture": "wood",
               "seminar": "beige", "library_quiet": "wood", "library_study": "beige", "makerspace": "stone", "drylab": "stone",
-              "wetlab": "teal", "stockroom": "stone", "gym": "wood"}
+              "wetlab": "teal", "stockroom": "stone", "gym": "wood",
+              # campus places
+              "clubroom": "beige", "auditorium": "wood", "lobby": "stone", "computerlab": "teal", "studylounge": "beige",
+              "gallery": "wood", "stage": "wood", "greenroom": "peach", "kitchen": "teal", "studyroom": "beige",
+              "fieldhouse": "wood", "track": "peach", "frontdesk": "beige", "mailroom": "stone"}
 
 
-def furnish(kind_, cells, rect_, avoid, rnd):
-    """Place furniture patches for a room type inside the room's floor cells; wall-mounted pieces sit on the wall row above."""
+def furnish(kind_, cells, rect_, avoid, rnd, min_free=0):
+    """Place furniture patches for a room type inside the room's floor cells; wall-mounted pieces sit on the wall row above.
+    `min_free` (campus places) keeps at least that many furniture-free floor cells, so small rooms keep standing spots."""
     x0, y0, x1, y1 = rect_
     w, h = x1 - x0 + 1, y1 - y0 + 1
     cx, cy = (x0 + x1) // 2, (y0 + y1) // 2
@@ -306,8 +315,13 @@ def furnish(kind_, cells, rect_, avoid, rnd):
                     return False
         return True
 
+    def free_cells():
+        return sum(1 for c in cells if not solid[c[1] * W + c[0]] and not get("furn1", *c) and not get("furn2", *c))
+
     def place(name, x, y, wall_top=False):
         sx, sy, pw, ph = STAMPS[name]
+        if min_free and free_cells() - pw * (ph - (1 if wall_top else 0)) < min_free:
+            return False
         if ok(x, y, pw, ph, wall_top):
             furn(name, x, y)
             return True
@@ -421,9 +435,76 @@ def furnish(kind_, cells, rect_, avoid, rnd):
         grid("gym_machine", x0 + 2, y0 + 11, x1 - 2, y0 + 11, 4, 1)
         grid("blue_mat", x0 + 1, y1 - 3, x1 - 1, y1 - 3, 2, 1)
         place("glass_counter", x1 - 4, y1 - 1); place("washer", x0, y1 - 1)
+    # ---- campus places
+    elif kind_ == "clubroom":
+        wall_row(["bulletin", "poster_shelf", "bulletin", "corkboard", "bookshelf3", "bulletin", "potted_plants"], x0, x1)
+        grid("table4", x0 + 1, y0 + 1, x1 - 4, y1 - 3, 6, 5)
+        place("armchair", x1 - 1, y1 - 1)
+    elif kind_ == "auditorium":
+        wall_row(["lights", "lamps", "lights", "lamps", "lights", "lamps"], x0, x1)
+        place("piano", x0, y0) or place("piano", x1 - 1, y0)
+        for c in sorted(c for c in cells if y0 + 1 <= c[1] <= y0 + 2)[::5]:
+            place("rug", c[0], c[1])
+        for gy in range(y0 + 4, y1 + 1, 2):                    # rows of seats with a centre aisle
+            for gx in range(x0, x1 + 1):
+                if abs(gx - cx) > 0:
+                    place(("stool_red", "stool_red", "stool_brown")[(gx + gy) % 3], gx, gy)
+    elif kind_ == "lobby":
+        wall_row(["potted_plants", "bulletin", "poster_shelf", "potted_plants", "bulletin", "lamps", "potted_plants"], x0, x1)
+        place("glass_counter", cx - 2, y0 + 2) or place("glass_counter", x0 + 1, y0 + 2)
+        place("armchair", x0, y1 - 1); place("armchair", x1 - 1, y1 - 1)
+        for c in sorted(cells)[::37]:
+            place("rug", c[0], c[1])
+    elif kind_ == "computerlab":
+        wall_row(["poster_shelf", "lights", "bulletin", "lights", "poster_shelf", "lights"], x0, x1)
+        grid("computer_desk", x0, y0 + 1, x1 - 1, y1 - 2, 3, 4)
+    elif kind_ == "studylounge":
+        wall_row(["bookshelf3", "potted_plants", "bookshelf3", "lamps", "bookshelf3"], x0, x1)
+        grid("table4", x0 + 1, y0 + 2, x1 - 4, y1 - 3, 6, 5)
+        place("sofa", x1, y0 + 1); place("armchair", x0, y1 - 1); place("cafe_table2", x1 - 2, y1 - 1)
+    elif kind_ == "gallery":
+        wall_row(["poster_shelf", "lamps", "bouquet", "poster_shelf", "lamps", "poster_shelf", "bouquet"], x0, x1)
+        for c in sorted(cells)[::17]:
+            place(("bouquet", "potted_plants", "rug")[(c[0] + c[1]) % 3], c[0], c[1])
+    elif kind_ == "stage":
+        wall_row(["lights", "lamps", "lights"], x0, x1)
+        for c in sorted(cells, key=lambda c: (c[1], c[0])):
+            if place("piano", c[0], c[1]):
+                break
+        for c in sorted(cells)[::7]:
+            place("rug", c[0], c[1])
+    elif kind_ == "greenroom":
+        for name in ("dresser", "sofa", "rack", "armchair", "bath_sink"):
+            for c in sorted(cells, key=lambda c: (-c[1], c[0])):
+                if place(name, c[0], c[1]):
+                    break
+    elif kind_ == "kitchen":
+        wall_row(["fridge", "kitchen_sink", "rack", "sink", "fridge2", "potted_plants"], x0, x1)
+        place("round_table", cx - 2, cy - 1) or place("cafe_table2", x0 + 1, y0 + 3)
+        place("cafe_table2", x0, y1 - 1)
+    elif kind_ == "studyroom":
+        wall_row(["bookshelf3", "bookshelf3", "lamps", "bookshelf3", "potted_plants"], x0, x1)
+        grid("table4", x0 + 1, y0 + 2, x1 - 4, y1 - 3, 6, 5)
+        place("computer_desk", x1 - 1, y0) or place("desk_lamp", x1 - 1, y0)
+    elif kind_ == "fieldhouse":
+        grid("blue_mat", x0 + 3, y0 + 3, x1 - 3, y1 - 3, 7, 7)
+        grid("gym_machine", x0 + 6, y0 + 6, x1 - 6, y1 - 6, 14, 14)
+        grid("dumbbells", x0 + 10, y0 + 10, x1 - 10, y1 - 10, 14, 14)
+    elif kind_ == "track":
+        for c in sorted(cells)[::29]:
+            place("potted_plants", c[0], c[1])
+    elif kind_ == "frontdesk":
+        wall_row(["bulletin", "potted_plants", "bookshelf3", "poster_shelf", "potted_plants", "bulletin"], x0, x1)
+        place("glass_counter", cx - 2, y0 + 3) or place("glass_counter", x0, y0 + 3)
+        for gx in range(x0, x1, 3):
+            place("armchair", gx, y1 - 1)
+    elif kind_ == "mailroom":
+        wall_row(["store_shelf", "orange_shelf", "store_shelf", "orange_shelf", "store_shelf"], x0, x1)
+        grid("bookshelf3", x0, y0 + 3, x1 - 2, y1 - 4, 5, 5)
+        place("glass_counter", x0, y1 - 1)
 
 
-def make_building(name, label, mask, cap, floor_name, rooms, kinds, rnd, arena_floor=None, extra_walk=None):
+def make_building(name, label, mask, cap, floor_name, rooms, kinds, rnd, arena_floor=None, extra_walk=None, min_free=0):
     """Draw a place on its real footprint: 1-tile walls along the footprint edge, rooms (rect lists, clipped to the
     interior) separated by 1-tile partitions, doors picked automatically, an entrance where the real walkways
     reach the building, furniture per room type."""
@@ -555,7 +636,7 @@ def make_building(name, label, mask, cap, floor_name, rooms, kinds, rnd, arena_f
     avoid = {(g[0] + dx, g[1] + dy) for g in gaps for dx in (-1, 0, 1) for dy in (-1, 0, 1)}
     for a, cs in room_cells.items():
         if cs:
-            furnish(kinds.get(a, "hall"), cs, bbox(cs), avoid, rnd)
+            furnish(kinds.get(a, "hall"), cs, bbox(cs), avoid, rnd, min_free)
     PLACES[name] = dict(name=name, label=label, kind="building", box=bbox(mask), boxes=[bbox(mask)], entrance=sorted(entrance),
                         arenas={a: dict(rect=bbox(cs), _cells=sorted(cs)) for a, cs in room_cells.items() if cs})
 
@@ -597,6 +678,230 @@ def place_buildings(geo, rnd, extra_walk):
     make_building("Dorm", PLACE_LABELS["Dorm"], mask, caps["Dorm"], floors["Dorm"], rooms, kinds, rnd, {"Lounge": "wood", "Hallway": "wood"}, extra_walk=extra_walk)
 
 
+def runs(cells):
+    """A cell set as 1-row rects (make_building takes rooms as rect lists)."""
+    rows = {}
+    for x, y in sorted(cells):
+        rows.setdefault(y, []).append(x)
+    out = []
+    for y, xs in sorted(rows.items()):
+        a = b = xs[0]
+        for x in xs[1:]:
+            if x == b + 1:
+                b = x
+            else:
+                out.append((a, y, b, y)); a = b = x
+        out.append((a, y, b, y))
+    return out
+
+
+def cut(cells, key, t):
+    """Split cells by a line key(c) == t (the line itself becomes the partition wall)."""
+    return {c for c in cells if key(c) < t}, {c for c in cells if key(c) > t}
+
+
+def median_cut(cells, key):
+    vals = sorted(key(c) for c in cells)
+    return vals[len(vals) // 2]
+
+
+def full_rows(mask, frac=0.8):
+    x0, _, x1, _ = bbox(mask)
+    rows = {}
+    for (x, y) in mask:
+        rows[y] = rows.get(y, 0) + 1
+    return sorted(y for y, n in rows.items() if n >= frac * (x1 - x0 + 1))
+
+
+def largest_component(cells):
+    from collections import deque
+    left, best = set(cells), set()
+    while left:
+        s0 = min(left); comp = {s0}; dq = deque([s0]); left.discard(s0)
+        while dq:
+            c = dq.popleft()
+            for n in nb4(c):
+                if n in left:
+                    left.discard(n); comp.add(n); dq.append(n)
+        if len(comp) > len(best):
+            best = comp
+    return best
+
+
+CAMPUS_MIN_FREE = 14        # furniture-free floor cells kept in every campus-place room (standing spots)
+
+
+def campus_rooms(geo):
+    """place -> (cap, floor, {arena: cells}, {arena: kind}): the campus places' rooms, derived from each real footprint.
+    Arena names are backend/simulation/world.py ARENAS."""
+    P = geo.places
+    out = {}
+
+    def inner_of(place):
+        return erode(P[place]["cells"])
+
+    # Glass Pavilion: the common room at the north end, the club room at the south end (next to Levering)
+    inn = inner_of("Student Center"); _, iy0, _, iy1 = bbox(inn)
+    a, b = cut(inn, lambda c: c[1], iy0 + (iy1 - iy0 + 1) * 11 // 20)
+    out["Student Center"] = (8804, "wood", {"Common Room": a, "Club Room": b}, {"Common Room": "lounge", "Club Room": "clubroom"})
+    # Shriver Hall: the lobby is the east-west bar, the hall the block south of it
+    mask = P["Auditorium"]["cells"]; inn = erode(mask)
+    a, b = cut(inn, lambda c: c[1], max(full_rows(mask)))
+    out["Auditorium"] = (5613, "wood", {"Main Hall": b, "Lobby": a}, {"Main Hall": "auditorium", "Lobby": "lobby"})
+    # Malone Hall: computer lab north, study lounge south
+    inn = inner_of("Engineering Hall"); _, iy0, _, iy1 = bbox(inn)
+    a, b = cut(inn, lambda c: c[1], (iy0 + iy1) // 2)
+    out["Engineering Hall"] = (6668, "stone", {"Computer Lab": a, "Study Lounge": b}, {"Computer Lab": "computerlab", "Study Lounge": "studylounge"})
+    # Mudd Hall: the teaching lab in the north wing, the lecture room in the main block
+    mask = P["Science Hall"]["cells"]; inn = erode(mask)
+    a, b = cut(inn, lambda c: c[1], min(full_rows(mask)) - 1)
+    out["Science Hall"] = (5088, "stone", {"Teaching Lab": a, "Lecture Room": b}, {"Teaching Lab": "wetlab", "Lecture Room": "lecture"})
+    # Homewood Museum: the house is the gallery (its garden is outdoors, see museum_garden)
+    inn = largest_component(inner_of("Museum"))
+    out["Museum"] = (5604, "wood", {"Gallery": inn}, {"Gallery": "gallery"})
+    # Merrick Barn (a 45-degree footprint): stage and green room either side of a diagonal partition
+    inn = inner_of("Theater"); key = lambda c: c[0] + c[1]
+    a, b = cut(inn, key, median_cut(inn, key))
+    out["Theater"] = (8804, "wood", {"Stage": a, "Green Room": b}, {"Stage": "stage", "Green Room": "greenroom"})
+    # The Charles: kitchen west, study room east
+    inn = inner_of("Apartments"); ix0, _, ix1, _ = bbox(inn)
+    a, b = cut(inn, lambda c: c[0], (ix0 + ix1) // 2)
+    out["Apartments"] = (5604, "beige", {"Kitchen": a, "Study Room": b}, {"Kitchen": "kitchen", "Study Room": "studyroom"})
+    # White Athletic Center: the long north-west arm is the track, the main hall the field house
+    mask = P["Athletic Center"]["cells"]; inn = erode(mask)
+    rows = {}
+    for (x, y) in mask:
+        rows[y] = rows.get(y, 0) + 1
+    arm_end = min(y for y, n in sorted(rows.items()) if n >= 12 and y > min(rows) + 5)
+    a, b = cut(inn, lambda c: c[1], arm_end)
+    out["Athletic Center"] = (5088, "wood", {"Field House": largest_component(b), "Track": largest_component(a)},
+                              {"Field House": "fieldhouse", "Track": "track"})
+    # Garland Hall: front desk west (by the walkway), mailroom east
+    inn = inner_of("Admin Building"); ix0, _, ix1, _ = bbox(inn)
+    a, b = cut(inn, lambda c: c[0], ix0 + (ix1 - ix0 + 1) * 11 // 20)
+    out["Admin Building"] = (5613, "beige", {"Front Desk": a, "Mailroom": b}, {"Front Desk": "frontdesk", "Mailroom": "mailroom"})
+    return out
+
+
+def place_campus(geo, extra_walk):
+    """The campus places, each with its own rnd (independent of the original eight and of each other)."""
+    for place, (cap, floor_name, rooms, kinds) in campus_rooms(geo).items():
+        rnd = random.Random(f"homewood:{place}")
+        make_building(place, PLACE_LABELS[place], geo.places[place]["cells"], cap, floor_name,
+                      {a: runs(cs) for a, cs in rooms.items()}, kinds, rnd, extra_walk=extra_walk, min_free=CAMPUS_MIN_FREE)
+    fh = PLACES["Athletic Center"]["arenas"].get("Field House")
+    if fh:                                             # the field house floor is turf with white lines
+        autotile16(set(map(tuple, fh["_cells"])), "turf", layer="floor")
+
+
+def museum_garden(geo, rnd):
+    """The Museum's Garden arena: the lawn around Homewood House (within 6 tiles of the house, the largest open
+    stretch), laid as a tended lawn with flower beds and a parasol."""
+    house = geo.places["Museum"]["cells"]
+    near = set()
+    for (x, y) in house:
+        for dx in range(-6, 7):
+            for dy in range(-6, 7):
+                c = (x + dx, y + dy)
+                if inb(*c) and c not in house and not solid[c[1] * W + c[0]] and kind[c[1] * W + c[0]] in ("", "lawn") \
+                        and not get("wall", *c) and not get("floor", *c) and not get("ground", *c) in (9080, 9083):
+                    near.add(c)
+    garden = largest_component(near)
+    autotile(garden, LAWN)
+    for c in garden:
+        setcost(*c, 2, "garden")
+    FLOWERS = [55, 56, 71, 72, 87, 88, 103, 104, 119, 120, 121, 122, 123]
+    for c in sorted(garden):
+        if rnd.random() < 0.18:
+            put("deco1", c[0], c[1], rnd.choice(FLOWERS))
+    for c in sorted(garden, key=lambda c: (c[1], c[0])):
+        if all((c[0] + dx, c[1] + dy) in garden for dx in range(4) for dy in range(3)):
+            stamp(c[0], c[1], 70, 77, 4, 3, layers=("furn1", "furn2", "fg1", "fg2"), collide=False)   # parasol and chair
+            break
+    return garden
+
+
+def shuttle_stop(geo):
+    """The Shuttle Stop: a paved verge between the Gatehouse and the N Charles St sidewalk, with a bench and a
+    timetable board."""
+    pad = set(geo.places["Shuttle Stop"]["cells"])
+    autotile16(pad, "sidewalk")
+    for c in pad:
+        setcost(*c, 1, "plaza")
+    x0, y0, x1, y1 = bbox(pad)
+    my = (y0 + y1) // 2
+    for bx in (x0 + 1, x0 + 1):                        # bench (CuteRPG Village B), facing the street
+        if (bx, my) in pad and (bx + 1, my) in pad:
+            put("deco2", bx, my, 9160); put("deco2", bx + 1, my, 9161); block(bx, my); block(bx + 1, my)
+            break
+    if all((x0 + dx, y0 + 1 + dy) in pad for dx in range(2) for dy in range(2)):    # timetable board
+        put("deco2", x0, y0 + 1, 9093); put("deco2", x0 + 1, y0 + 1, 9094)
+        put("fg1", x0, y0 + 1, 9093); put("fg1", x0 + 1, y0 + 1, 9094)
+        put("deco2", x0, y0 + 2, 9109); put("deco2", x0 + 1, y0 + 2, 9110)
+        block(x0, y0 + 2); block(x0 + 1, y0 + 2)
+    PLACES["Shuttle Stop"] = dict(name="Shuttle Stop", label=PLACE_LABELS["Shuttle Stop"], kind="stop", box=bbox(pad),
+                                  boxes=[bbox(pad)], entrance=[], arenas={"Bench": dict(rect=bbox(pad), _cells=sorted(pad))})
+
+
+def reachable_from(start):
+    from collections import deque
+    seen = [False] * (W * H); dq = deque([start]); seen[start[1] * W + start[0]] = True
+    while dq:
+        x, y = dq.popleft()
+        for dx, dy in ((1, 0), (-1, 0), (0, 1), (0, -1)):
+            nx, ny = x + dx, y + dy
+            if inb(nx, ny) and not seen[ny * W + nx] and not solid[ny * W + nx] and cost[ny * W + nx] > 0:
+                seen[ny * W + nx] = True; dq.append((nx, ny))
+    return seen
+
+
+def connect_places(quad):
+    """A place cut off from the campus by roads (e.g. The Charles, across N Charles St, where the mapped crossing
+    stops short of the kerb) gets a crosswalk: the cheapest walk from the place to the reachable network, with road
+    cells allowed at a high cost, and every road cell on it paved as a crossing."""
+    import heapq
+    seen = reachable_from(next(iter(sorted(quad))))
+    for pl in PLACES.values():
+        src = {tuple(c) for ar in pl["arenas"].values() for c in ar.get("_cells", []) if not solid[c[1] * W + c[0]]}
+        if not src or any(seen[y * W + x] for (x, y) in src):
+            continue
+        dist, prev, pq = {}, {}, []
+        for c in sorted(src):
+            dist[c] = 0; heapq.heappush(pq, (0, c))
+        goal = None
+        while pq:
+            d, c = heapq.heappop(pq)
+            if d > dist.get(c, 1e18):
+                continue
+            if seen[c[1] * W + c[0]]:
+                goal = c; break
+            for n in nb4(c):
+                if not inb(*n):
+                    continue
+                i = n[1] * W + n[0]
+                if kind[i] == "road":
+                    step = 6
+                elif solid[i] or cost[i] == 0:
+                    continue
+                else:
+                    step = cost[i]
+                if d + step < dist.get(n, 1e18):
+                    dist[n] = d + step; prev[n] = c; heapq.heappush(pq, (d + step, n))
+        if goal is None:
+            print(f"  WARNING {pl['name']}: no crossing found")
+            continue
+        crossing, c = set(), goal
+        while c in prev:
+            if kind[c[1] * W + c[0]] == "road":
+                crossing.add(c)
+            c = prev[c]
+        for (x, y) in crossing:
+            block(x, y, False); setcost(x, y, 1, "path")
+        autotile16(crossing, "sidewalk")
+        print(f"  {pl['name']}: laid a {len(crossing)}-tile crossing")
+        seen = reachable_from(next(iter(sorted(quad))))
+
+
 def dorm_rooms(mask):
     x0, y0, x1, y1 = bbox(mask)
     width = x1 - x0 + 1
@@ -615,24 +920,44 @@ def dorm_rooms(mask):
     kinds = {"Hallway": "hall"}
     if wl:
         rooms["Hallway"].append((wl[-1], by1, wl[-1], wing_bottom))                 # west corridor, courtyard side
-        names = ["Room 310", "Room 118"]
+        names = ["Room 310", "Room 118", "Room 312", "Room 120"]      # 312/120: 16-agent population
         for k, nm in enumerate(names):
             ry0 = by1 + 1 + 5 * k
             if ry0 + 3 <= wing_bottom:
                 rooms[nm] = [(wl[0], ry0, wl[-1] - 1, ry0 + 3)]; kinds[nm] = "bedroom"
     if wr:
         rooms["Hallway"].append((wr[0], by1, wr[0], wing_bottom))                   # east corridor
-        for k, nm in enumerate(["Room 105", "Room 402"]):
+        for k, nm in enumerate(["Room 105", "Room 402", "Room 107", "Room 404"]):   # 107/404: 16-agent population
             ry0 = by1 + 1 + 5 * k
             if ry0 + 3 <= wing_bottom:
                 rooms[nm] = [(wr[0] + 1, ry0, wr[-1], ry0 + 3)]; kinds[nm] = "bedroom"
     above = {c for c in inner if c[1] < by0}
     blocks = []
-    for name, lo, hi in (("Room 214", x0, x0 + width / 3), ("Lounge", x0 + width / 3, x0 + 2 * width / 3), ("Grad Apartment", x0 + 2 * width / 3, x1 + 1)):
+    for name, lo, hi in (("Room 214", x0, x0 + width / 6), ("Room 216", x0 + width / 6, x0 + width / 3),
+                         ("Lounge", x0 + width / 3, x0 + 2 * width / 3), ("Grad Apartment", x0 + 2 * width / 3, x1 + 1)):
         cs = {c for c in above if lo <= c[0] < hi}
         r = largest_rect(cs)
         if r:
             rooms[name] = [r]; kinds[name] = "lounge" if name == "Lounge" else "bedroom"
+    # rooms added with the 16-agent population that had no fixed slot: carve each from the largest free interior
+    # rectangle left (not the hallway, one cell of wall clearance around every room already placed)
+    def cells_of(rs):
+        return {(x, y) for (a, b, c, d) in rs for x in range(a, c + 1) for y in range(b, d + 1)}
+    for name in ("Room 216", "Room 120", "Room 404"):
+        if name in rooms:
+            continue
+        taken = cells_of(rooms["Hallway"])
+        for nm, rs in rooms.items():
+            if nm != "Hallway":
+                taken |= {(x + dx, y + dy) for (x, y) in cells_of(rs) for dx in (-1, 0, 1) for dy in (-1, 0, 1)}
+        r = largest_rect(set(inner) - taken)
+        if r and (r[2] - r[0] + 1) * (r[3] - r[1] + 1) >= 4:
+            rooms[name] = [r]; kinds[name] = "bedroom"
+        elif "Lounge" in rooms and rooms["Lounge"][0][2] - rooms["Lounge"][0][0] >= 6:
+            a, b, c, d = rooms["Lounge"][0]                   # no free space left: split the wide lounge
+            m = (a + c) // 2
+            rooms["Lounge"] = [(a, b, m - 1, d)]
+            rooms[name] = [(m + 1, b, c, d)]; kinds[name] = "bedroom"
     return rooms, kinds
 
 
@@ -714,9 +1039,10 @@ def build(seed=7):
         if L >= 15 and 0 < cx < W and 0 < cy < H:
             context.append(dict(name=name, x=round(cx, 1), y=round(cy, 1), kind="road"))
 
-    # ---- the eight places on their real footprints
+    # ---- the places on their real footprints
     extra_walk = set()
     place_buildings(geo, rnd, extra_walk)
+    place_campus(geo, extra_walk)
     if extra_walk:
         walk |= extra_walk
         autotile16(walk, "brick")
@@ -725,6 +1051,12 @@ def build(seed=7):
     quad = P["Quad"]["cells"] if (P := geo.places) else set()
     PLACES["Quad"] = dict(name="Quad", label=PLACE_LABELS["Quad"], kind="lawn", box=P["Quad"]["boxes"][0], boxes=P["Quad"]["boxes"],
                           entrance=[], arenas={"Lawn": dict(rect=P["Quad"]["boxes"][0])})
+    garden = museum_garden(geo, random.Random("homewood:Museum garden"))
+    mu = PLACES["Museum"]
+    mu["arenas"]["Garden"] = dict(rect=bbox(garden), _cells=sorted(garden), _mind=2)
+    mu["boxes"] = [mu["box"], bbox(garden)]
+    mu["box"] = bbox(set(garden) | {(mu["box"][0], mu["box"][1]), (mu["box"][2], mu["box"][3])})
+    shuttle_stop(geo)
 
     # ---- trees, tufts, flowers
     def free_rect(x, y, w, h, allow=("", "lawn", "wood")):
@@ -761,6 +1093,7 @@ def build(seed=7):
         x, y = rnd.randrange(W), rnd.randrange(H)
         if free_rect(x, y, 1, 1, ("lawn",)):
             put("deco1", x, y, rnd.choice(FLOWERS if rnd.random() < .3 else TUFTS))
+    connect_places(quad)
     # ---- agent spots
     for pl in PLACES.values():
         for a, ar in pl["arenas"].items():
@@ -769,9 +1102,9 @@ def build(seed=7):
                 cells = [(x, y) for (x, y) in quad if not solid[y * W + x] and kind[y * W + x] == "lawn"]
             else:
                 cells = [tuple(c) for c in ar.pop("_cells") if not solid[c[1] * W + c[0]]]
-            r2 = random.Random(hash((pl["name"], a)) & 0xFFFF)
+            r2 = random.Random(zlib.crc32(f"{pl['name']}|{a}".encode()) & 0xFFFF)
             r2.shuffle(cells)
-            spots, mind = [], (3 if pl["kind"] == "lawn" else 1)
+            spots, mind = [], ar.pop("_mind", 3 if pl["kind"] == "lawn" else 1)
             for c in cells:
                 if all(max(abs(c[0] - s[0]), abs(c[1] - s[1])) > mind for s in spots):
                     spots.append(c)
@@ -783,15 +1116,7 @@ def build(seed=7):
                 if c not in spots:
                     spots.append(c)
             ar["spots"] = spots
-    from collections import deque
-    start = next(iter(sorted(quad)))
-    seen = [False] * (W * H); dq = deque([start]); seen[start[1] * W + start[0]] = True
-    while dq:
-        x, y = dq.popleft()
-        for dx, dy in ((1, 0), (-1, 0), (0, 1), (0, -1)):
-            nx, ny = x + dx, y + dy
-            if inb(nx, ny) and not seen[ny * W + nx] and not solid[ny * W + nx] and cost[ny * W + nx] > 0:
-                seen[ny * W + nx] = True; dq.append((nx, ny))
+    seen = reachable_from(next(iter(sorted(quad))))
     for pl in PLACES.values():
         for a, ar in pl["arenas"].items():
             ok = [c for c in ar["spots"] if seen[c[1] * W + c[0]]]

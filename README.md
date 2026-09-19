@@ -3,11 +3,16 @@
 MemeWorld is a **controlled simulation environment for studying how memes form**, built on top of
 [Generative Agents](https://github.com/joonspk-research/generative_agents) (Park et al., 2023).
 
-Eight students live ordinary routines on a Homewood-style campus. A hidden *world script*, generated before the
+Sixteen students live ordinary routines on a Homewood-style campus. A hidden *world script*, generated before the
 run, makes recurring *latent event structures* happen to them: a small slip that cascades, two mistakes that
 cancel out, an independent coincidence, a beneficial failure. Each is told through one of many everyday
 surface "skins". Agents never see the structure. They perceive fragments of it, form **lossy memories**,
 retrieve them stochastically, reflect and talk.
+
+Each student has six personality traits and twelve personal properties, including goals, values, strengths,
+blind spots, stress responses, trust, humor and small joys. Five overlapping friend groups have explicit ties
+and shared routine windows. These properties and each student's own friends appear in their identity prompts
+and the agent inspector. Ordinary friend groups are separate from simulator-only event-assignment circles.
 
 An external observer then asks two questions: does a shared expression **emerge** (spread through exposure), and
 is it **grounded** (does it track a hidden structure beyond chance)? It also measures how the answers change when

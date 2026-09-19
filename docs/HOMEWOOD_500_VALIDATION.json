@@ -1,0 +1,184 @@
+{
+  "schema_version": 1,
+  "validation_kind": "offline population loading, seeding, and schedule inspection",
+  "configuration": "configs/homewood500_naming.yaml",
+  "generation_seed": 20260919,
+  "profile_sha256": "6b9f3bcd5d01c357bd549a1fdcdafa9c6d42f3f63ee94ad231b86e18f7e65ce7",
+  "agent_count": 500,
+  "unique_names": 500,
+  "roles": {
+    "faculty": 44,
+    "staff": 56,
+    "student": 400
+  },
+  "student_years": {
+    "first-year": 100,
+    "junior": 100,
+    "senior": 100,
+    "sophomore": 100
+  },
+  "initial_name_memories": {
+    "Hopkins Cafe": 100,
+    "FFC": 400
+  },
+  "relationship_edges": 1404,
+  "relationship_seed_memories": 2808,
+  "ordinary_groups": 78,
+  "traits": {
+    "sociability": {
+      "moderate": 300,
+      "outgoing": 100,
+      "reserved": 100
+    },
+    "planning": {
+      "flexible": 300,
+      "spontaneous": 100,
+      "structured": 100
+    },
+    "communication": {
+      "balanced": 300,
+      "brief": 100,
+      "detailed": 100
+    }
+  },
+  "student_club_members": 332,
+  "on_campus_students_by_year": {
+    "first-year": 93,
+    "sophomore": 90,
+    "junior": 40,
+    "senior": 25
+  },
+  "schedule": {
+    "method": "native plan_day and routine_position; no simulation phases",
+    "days": 3,
+    "clock_positions_checked": 102,
+    "world_seed": 42,
+    "max_arena_occupancy": {
+      "location": "Classroom",
+      "arena": "Lecture Hall",
+      "agents": 219,
+      "first_peak": "Day 1 09:30"
+    },
+    "peak_dining_hall": {
+      "agents": 64,
+      "first_peak": "Day 1 12:30",
+      "by_role": {
+        "faculty": 4,
+        "staff": 12,
+        "student": 48
+      }
+    },
+    "max_per_arena": [
+      {
+        "location": "Cafe",
+        "arena": "Counter",
+        "agents": 35,
+        "first_peak": "Day 1 13:30"
+      },
+      {
+        "location": "Classroom",
+        "arena": "Lecture Hall",
+        "agents": 219,
+        "first_peak": "Day 1 09:30"
+      },
+      {
+        "location": "Classroom",
+        "arena": "Seminar Room",
+        "agents": 212,
+        "first_peak": "Day 1 14:00"
+      },
+      {
+        "location": "Dining Hall",
+        "arena": "Main Floor",
+        "agents": 64,
+        "first_peak": "Day 1 12:30"
+      },
+      {
+        "location": "Dorm",
+        "arena": "Lounge",
+        "agents": 106,
+        "first_peak": "Day 1 16:15"
+      },
+      {
+        "location": "Dorm",
+        "arena": "Room 105",
+        "agents": 48,
+        "first_peak": "Day 1 08:30"
+      },
+      {
+        "location": "Dorm",
+        "arena": "Room 118",
+        "agents": 47,
+        "first_peak": "Day 1 08:30"
+      },
+      {
+        "location": "Dorm",
+        "arena": "Room 214",
+        "agents": 51,
+        "first_peak": "Day 1 08:30"
+      },
+      {
+        "location": "Dorm",
+        "arena": "Room 310",
+        "agents": 49,
+        "first_peak": "Day 1 08:30"
+      },
+      {
+        "location": "Dorm",
+        "arena": "Room 402",
+        "agents": 53,
+        "first_peak": "Day 1 08:30"
+      },
+      {
+        "location": "Gym",
+        "arena": "Main Floor",
+        "agents": 103,
+        "first_peak": "Day 1 16:15"
+      },
+      {
+        "location": "Library",
+        "arena": "Quiet Floor",
+        "agents": 6,
+        "first_peak": "Day 1 08:30"
+      },
+      {
+        "location": "Library",
+        "arena": "Study Tables",
+        "agents": 174,
+        "first_peak": "Day 1 08:30"
+      },
+      {
+        "location": "Quad",
+        "arena": "Lawn",
+        "agents": 106,
+        "first_peak": "Day 1 16:15"
+      },
+      {
+        "location": "Research Lab",
+        "arena": "Dry Lab",
+        "agents": 78,
+        "first_peak": "Day 1 15:30"
+      },
+      {
+        "location": "Research Lab",
+        "arena": "Makerspace",
+        "agents": 64,
+        "first_peak": "Day 1 15:30"
+      },
+      {
+        "location": "Research Lab",
+        "arena": "Wet Lab",
+        "agents": 152,
+        "first_peak": "Day 1 15:30"
+      }
+    ]
+  },
+  "llm_calls": 0,
+  "simulation_ticks_executed": 0,
+  "limitations": [
+    "Counts describe a synthetic population, not measured campus behavior.",
+    "Scheduled room occupancy does not establish scalable interaction cost.",
+    "No conversation, confusion, learning, or naming alignment outcomes were tested."
+  ],
+  "checks_passed": 6
+}

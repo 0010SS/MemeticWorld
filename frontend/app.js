@@ -1,7 +1,8 @@
 // MemeWorld frontend: pixel-art Homewood campus replay, culture dashboard, causal trace explorer.
 // Normal demo mode never requests hidden ground truth; Research Debug Mode adds ?debug=1.
 
-import { mountResearch, refreshResearch, renderMemeticsCulture } from "./research.js";
+import { renderCultureTrends } from "./culture.js";
+import { loadRealMap, drawRealMap, drawRealMapLabels, REALMAP_ATTRIBUTION } from "./realmap.js";
 
 const $ = (s, el = document) => el.querySelector(s);
 const $$ = (s, el = document) => [...el.querySelectorAll(s)];
@@ -11,7 +12,32 @@ const S = {
   runs: [], runId: null, debug: false, manifest: null, frames: [], analysis: null,
   tick: 0, tf: 0, playing: false, speed: 1, sel: null, sprites: {},
   selMeme: null, agentReq: 0, order: {},
+  coop: null,          // GET /runs/<id>/coop (v3 co-op view; enabled=false for v2 / older runs)
+  hasCoop: false,      // frames carry a co-op block or the run has co-op mechanisms on
+  schema: null,        // GET /schema (trace record registry; debug adds hidden types)
+  agentTrace: {},      // per-agent NEED / WORDING / forgetting records (trace endpoint), per run
 };
+
+// Fields added over time may be missing in older runs: default them so every view can rely on them.
+const AGENT_DEFAULTS = { active: true, role: null, cohort: null, open_matters: 0, wordings: 0 };
+function normalizeFrames(frames) {
+  for (const f of frames) {
+    f.agents = f.agents || {};
+    for (const a of Object.values(f.agents)) for (const [k, v] of Object.entries(AGENT_DEFAULTS)) if (a[k] === undefined) a[k] = v;
+    f.away = Array.isArray(f.away) ? f.away : Object.keys(f.agents).filter((aid) => f.agents[aid].active === false).sort();
+    f.utterances = f.utterances || []; f.beats = f.beats || [];
+    if (f.coop) f.coop.jobs = Array.isArray(f.coop.jobs) ? f.coop.jobs : [];
+  }
+  return frames;
+}
+const ROLE = { am_crew: ["AM", "AM crew", "#2a78d6"], pm_crew: ["PM", "PM crew", "#eb6834"], stores: ["ST", "Stores", "#1baf7a"] };
+const roleName = (r) => ROLE[r]?.[1] || (r ? String(r).replace(/_/g, " ") : "");
+const roleBadge = (r) => r ? `<span class="badge role" style="--c:${ROLE[r]?.[2] || "#7a7973"}" title="co-op role">${esc(roleName(r))}</span>` : "";
+const cohortBadge = (c) => c ? `<span class="badge ${c === "newcomer" ? "new" : "founder"}" title="roster cohort">${esc(c)}</span>` : "";
+const agentBadges = (st) => roleBadge(st?.role) + cohortBadge(st?.cohort) + (st && st.active === false ? `<span class="badge away" title="not on the co-op roster / off campus">away</span>` : "");
+const firstName = (aid) => S.manifest?.agents?.[aid]?.name?.split(" ")[0] || aid;
+const spriteOf = (aid) => S.manifest?.agents?.[aid]?.sprite;
+const headIcon = (aid) => spriteOf(aid) ? `<span class="head" style="background-image:url(/ga_assets/characters/${encodeURIComponent(spriteOf(aid))}.png)"></span>` : `<span class="head"></span>`;
 
 async function api(path, opts = {}) {
   const sep = path.includes("?") ? "&" : "?";
@@ -47,6 +73,7 @@ async function boot() {
   $("#onlyConv").onchange = renderCulture;
   $("#btnAnalyze").onclick = async () => { await fetch(`/api/runs/${S.runId}/analyze`, { method: "POST" }); $("#cultureSummary").innerHTML = `<span class="muted">Analysis launched; reload this run in a minute.</span>`; };
   $("#traceQuery").oninput = renderTraceSearch;
+  bindTraceExplorer();
   $("#btnLaunch").onclick = launchRun;
   bindMapControls();
   window.addEventListener("keydown", (e) => {
@@ -58,6 +85,15 @@ async function boot() {
     if (e.key === "-") zoomBy(-1);
   });
   const mapReady = loadMap();
+  // real-world (OpenStreetMap) layer: Tiles | Real map toggle, remembered per viewer
+  try { S.mapMode = localStorage.getItem("mw.mapMode") === "real" ? "real" : "tiles"; } catch { S.mapMode = "tiles"; }
+  loadRealMap().catch(() => {});
+  const mm = $("#mapMode");
+  if (mm) {
+    const sync = () => { mm.textContent = S.mapMode === "real" ? "tiles" : "real map"; const at = $("#mapAttrib"); if (at) { at.hidden = S.mapMode !== "real"; at.textContent = REALMAP_ATTRIBUTION; } };
+    mm.onclick = () => { S.mapMode = S.mapMode === "real" ? "tiles" : "real"; try { localStorage.setItem("mw.mapMode", S.mapMode); } catch {} sync(); };
+    sync();
+  }
   S.runs = await api("/runs");
   const sel = $("#runSelect");
   sel.innerHTML = S.runs.map((r) => `<option value="${r.run_id}">${esc(r.run_id)} (${r.status}${r.has_analysis ? ", analyzed" : ""})</option>`).join("");
@@ -73,6 +109,8 @@ async function boot() {
   if (qs.get("place") && M.data.places[qs.get("place")]) { const b = M.data.places[qs.get("place")].box; centerOn((b[0] + b[2] + 1) / 2 * TILE, (b[1] + b[3] + 1) / 2 * TILE); }
   if (qs.get("frac")) S.tf = S.tick + Math.min(0.999, Math.max(0, +qs.get("frac")));
   if (qs.get("agent")) { S.sel = qs.get("agent"); renderAgent(S.sel); if (qs.get("follow")) { cam.follow = true; $("#followSel").checked = true; } }
+  renderAwayTray();
+  if (qs.get("tab") && $(`.tab[data-view="${qs.get("tab")}"]`)) showView(qs.get("tab"));
   renderRuns();
   requestAnimationFrame(loop);
 }
@@ -80,8 +118,8 @@ async function boot() {
 function showView(v) {
   $$(".tab").forEach((b) => b.classList.toggle("active", b.dataset.view === v));
   $$(".view").forEach((s) => s.classList.toggle("active", s.id === "view-" + v));
-  if (v === "culture") renderCulture();
-  if (v === "trace") renderTraceSearch();
+  if (v === "culture") { renderCulture(); drawTrends(); }
+  if (v === "trace") { renderTraceSearch(); renderTypeFilter(); }
   if (v === "runs") renderRuns();
   if (v === "research") refreshResearch();
   if (v === "campus") resizeMap();
@@ -91,29 +129,30 @@ async function loadRun(id, keepTick = false) {
   if (!id) return;
   S.runId = id;
   const [man, frames] = await Promise.all([api(`/runs/${id}/manifest`), api(`/runs/${id}/frames`)]);
-  S.manifest = man; S.frames = frames;
-  const commons = man.world.mode === "commons";
-  $("#worldTab").hidden = !commons;
-  $("#btnFirstMeme").hidden = commons;
-  $("#btnFirstCross").hidden = commons;
-  $("#onlyConv").parentElement.hidden = commons;
-  $("#cultureHeading").textContent = commons ? "Inheritance and adaptation" : "Emerging cultural conventions";
-  $("#cultureDescription").textContent = commons
-    ? "RQ2: How do shared records affect continuity and adaptation? These measures describe behavior; semantic change is not evaluated."
-    : "Detected by the external observer only (n-gram statistics + variant grouping + LLM classifier). Nothing on this page is ever shown to agents.";
-  if (!commons && $("#view-world").classList.contains("active")) showView("campus");
-  try { S.analysis = await api(`/runs/${id}/analysis`); } catch { S.analysis = null; }
-  S.order = {}; Object.keys(man.agents).sort().forEach((aid, i) => S.order[aid] = i);
-  for (const [aid, a] of Object.entries(man.agents)) {
-    if (!S.sprites[a.sprite]) { const img = new Image(); img.src = `/ga_assets/characters/${a.sprite}.png`; S.sprites[a.sprite] = img; }
+  S.manifest = man; S.frames = normalizeFrames(frames);
+  man.agents = man.agents || {};
+  // only ask for the analysis when the run list says there is one (a 404 would be a console error)
+  const info = S.runs.find((r) => r.run_id === id);
+  S.analysis = null;
+  if (!info || info.has_analysis) { try { S.analysis = await api(`/runs/${id}/analysis`); } catch { S.analysis = null; } }
+  try { S.coop = await api(`/runs/${id}/coop`); } catch { S.coop = null; }
+  S.hasCoop = !!(S.coop?.enabled || S.frames.some((f) => f.coop));
+  try { S.schema = await api(`/schema`); } catch { S.schema = null; }
+  S.agentTrace = {}; jobsCache.clear(); trState.records = null;
+  // every agent that ever appears in a frame gets a stable order (newcomers may be missing from older manifests)
+  const ids = new Set(Object.keys(man.agents)); for (const f of S.frames) for (const aid of Object.keys(f.agents)) ids.add(aid);
+  S.order = {}; [...ids].sort().forEach((aid, i) => S.order[aid] = i);
+  for (const a of Object.values(man.agents)) {
+    if (a.sprite && !S.sprites[a.sprite]) { const img = new Image(); img.src = `/ga_assets/characters/${a.sprite}.png`; S.sprites[a.sprite] = img; }
   }
-  posCache.length = 0;
+  posCache.length = 0; offCache.length = 0;
+  $("#coopGrid").hidden = !S.hasCoop;
   $("#scrub").max = Math.max(0, frames.length - 1);
-  $("#worldScrub").max = Math.max(0, frames.length - 1);
+  if (S.sel && !man.agents[S.sel]) { S.sel = null; $("#agentPanel").innerHTML = `<div class="muted">Click an agent on the map to inspect their profile, memories, retrieval and reflections.</div>`; }
   if (!keepTick) setTick(0); else setTick(S.tick);
   if (S.sel) renderAgent(S.sel);
-  renderCulture();
-  if ($("#view-research").classList.contains("active")) refreshResearch();
+  renderCulture(); drawTrends();
+  resetTraceExplorer();
 }
 
 // ================================================================== pixel map
@@ -256,30 +295,67 @@ function bindMapControls() {
   new ResizeObserver(resizeMap).observe($("#mapWrap"));
 }
 
-// ---- agent placement: one stable spot per agent inside its arena
-const posCache = [];
+// ---- agent placement: one stable spot per agent inside its arena. Generic over the map's places and arenas:
+// an unknown arena falls back to the place's first arena with spots, then to a row across the place's centre.
+// Inactive agents (frame.away), the 'Away' sentinel and locations missing from the map go to the away tray.
+const posCache = [], offCache = [];
+const ord = (aid) => S.order[aid] ?? [...String(aid)].reduce((h, c) => (h * 31 + c.charCodeAt(0)) >>> 0, 7);
+const boxesOf = (pl) => (pl.boxes?.length ? pl.boxes : [pl.box]);
+function placeOf(a) {
+  if (!a || a.active === false || !a.location || a.location === "Away") return null;
+  return M.data?.places?.[a.location] || null;
+}
+function spotsFor(pl, ar) {
+  const arenas = pl.arenas || {};
+  if (arenas[ar]?.spots?.length) return arenas[ar].spots;
+  for (const a of Object.values(arenas)) if (a.spots?.length) return a.spots;
+  if (!pl._spots) {
+    const [x0, y0, x1, y1] = pl.box, cy = Math.round((y0 + y1) / 2), cx = Math.round((x0 + x1) / 2);
+    pl._spots = [];
+    for (let x = Math.max(x0, cx - 5); x <= Math.min(x1, cx + 5); x++) pl._spots.push([x, cy]);
+  }
+  return pl._spots;
+}
 function positions(t) {
   if (posCache[t]) return posCache[t];
-  const frame = S.frames[t], out = {};
+  const frame = S.frames[t], out = {}, off = [];
   if (!frame || !M.data) return out;
-  const groups = {};
-  for (const [aid, a] of Object.entries(frame.agents)) (groups[a.location + "|" + a.arena] = groups[a.location + "|" + a.arena] || []).push(aid);
-  for (const [key, ids] of Object.entries(groups)) {
-    const [loc, ar] = key.split("|");
-    const pl = M.data.places[loc]; if (!pl) continue;
-    const arena = pl.arenas[ar] || Object.values(pl.arenas)[0];
-    const spots = arena.spots; if (!spots?.length) continue;
-    ids.sort((a, b) => S.order[a] - S.order[b]);
+  const groups = new Map();
+  for (const [aid, a] of Object.entries(frame.agents)) {
+    const pl = placeOf(a);
+    if (!pl) { off.push(aid); continue; }
+    const key = a.location + "\u0000" + (a.arena ?? "");
+    if (!groups.has(key)) groups.set(key, { pl, ar: a.arena, ids: [] });
+    groups.get(key).ids.push(aid);
+  }
+  for (const { pl, ar, ids } of groups.values()) {
+    const spots = spotsFor(pl, ar); if (!spots.length) { off.push(...ids); continue; }
+    ids.sort((a, b) => ord(a) - ord(b));
     const used = new Set();
     for (const aid of ids) {
-      let k = S.order[aid] % spots.length, n = 0;
+      let k = ord(aid) % spots.length, n = 0;
       while (used.has(k) && n < spots.length) { k = (k + 1) % spots.length; n++; }
       used.add(k);
       out[aid] = { cx: spots[k][0], cy: spots[k][1] };
     }
   }
-  posCache[t] = out;
+  posCache[t] = out; offCache[t] = off.sort((a, b) => ord(a) - ord(b));
   return out;
+}
+function offMap(t) { positions(t); return offCache[t] || []; }
+
+// the "off campus / away" tray: agents that are not on the map this tick
+function renderAwayTray() {
+  const tray = $("#awayTray"), f = S.frames[S.tick];
+  if (!tray || !f || !M.data) { if (tray) tray.hidden = true; return; }
+  const off = offMap(S.tick);
+  tray.hidden = !off.length;
+  if (!off.length) return;
+  tray.innerHTML = `<div class="tray-title">off campus / away · ${off.length}</div><div class="tray-list">${off.map((aid) => {
+    const a = f.agents[aid] || {}, why = a.active === false ? "away" : a.location && a.location !== "Away" ? `off map: ${a.location}` : "away";
+    return `<button class="tray-agent${S.sel === aid ? " sel" : ""}" data-aid="${esc(aid)}" title="${esc(S.manifest.agents[aid]?.name || aid)} · ${esc(why)}${a.role ? " · " + esc(roleName(a.role)) : ""}">${headIcon(aid)}<span>${esc(firstName(aid))}</span>${a.role ? `<i class="dot" style="background:${ROLE[a.role]?.[2] || "#7a7973"}"></i>` : ""}</button>`;
+  }).join("")}</div>`;
+  $$(".tray-agent", tray).forEach((b) => b.onclick = () => { S.sel = b.dataset.aid; renderAgent(S.sel); renderAwayTray(); });
 }
 
 // ---- A* over the walk-cost grid (4-neighbour, like Smallville)
@@ -336,8 +412,8 @@ function onTickChanged() {
   const f = S.frames[S.tick];
   $("#clock").textContent = f ? f.label : "—";
   $("#scrub").value = S.tick;
-  renderFeed(); renderEvents();
-  renderWorld();
+  renderFeed(); renderEvents(); renderAwayTray(); renderCoop();
+  if ($("#view-culture").classList.contains("active")) drawTrends();
   if (S.sel) { clearTimeout(agentTimer); agentTimer = setTimeout(() => renderAgent(S.sel), S.playing ? 600 : 80); }
 }
 function jumpTo(key) {
@@ -400,42 +476,64 @@ function draw() {
   ctx.setTransform(z, 0, 0, z, -cam.x * z, -cam.y * z);
   ctx.imageSmoothingEnabled = cam.zoom < 0.75;
   chunkBudget = 6;
-  drawChunks(ctx, false);
-  // active-event outline on buildings
+  if (S.mapMode === "real") drawRealMap(ctx, cam, { dpr }); else drawChunks(ctx, false);
+  // active-event outline on buildings (every box of a multi-part place)
   const active = new Set((frame?.beats || []).map((b) => b.location));
   for (const loc of active) {
     const pl = M.data.places[loc]; if (!pl) continue;
-    const [x0, y0, x1, y1] = pl.box;
     ctx.strokeStyle = "#eb6834"; ctx.lineWidth = 3 / cam.zoom; ctx.setLineDash([8 / cam.zoom, 6 / cam.zoom]);
-    ctx.strokeRect(x0 * TILE - 2, y0 * TILE - 2, (x1 - x0 + 1) * TILE + 4, (y1 - y0 + 1) * TILE + 4); ctx.setLineDash([]);
+    for (const [x0, y0, x1, y1] of boxesOf(pl)) ctx.strokeRect(x0 * TILE - 2, y0 * TILE - 2, (x1 - x0 + 1) * TILE + 4, (y1 - y0 + 1) * TILE + 4);
+    ctx.setLineDash([]);
   }
   // agents, painter's order by y
   const ids = Object.keys(pos).sort((a, b) => pos[a].y - pos[b].y);
+  const far = cam.zoom < 0.25;   // far out: sprites are a few pixels; draw a marker dot instead
   for (const aid of ids) {
-    const a = pos[aid], prof = man.agents[aid], img = S.sprites[prof.sprite];
+    const a = pos[aid], img = S.sprites[spriteOf(aid)];
     const fx = a.walking ? [0, 32, 64][Math.floor(performance.now() / 140) % 3] : 32;
     if (S.sel === aid) {
       ctx.fillStyle = "rgba(42,120,214,.35)"; ctx.beginPath(); ctx.ellipse(a.x, a.y + 8, 14, 7, 0, 0, 7); ctx.fill();
     }
-    if (img?.complete && img.naturalWidth) ctx.drawImage(img, fx, a.dir * 32, 32, 32, Math.round(a.x - 16), Math.round(a.y - 22), 32, 32);
+    if (far) {
+      const r = 5 / cam.zoom, st = frame.agents[aid];
+      ctx.fillStyle = "#1c1c1a"; ctx.fillRect(a.x - r - 1 / cam.zoom, a.y - r - 1 / cam.zoom, 2 * r + 2 / cam.zoom, 2 * r + 2 / cam.zoom);
+      ctx.fillStyle = S.sel === aid ? "#ffd866" : ROLE[st?.role]?.[2] || "#e34948"; ctx.fillRect(a.x - r, a.y - r, 2 * r, 2 * r);
+    } else if (img?.complete && img.naturalWidth) ctx.drawImage(img, fx, a.dir * 32, 32, 32, Math.round(a.x - 16), Math.round(a.y - 22), 32, 32);
     else { ctx.fillStyle = "#2a78d6"; ctx.beginPath(); ctx.arc(a.x, a.y - 6, 9, 0, 7); ctx.fill(); }
   }
-  drawChunks(ctx, true);
+  if (S.mapMode !== "real") drawChunks(ctx, true);
   // screen-space overlays (labels, names, bubbles, badges)
   ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
   const sx = (wx) => (wx - cam.x) * cam.zoom, sy = (wy) => (wy - cam.y) * cam.zoom;
-  drawContextLabels(ctx, sx, sy, vw, vh);
-  drawPlaceLabels(ctx, sx, sy, active);
+  if (S.mapMode === "real") drawRealMapLabels(ctx, cam, { dpr }); else drawContextLabels(ctx, sx, sy, vw, vh);
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  const occ = {};
+  for (const aid of ids) { const l = frame.agents[aid]?.location; occ[l] = (occ[l] || 0) + 1; }
+  drawPlaceLabels(ctx, sx, sy, active, occ, vw, vh);
   for (const aid of ids) {
     const a = pos[aid], x = sx(a.x), y = sy(a.y);
     if (x < -40 || y < -40 || x > vw + 40 || y > vh + 40) continue;
-    const nm = man.agents[aid].name.split(" ")[0];
+    if (far && S.sel !== aid) continue;   // far out, the place labels carry head counts; only the selection is named
+    const st = frame.agents[aid] || {};
+    const nm = firstName(aid);
     ctx.font = `600 ${cam.zoom >= 0.75 ? 13 : 11}px ${PIX}`; ctx.textAlign = "center"; ctx.textBaseline = "top";
-    const w = ctx.measureText(nm).width + 8, yy = y + 12 * cam.zoom;
+    const w = ctx.measureText(nm).width + 8, yy = y + (far ? 8 : 12 * cam.zoom);
+    // co-op badges (role, newcomer) sit right of the name tag
+    const badges = [];
+    if (st.role) badges.push([ROLE[st.role]?.[0] || String(st.role).slice(0, 2).toUpperCase(), ROLE[st.role]?.[2] || "#7a7973", "#fff"]);
+    if (st.cohort === "newcomer") badges.push(["NEW", "#ffd866", "#1c1c1a"]);
+    ctx.font = `700 10px ${PIX}`;
+    const bw = badges.map(([t]) => ctx.measureText(t).width + 6), tw = w + bw.reduce((s, v) => s + v + 1, 0);
+    let bx = Math.round(x - tw / 2);
+    ctx.font = `600 ${cam.zoom >= 0.75 ? 13 : 11}px ${PIX}`;
     ctx.fillStyle = S.sel === aid ? "#2a78d6" : "rgba(20,20,18,.78)";
-    ctx.fillRect(Math.round(x - w / 2), Math.round(yy), Math.round(w), 15);
-    ctx.fillStyle = "#fff"; ctx.fillText(nm, Math.round(x), Math.round(yy) + 1);
-    if (frame.agents[aid].conversation) { ctx.fillStyle = "#ffd866"; ctx.font = `700 12px ${PIX}`; ctx.fillText("…", Math.round(x + 18), Math.round(y - 34 * cam.zoom)); }
+    ctx.fillRect(bx, Math.round(yy), Math.round(w), 15);
+    ctx.fillStyle = "#fff"; ctx.textAlign = "left"; ctx.fillText(nm, bx + 4, Math.round(yy) + 1);
+    bx += Math.round(w) + 1;
+    ctx.font = `700 10px ${PIX}`;
+    badges.forEach(([t, bg, fg], i) => { ctx.fillStyle = bg; ctx.fillRect(bx, Math.round(yy), Math.round(bw[i]), 15); ctx.fillStyle = fg; ctx.fillText(t, bx + 3, Math.round(yy) + 2); bx += Math.round(bw[i]) + 1; });
+    ctx.textAlign = "center";
+    if (st.conversation) { ctx.fillStyle = "#ffd866"; ctx.font = `700 12px ${PIX}`; ctx.fillText("…", Math.round(x + 18), Math.round(y - 34 * cam.zoom)); }
   }
   // speech bubbles (cycle through a conversation's lines within the tick)
   const p = S.tf - S.tick;
@@ -447,7 +545,7 @@ function draw() {
       const u = us[k], sp = pos[u.speaker]; if (!sp) continue;
       if (sx(sp.x) < -20 || sx(sp.x) > vw + 20 || sy(sp.y) < -20 || sy(sp.y) > vh + 20) continue;
       ctx.strokeStyle = "rgba(42,120,214,.6)"; ctx.setLineDash([3, 3]); ctx.lineWidth = 1;
-      for (const l of u.listeners) { const lp = pos[l]; if (lp) { ctx.beginPath(); ctx.moveTo(sx(sp.x), sy(sp.y) - 10); ctx.lineTo(sx(lp.x), sy(lp.y) - 10); ctx.stroke(); } }
+      for (const l of u.listeners || []) { const lp = pos[l]; if (lp) { ctx.beginPath(); ctx.moveTo(sx(sp.x), sy(sp.y) - 10); ctx.lineTo(sx(lp.x), sy(lp.y) - 10); ctx.stroke(); } }
       ctx.setLineDash([]);
       bubble(ctx, sx(sp.x), sy(sp.y) - 26 * cam.zoom, u.text, vw);
     }
@@ -473,21 +571,69 @@ function drawContextLabels(ctx, sx, sy, vw, vh) {
   }
 }
 
-function drawPlaceLabels(ctx, sx, sy, active) {
-  if (cam.zoom < 0.3) return;
+// screen rects (canvas CSS px) of the HUD overlays, refreshed at most every 250 ms
+let hudCache = { t: 0, rects: [] };
+function hudRects() {
+  const now = performance.now();
+  if (now - hudCache.t > 250) {
+    const m = $("#map").getBoundingClientRect();
+    hudCache = { t: now, rects: $$("#mapWrap .hud, #debugBadge").filter((el) => !el.hidden && el.offsetParent !== null).map((el) => {
+      const r = el.getBoundingClientRect(); return { x: r.left - m.left, y: r.top - m.top, w: r.width, h: r.height };
+    }) };
+  }
+  return [...hudCache.rects];
+}
+// Every place in homewood_map.json gets a label at every zoom: sim name (+ the real building's name when close
+// enough) and a head count of the agents inside. Labels are kept on screen for partly visible places and
+// nudged to the first free slot so neighbouring buildings do not cover each other.
+function drawPlaceLabels(ctx, sx, sy, active, occ, vw, vh) {
+  const detail = cam.zoom >= 0.5 ? 2 : cam.zoom >= 0.2 ? 1 : 0;   // 2: name + real name, 1: name, 0: small name
+  const fs = detail ? 13 : 11, fs2 = 11, h = detail ? 18 : 15;
+  const clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
+  const placed = hudRects();   // HUD boxes over the canvas count as taken
+  const hits = (r) => placed.some((p) => r.x < p.x + p.w + 2 && r.x + r.w + 2 > p.x && r.y < p.y + p.h + 1 && r.y + r.h + 1 > p.y);
+  const entries = Object.entries(M.data.places).sort(([ka, a], [kb, b]) =>
+    (!!(occ[kb] || active.has(kb)) - !!(occ[ka] || active.has(ka))) || a.box[1] - b.box[1] || a.box[0] - b.box[0]);
   ctx.textBaseline = "top"; ctx.textAlign = "left";
-  for (const pl of Object.values(M.data.places)) {
-    const [x0, y0, x1] = pl.box;
-    const x = sx(x0 * TILE) + 2, y = sy(y0 * TILE) - 20;
-    const name = pl.name, sub = pl.label === pl.name ? "" : pl.label;
-    ctx.font = `700 13px ${PIX}`; const w1 = ctx.measureText(name).width;
-    ctx.font = `500 11px ${PIX}`; const w2 = sub ? ctx.measureText(sub).width : 0;
-    const w = w1 + (sub ? w2 + 8 : 0) + 10, maxw = (x1 - x0 + 1) * TILE * cam.zoom;
-    ctx.fillStyle = active.has(name) ? "rgba(235,104,52,.92)" : "rgba(20,20,18,.8)";
-    ctx.fillRect(Math.round(x), Math.round(y), Math.round(Math.max(w, Math.min(maxw, w))), 18);
-    ctx.fillStyle = "#fff"; ctx.font = `700 13px ${PIX}`; ctx.fillText(name, Math.round(x) + 5, Math.round(y) + 2);
-    if (sub) { ctx.fillStyle = "#e8e4d4"; ctx.font = `500 11px ${PIX}`; ctx.fillText(sub, Math.round(x) + 5 + w1 + 8, Math.round(y) + 4); }
-    if (active.has(name)) { ctx.fillStyle = "#fff"; ctx.font = `700 13px ${PIX}`; ctx.fillText("!", Math.round(x) + Math.round(Math.max(w, Math.min(maxw, w))) - 12, Math.round(y) + 2); }
+  for (const [key, pl] of entries) {
+    const [x0, y0, x1, y1] = pl.box;
+    const bx0 = sx(x0 * TILE), by0 = sy(y0 * TILE), bx1 = sx((x1 + 1) * TILE), by1 = sy((y1 + 1) * TILE);
+    if (bx1 < 0 || bx0 > vw || by1 < 0 || by0 > vh) continue;
+    const name = pl.name || key, sub = detail === 2 && pl.label && pl.label !== name ? pl.label : "";
+    const n = occ[key] || 0, hot = active.has(key);
+    ctx.font = `700 ${fs}px ${PIX}`; const w1 = ctx.measureText(name).width;
+    ctx.font = `500 ${fs2}px ${PIX}`; const w2 = sub ? ctx.measureText(sub).width + 8 : 0;
+    ctx.font = `700 ${fs2}px ${PIX}`; const wn = n ? ctx.measureText(String(n)).width + 8 : 0;
+    const w = Math.round(w1 + w2 + (n ? wn + 4 : 0) + (hot ? 12 : 0) + 10);
+    const cx = detail ? bx0 + 2 : (bx0 + bx1) / 2 - w / 2, cy = detail ? by0 - h - 2 : (by0 + by1) / 2 - h / 2;
+    const cands = [[cx, cy], [bx0 + 2, by0 + 2], [bx0 + 2, by1 + 2], [bx1 - w - 2, by0 - h - 2]];
+    for (let k = 1; k <= 4; k++) cands.push([cx, cy + k * (h + 2)], [cx, cy - k * (h + 2)]);
+    // a clamped candidate that collides slides past the obstacle (down, or right), staying next to its building
+    const slackY = detail ? h + 4 : 3 * h, slackX = detail ? 0 : w / 2;
+    const ok = (c) => c.y >= 2 && c.y + h <= vh - 2 && c.x >= 2 && c.x + w <= vw - 2 &&
+      c.y <= Math.max(by1, 2) + slackY && c.y + h >= Math.min(by0, vh) - slackY && c.x <= bx1 + slackX && c.x + w >= bx0 - slackX;
+    const slide = (c, dir) => {
+      for (let i = 0; i < 8; i++) {
+        const p = placed.find((q) => c.x < q.x + q.w + 2 && c.x + c.w + 2 > q.x && c.y < q.y + q.h + 1 && c.y + c.h + 1 > q.y);
+        if (!p) return c;
+        c = dir === "down" ? { ...c, y: Math.round(p.y + p.h + 2) } : { ...c, x: Math.round(p.x + p.w + 3) };
+        if (!ok(c)) return null;
+      }
+      return null;
+    };
+    const at = ([px_, py_]) => ({ x: Math.round(clamp(px_, 2, vw - w - 2)), y: Math.round(clamp(py_, 2, vh - h - 2)), w, h });
+    let r = null;
+    for (const cd of cands) { const c = at(cd); if (!hits(c)) { r = c; break; } }
+    for (const dir of ["down", "right"]) for (const cd of cands.slice(0, 3)) { if (!r) r = slide(at(cd), dir); }
+    r = r || at([cx, cy]);
+    placed.push(r);
+    ctx.fillStyle = hot ? "rgba(235,104,52,.92)" : pl.kind === "lawn" ? "rgba(47,90,42,.88)" : "rgba(20,20,18,.8)";
+    ctx.fillRect(r.x, r.y, w, h);
+    let x = r.x + 5;
+    ctx.fillStyle = "#fff"; ctx.font = `700 ${fs}px ${PIX}`; ctx.fillText(name, x, r.y + 2); x += w1;
+    if (sub) { ctx.fillStyle = "#e8e4d4"; ctx.font = `500 ${fs2}px ${PIX}`; ctx.fillText(sub, x + 8, r.y + 4); x += w2; }
+    if (n) { ctx.fillStyle = "#ffd866"; ctx.fillRect(x + 4, r.y + 2, wn, h - 4); ctx.fillStyle = "#1c1c1a"; ctx.font = `700 ${fs2}px ${PIX}`; ctx.fillText(String(n), x + 8, r.y + (detail ? 3 : 2)); x += wn + 4; }
+    if (hot) { ctx.fillStyle = "#fff"; ctx.font = `700 ${fs}px ${PIX}`; ctx.fillText("!", x + 4, r.y + 2); }
   }
 }
 
@@ -521,15 +667,21 @@ function agentAt(e) {
   for (const [aid, p] of Object.entries(drawState.pos)) { const d = Math.hypot(p.x - x, p.y - 8 - y); if (d < bd) { bd = d; best = aid; } }
   return best;
 }
-function onMapClick(e) { const a = agentAt(e); if (a) { S.sel = a; renderAgent(a); } }
+function onMapClick(e) { const a = agentAt(e); if (a) { S.sel = a; renderAgent(a); renderAwayTray(); if (S.hasCoop && S.frames[S.tick]) renderRoster(S.frames[S.tick]); } }
 function onMapHover(e) {
   const a = agentAt(e); const f = S.frames[S.tick];
-  if (a && f) { const st = f.agents[a]; showTip(e, `<b>${esc(S.manifest.agents[a].name)}</b><br>${esc(st.activity)}<br><span class="muted">${esc(st.location)} · ${esc(st.arena)}</span>`); }
+  if (a && f) { const st = f.agents[a]; showTip(e, `<b>${esc(S.manifest.agents[a]?.name || a)}</b> ${agentBadges(st)}<br>${esc(st.activity)}<br><span class="muted">${esc(st.location)} · ${esc(st.arena)}</span>`); }
   else {
     const { x, y } = screenToWorld(e); const cx = Math.floor(x / TILE), cy = Math.floor(y / TILE);
-    const pl = Object.values(M.data?.places || {}).find((p) => cx >= p.box[0] && cx <= p.box[2] && cy >= p.box[1] && cy <= p.box[3]);
-    if (pl) { const ar = Object.entries(pl.arenas).find(([, a]) => cx >= a.rect[0] && cx <= a.rect[2] && cy >= a.rect[1] && cy <= a.rect[3]); showTip(e, `<b>${esc(pl.name)}</b> · ${esc(pl.label)}${ar ? `<br><span class="muted">${esc(ar[0])}</span>` : ""}`); }
-    else hideTip();
+    const inR = (r) => r && cx >= r[0] && cx <= r[2] && cy >= r[1] && cy <= r[3];
+    const hit = Object.entries(M.data?.places || {}).find(([, p]) => boxesOf(p).some(inR));
+    if (hit) {
+      const [key, pl] = hit, ar = Object.entries(pl.arenas || {}).find(([, a]) => inR(a.rect));
+      const here = f ? Object.keys(drawState.pos).filter((aid) => f.agents[aid]?.location === key) : [];
+      showTip(e, `<b>${esc(pl.name || key)}</b>${pl.label && pl.label !== pl.name ? ` · ${esc(pl.label)}` : ""}${ar ? `<br><span class="muted">${esc(ar[0])}</span>` : ""}` +
+        `<br><span class="muted">${Object.keys(pl.arenas || {}).map(esc).join(" · ")}</span>` +
+        (here.length ? `<br>here now: ${here.map((aid) => esc(firstName(aid))).join(", ")}` : ""));
+    } else hideTip();
   }
 }
 
@@ -543,44 +695,270 @@ function renderFeed() {
   const out = [];
   for (let t = S.tick; t >= 0 && out.length < 40; t--) for (const u of [...(S.frames[t]?.utterances || [])].reverse()) out.push([t, u]);
   $("#feed").innerHTML = out.map(([t, u]) => `<div class="utt" data-uid="${esc(u.id)}"><span class="who">${esc(name(u.speaker))}</span>
-    <span class="meta">→ ${u.listeners.map(name).map(esc).join(", ") || "nobody"} · ${esc(S.frames[t].label)}</span><div>${esc(u.text)}</div></div>`).join("") || `<div class="muted small">No utterances yet.</div>`;
+    <span class="meta">→ ${(u.listeners || []).map(name).map(esc).join(", ") || "nobody"} · ${esc(S.frames[t].label)}</span><div>${esc(u.text)}</div></div>`).join("") || `<div class="muted small">No utterances yet.</div>`;
   $$("#feed .utt").forEach((d) => d.onclick = () => openChain(d.dataset.uid));
 }
-const name = (aid) => S.manifest?.agents[aid]?.name.split(" ")[0] || aid;
+const name = (aid) => S.manifest?.agents?.[aid]?.name?.split(" ")[0] || aid;
+
+// ------------------------------------------------------------ co-op panels (v3)
+// Everything here is world-side, public co-op state from frame.coop and GET /coop (demo mode); the job truth
+// (fault class, cause, regime) appears only in Research Debug Mode, where GET /coop?debug=1 carries it.
+const jobsCache = new Map();
+const FINAL = new Set(["delivered", "defer", "failed"]);
+function dayJobs(t) {
+  // every job of the tick's day seen up to t, in its latest state (a finished job appears once in the frames)
+  if (jobsCache.has(t)) return jobsCache.get(t);
+  const f = S.frames[t]; if (!f) return [];
+  let s = t; while (s > 0 && S.frames[s - 1]?.day === f.day) s--;
+  const m = new Map();
+  for (let k = s; k <= t; k++) for (const j of S.frames[k].coop?.jobs || []) m.set(j.id, { ...j, seen: k });
+  const out = [...m.values()].sort((a, b) => (a.slot ?? 0) - (b.slot ?? 0) || String(a.id).localeCompare(String(b.id)));
+  jobsCache.set(t, out);
+  return out;
+}
+const coopJob = (id) => (S.coop?.jobs || []).find((j) => j.job === id);
+const statusPill = (s) => `<span class="status-pill s-${esc(s)}">${esc(s)}</span>`;
+function truthHtml(tr) {
+  // debug only: GET /coop?debug=1 adds each job's hidden truth
+  if (!S.debug || !tr) return "";
+  const p = tr.p ? Object.entries(tr.p).map(([k, v]) => `${esc(k)} ${v}`).join(", ") : "";
+  return `<div class="small truth"><span class="tag gt">truth</span> class ${esc(tr.class)} · cause ${esc(tr.cause ?? "—")} · fault ${esc(tr.fault)} · fix ${esc(tr.gt ?? "—")} · regime ${esc(tr.regime)}/${esc(tr.mapping)}${p ? `<br><span class="muted">p(success): ${p}</span>` : ""}</div>`;
+}
+
+function renderCoop() {
+  if (!S.hasCoop) return;
+  const f = S.frames[S.tick]; if (!f) return;
+  renderJobs(f); renderBinder(f); renderRoster(f);
+}
+
+function renderJobs(f) {
+  const t = f.tick ?? S.tick, jobs = dayJobs(S.tick);
+  const done = jobs.filter((j) => FINAL.has(j.status)), delivered = done.filter((j) => j.status === "delivered").length;
+  const tally = (S.coop?.tallies || []).filter((r) => r.day === f.day && r.tick <= t).pop();
+  const regime = S.debug ? (S.coop?.regimes || []).filter((r) => r.tick <= t).pop() : null;
+  $("#jobsHead").innerHTML = `Day ${esc(f.day)} · ${delivered} delivered · ${done.length - delivered} not · ${jobs.length - done.length} open${regime ? ` <span class="tag gt">regime ${esc(regime.regime)} · ${esc(regime.mapping)}</span>` : ""}`;
+  const now = new Set((f.coop?.jobs || []).map((j) => j.id));
+  const card = (j) => {
+    const full = coopJob(j.id), upto = (r) => (r.tick ?? 0) <= t;
+    const dec = (full?.decisions || []).filter(upto).pop(), asks = (full?.clarifications || []).filter(upto);
+    const tried = (j.tried || []).map((x) => `<span class="try o-${esc(x.outcome)}">${esc(x.attempt)}. ${esc(x.action)} → ${esc(x.outcome)}</span>`);
+    if (j.status === "running" && (j.attempt || 0) > (j.tried || []).length) {
+      const pend = (full?.decisions || []).filter((x) => upto(x) && x.attempt === j.attempt).pop();
+      tried.push(`<span class="try o-pending">${esc(j.attempt)}. ${esc(pend?.action || "…")} → running</span>`);
+    }
+    const decLine = !FINAL.has(j.status) && dec ? `<div class="small job-dec">${dec.choice === "G" || dec.question ? `asks ${esc(name(dec.ask_target))}: “${esc(dec.question || "")}”` : `chose <b>${esc(dec.action)}</b>${dec.reason ? `: ${esc(dec.reason)}` : ""}`}${dec.says_aloud ? ` <span class="muted">(says: “${esc(dec.says_aloud)}”)</span>` : ""}${dec.binder_chosen ? ` <span class="badge founder">from binder</span>` : ""}</div>` : "";
+    const askLine = asks.length && !FINAL.has(j.status) ? `<div class="small muted">${asks.map((q) => `${esc(name(q.agent))} asked ${esc(name(q.target))}: “${esc(q.question)}”`).join("<br>")}</div>` : "";
+    const opSt = f.agents[j.operator];
+    return `<div class="job-card s-${esc(j.status)}${now.has(j.id) ? " now" : ""}" data-job="${esc(j.id)}" title="click for the job's full record">
+      <div class="job-top">${statusPill(j.status)} ${headIcon(j.operator)}<b>${esc(firstName(j.operator))}</b> ${roleBadge(opSt?.role)}${cohortBadge(opSt?.cohort)}
+        <span class="muted small">${esc(j.id)} · ${esc(String(j.shift || "").toUpperCase())} · attempt ${esc(j.attempt ?? 0)}</span></div>
+      <div class="job-proj">${esc(j.project)}</div>
+      ${j.symptom ? `<div class="job-sym">“${esc(j.symptom)}”</div>` : ""}
+      ${tried.length ? `<div class="job-tries">${tried.join("")}</div>` : ""}
+      ${decLine}${askLine}${truthHtml(full?.truth)}
+    </div>`;
+  };
+  const open = jobs.filter((j) => !FINAL.has(j.status)), fin = jobs.filter((j) => FINAL.has(j.status)).reverse();
+  $("#jobsPanel").innerHTML = (tally ? `<div class="tally">${esc(tally.text)}</div>` : "") +
+    (open.length ? open.map(card).join("") : `<div class="muted small">No job at the laser right now.</div>`) +
+    (fin.length ? `<div class="sub-h">Finished today (${fin.length})</div>${fin.map(card).join("")}` : "");
+  $$("#jobsPanel [data-job]").forEach((el) => el.onclick = () => openJob(el.dataset.job));
+}
+
+function openJob(id) {
+  const j = coopJob(id); if (!j) return;
+  const t = S.tick, upto = (r) => (r.tick ?? 0) <= t;
+  const items = [
+    { tick: j.start_tick, html: `<b>started</b> · ${esc(j.project)}${j.symptom ? `<br><i>“${esc(j.symptom)}”</i>` : ""}` },
+    ...(j.decisions || []).map((d) => ({ tick: d.tick, html: `<b>decision, attempt ${esc(d.attempt)}</b>: ${d.question ? `ask ${esc(name(d.ask_target))}: “${esc(d.question)}”` : `${esc(d.choice || "")} ${esc(d.action)}`}${d.reason ? ` — ${esc(d.reason)}` : ""}${d.says_aloud ? `<br><span class="muted">says aloud: “${esc(d.says_aloud)}”</span>` : ""}<br><span class="muted small">binder ${d.binder_shown ? "shown" : "not shown"}${d.binder_chosen ? ", chosen from it" : ""}${d.valid === false ? " · invalid reply" : ""}</span>` })),
+    ...(j.clarifications || []).map((q) => ({ tick: q.tick, html: `<b>clarification</b>: ${esc(name(q.agent))} asked ${esc(name(q.target))}: “${esc(q.question)}”${q.conversation_id ? ` <a href="#" data-conv="${esc(q.conversation_id)}">conversation</a>` : ""}` })),
+    ...(j.attempts || []).map((a) => ({ tick: a.tick, html: `<b>attempt ${esc(a.attempt)}</b>: ${esc(a.action)} → ${statusPill(a.outcome)}${a.text ? `<br>${esc(a.text)}` : ""}` })),
+    ...(j.end ? [{ tick: j.end.tick, html: `<b>ended</b>: ${statusPill(j.end.result)}${j.writes?.length ? ` · binder writes ${j.writes.map(esc).join(", ")}` : ""}` }] : []),
+  ].sort((a, b) => (a.tick ?? 0) - (b.tick ?? 0));
+  const shown = items.filter(upto), later = items.length - shown.length;
+  $("#modalContent").innerHTML = `<h2>Job ${esc(j.job)} <span class="muted small">${esc(firstName(j.operator))} · Day ${esc(j.day)} · ${esc(String(j.shift || "").toUpperCase())} shift</span></h2>
+    ${truthHtml(j.truth)}
+    <div class="job-log">${shown.map((x) => `<div class="node"><span class="kind">${esc(labelAt(x.tick))}</span><div>${x.html}</div></div>`).join("") || '<div class="muted">Not started yet at this point of the replay.</div>'}</div>
+    ${later ? `<div class="muted small">${later} later record(s) hidden until the replay reaches them.</div>` : ""}`;
+  $("#modal").hidden = false;
+  $$("#modalContent [data-conv]").forEach((el) => el.onclick = (e) => { e.preventDefault(); $("#modal").hidden = true; showView("trace"); $("#trConv").value = el.dataset.conv; loadTrace(); });
+}
+
+function renderBinder(f) {
+  const b = f.coop?.binder, t = f.tick ?? S.tick;
+  if (!b) { $("#binderHead").textContent = ""; $("#binderPanel").innerHTML = `<div class="muted small">Records are off in this run: the co-op keeps no binder.</div>`; return; }
+  $("#binderHead").textContent = `${b.binder_id || ""}${b.archived ? ` · ${b.archived} archived` : ""}`;
+  const tl = (S.coop?.binder?.timeline || []).filter((e) => (e.tick ?? 0) <= t);
+  const reads = tl.filter((e) => e.kind === "read").length, declined = tl.filter((e) => e.kind === "write" && e.choice === "none").length;
+  const hist = tl.filter((e) => e.kind === "transition" || (e.kind === "write" && e.choice !== "none")).slice(-10).reverse();
+  const histRow = (e) => e.kind === "transition"
+    ? `<div class="hist" data-tick="${e.tick}"><span class="muted">${esc(labelAt(e.tick))}</span> <b>${e.mode === "wipe" ? "binder replaced" : "binder kept"}</b>${e.mode === "wipe" ? `: ${esc(e.archived_binder_id || "old binder")} archived, ${esc(e.binder_id)} started` : ""}</div>`
+    : `<div class="hist" data-tick="${e.tick}"><span class="muted">${esc(labelAt(e.tick))}</span> <b>${esc(e.author_name || name(e.agent))}</b> ${e.choice === "front" ? "rewrote the front page" : "added a log entry"}${e.offer && e.offer !== "job" ? ` <span class="muted">(${esc(e.offer)})</span>` : ""}: ${esc(e.text || "")}</div>`;
+  $("#binderPanel").innerHTML = `
+    <div class="binder-page front"><div class="bp-h">Front page${b.front?.revisions ? ` <span class="muted">· ${b.front.revisions} revision${b.front.revisions > 1 ? "s" : ""}</span>` : ""}</div>
+      ${b.front ? `<div>${esc(b.front.text)}</div><div class="meta">${esc(b.front.author)} · ${esc(b.front.when)}</div>` : `<div class="muted small">blank</div>`}</div>
+    <div class="binder-page"><div class="bp-h">Log <span class="muted">· newest first</span></div>
+      ${(b.log || []).map((e) => `<div class="log-e"><div>${esc(e.text)}</div><div class="meta">${esc(e.author)} · ${esc(e.when)}</div></div>`).join("") || `<div class="muted small">no entries</div>`}</div>
+    <div class="sub-h">Binder over time <span class="muted">· ${reads} read${reads === 1 ? "" : "s"}, ${declined} write offer${declined === 1 ? "" : "s"} declined</span></div>
+    ${hist.map(histRow).join("") || `<div class="muted small">nothing written yet</div>`}`;
+  $$("#binderPanel [data-tick]").forEach((el) => el.onclick = () => setTick(+el.dataset.tick));
+}
+
+const ROLE_ORDER = { am_crew: 0, pm_crew: 1, stores: 2 };
+function renderRoster(f) {
+  const t = f.tick ?? S.tick, ids = Object.keys(f.agents);
+  ids.sort((a, b) => (f.agents[a].active === false) - (f.agents[b].active === false) || (ROLE_ORDER[f.agents[a].role] ?? 9) - (ROLE_ORDER[f.agents[b].role] ?? 9) || firstName(a).localeCompare(firstName(b)));
+  const nAway = f.away.length;
+  $("#rosterHead").textContent = `${ids.length - nAway} here${nAway ? ` · ${nAway} away` : ""}`;
+  const C = S.coop || {}, upto = (r) => (r.tick ?? 0) <= t;
+  const ev = [
+    ...(C.roster_changes || []).filter(upto).map((r) => ({ tick: r.tick, text: `${esc(firstName(r.agent))} ${r.kind === "arrive" ? "joined" : "left"} (${esc(roleName(r.role))}${r.replaces ? `, replacing ${esc(firstName(r.replaces))}` : ""})` })),
+    ...(C.farewells || []).filter(upto).map((r) => ({ tick: r.tick, text: `farewell: ${esc(r.text)}` })),
+    ...(C.handovers || []).filter(upto).map((r) => ({ tick: r.tick, text: `handover ${esc(firstName(r.outgoing))} → ${esc(firstName(r.incoming))}` })),
+    ...(C.meetings || []).filter(upto).map((r) => ({ tick: r.tick, text: `co-op meeting (${(r.invited || []).length} invited)` })),
+    ...(C.cues || []).filter(upto).map((r) => ({ tick: r.tick, text: `${esc(r.arena || "")}: ${esc(r.text)}` })),
+    ...(C.tallies || []).filter(upto).map((r) => ({ tick: r.tick, text: `tally: ${esc(r.delivered)} of ${esc(r.total)} delivered` })),
+  ].sort((a, b) => b.tick - a.tick).slice(0, 10);
+  $("#rosterPanel").innerHTML = ids.map((aid) => {
+    const a = f.agents[aid], away = a.active === false;
+    return `<div class="member${S.sel === aid ? " sel" : ""}${away ? " is-away" : ""}" data-aid="${esc(aid)}">${headIcon(aid)}
+      <div class="m-main"><div><b>${esc(firstName(aid))}</b> ${roleBadge(a.role)}${cohortBadge(a.cohort)}${away ? `<span class="badge away">away</span>` : ""}</div>
+      <div class="muted small">${away ? "off the roster" : `${esc(a.location)} · ${esc(a.arena)}`}</div></div></div>`;
+  }).join("") + (ev.length ? `<div class="sub-h">Co-op events</div>${ev.map((e) => `<div class="hist" data-tick="${e.tick}"><span class="muted">${esc(labelAt(e.tick))}</span> ${e.text}</div>`).join("")}` : "");
+  $$("#rosterPanel .member").forEach((el) => el.onclick = () => { S.sel = el.dataset.aid; renderAgent(S.sel); renderAwayTray(); renderRoster(S.frames[S.tick]); });
+  $$("#rosterPanel .hist[data-tick]").forEach((el) => el.onclick = () => setTick(+el.dataset.tick));
+}
+
+// per-agent NEED / WORDING / forgetting records, fetched once per run and agent (filtered by tick locally)
+function agentTraceRecs(aid) {
+  if (!S.agentTrace[aid]) S.agentTrace[aid] = api(`/runs/${S.runId}/trace?agent=${encodeURIComponent(aid)}&type=open_matter,wording,memory_forgotten&limit=200000`).catch(() => []);
+  return S.agentTrace[aid];
+}
+const cfgOn = (k, sub) => { const c = S.manifest?.config?.[k]; return !!(sub ? c?.[sub]?.enabled : c?.enabled); };
+// Open matters still on the agent's mind at tick t (memory/need.py): strength of the last open/refresh (1.0),
+// multiplied at each 'discussed', decayed with the half-life since it was opened; faded below 0.1.
+function openMattersAt(recs, aid, t) {
+  const now = Date.parse(S.frames[t]?.time), hl = +(S.manifest.config?.need?.half_life_hours ?? 24) || 24;
+  const gone = new Set(recs.filter((r) => r.type === "memory_forgotten" && r.agent === aid && r.tick <= t).map((r) => r.node_id));
+  const m = new Map();
+  for (const r of recs) {
+    if (r.type !== "open_matter" || r.agent !== aid || r.tick > t) continue;
+    const cur = m.get(r.node_id);
+    if (!cur || r.action === "open" || r.action === "refresh") m.set(r.node_id, { node_id: r.node_id, text: r.text, created: r.time, opened: r.tick, base: r.strength ?? 1, discussed: 0, reason: r.reason });
+    else { cur.base = r.strength ?? cur.base; cur.discussed++; }
+  }
+  const out = [];
+  for (const x of m.values()) {
+    if (gone.has(x.node_id)) continue;
+    const hours = Math.max(0, (now - Date.parse(x.created)) / 3.6e6);
+    x.now = Number.isFinite(hours) ? x.base * 0.5 ** (hours / hl) : x.base;
+    if (x.now >= 0.1) out.push(x);
+  }
+  return out.sort((a, b) => b.now - a.now || b.opened - a.opened);
+}
+function wordingsAt(recs, aid, t) {
+  const gone = new Set(recs.filter((r) => r.type === "memory_forgotten" && r.agent === aid && r.tick <= t).map((r) => r.node_id));
+  return recs.filter((r) => r.type === "wording" && r.agent === aid && r.tick <= t && !r.self_produced && !gone.has(r.node_id)).reverse();
+}
+const hhmm = (iso) => String(iso || "").slice(11, 16);
+const labelAt = (t) => S.frames[t]?.label || `tick ${t}`;
+
+function coopAgentHtml(aid, st, t) {
+  if (!S.hasCoop || !S.coop) return "";
+  const C = S.coop, upto = (r) => (r.tick ?? 0) <= t;
+  const changes = (C.roster_changes || []).filter((r) => r.agent === aid && upto(r));
+  const replacedBy = (C.roster_changes || []).filter((r) => r.replaces === aid && upto(r));
+  const jobs = (C.jobs || []).filter((j) => j.operator === aid && (j.start_tick ?? 0) <= t);
+  const writes = (C.binder?.timeline || []).filter((e) => e.kind === "write" && e.agent === aid && upto(e) && e.choice !== "none");
+  const fw = (C.farewells || []).find((r) => r.agent === aid && upto(r));
+  const onb = (C.onboarding || []).find((r) => r.agent === aid && upto(r));
+  const hist = [
+    ...changes.map((r) => `${esc(labelAt(r.tick))}: ${r.kind === "arrive" ? "joined" : "left"} as ${esc(roleName(r.role))}${r.replaces ? ` (replacing ${esc(firstName(r.replaces))})` : ""}`),
+    ...replacedBy.map((r) => `${esc(labelAt(r.tick))}: replaced by ${esc(firstName(r.agent))}`),
+    ...(fw ? [`${esc(labelAt(fw.tick))}: farewell: “${esc(fw.text)}”`] : []),
+    ...(onb ? [`${esc(labelAt(onb.tick))}: orientation; ties to ${onb.ties.map((x) => esc(firstName(x.with))).join(", ")}`] : []),
+  ];
+  const jobRow = (j) => {
+    const done = j.end && j.end.tick <= t, last = [...(j.attempts || [])].filter(upto).pop();
+    return `<div class="mem job"><b>${esc(j.job)}</b> ${esc(j.project)}<div class="meta">${esc(labelAt(j.start_tick))} · ${done ? `<span class="status-pill s-${esc(j.end.result)}">${esc(j.end.result)}</span>` : `<span class="status-pill s-running">in progress</span>`}${last ? ` · last try: ${esc(last.action)} → ${esc(last.outcome)}` : ""}</div></div>`;
+  };
+  return `<details open><summary>Co-op <span class="muted small">${esc(roleName(st.role) || "no role")}${st.cohort ? " · " + esc(st.cohort) : ""}</span></summary>
+    ${hist.length ? `<div class="small">${hist.join("<br>")}</div>` : ""}
+    ${jobs.length ? `<div class="small muted" style="margin-top:4px">Jobs operated (${jobs.length})</div>${jobs.slice(-6).reverse().map(jobRow).join("")}` : ""}
+    ${writes.length ? `<div class="small muted" style="margin-top:4px">Binder writes (${writes.length})</div>${writes.slice(-4).reverse().map((e) => `<div class="mem binder"><div>${esc(e.text || "")}</div><div class="meta">${esc(labelAt(e.tick))} · ${e.choice === "front" ? "rewrote the front page" : "log entry"}</div></div>`).join("")}` : ""}
+    ${!hist.length && !jobs.length && !writes.length ? `<div class="muted small">No co-op activity yet.</div>` : ""}</details>`;
+}
 
 async function renderAgent(aid) {
-  const req = ++S.agentReq;
-  const d = await api(`/runs/${S.runId}/agent/${aid}?tick=${S.tick}`);
+  const req = ++S.agentReq, t = S.tick;
+  let d, recs;
+  try { [d, recs] = await Promise.all([api(`/runs/${S.runId}/agent/${encodeURIComponent(aid)}?tick=${t}`), agentTraceRecs(aid)]); }
+  catch (e) { if (req === S.agentReq) $("#agentPanel").innerHTML = `<div class="muted">Could not load ${esc(aid)}: ${esc(e.message)}</div>`; return; }
   if (req !== S.agentReq) return;
-  const p = d.profile, st = d.state || {};
-  const rel = Object.entries(p.relationships).filter(([, r]) => r.relation_type !== "stranger")
-    .map(([o, r]) => `${esc(name(o))} <span class="muted">(${r.relation_type}, fam ${r.familiarity}, aff ${r.affinity})</span>`).join("<br>");
+  const p = d.profile || {}, st = { ...AGENT_DEFAULTS, ...(S.frames[t]?.agents?.[aid] || {}), ...(d.state || {}) };
+  const demo = p.demographics || {}, pers = p.personality || {}, intr = p.interests || {};
+  const rel = Object.entries(p.relationships || {}).filter(([, r]) => r.relation_type !== "stranger")
+    .map(([o, r]) => `${esc(name(o))} <span class="muted">(${esc(r.relation_type)}, fam ${r.familiarity}, aff ${r.affinity})</span>`).join("<br>");
   const mem = (m) => `<div class="mem ${m.kind}"><div>${esc(m.text)}</div><div class="meta">${esc(m.time?.slice(11, 16))} · ${m.kind} · ${m.source_type} · importance ${m.importance}${m.score ? ` · score ${m.score.s} (rel ${m.score.rel}, rec ${m.score.rec}, imp ${m.score.imp})` : ""}${S.debug && m.originating_event_ids?.length ? ` <span class="tag gt">events ${m.originating_event_ids.join(",")}</span>` : ""}</div></div>`;
   const mods = st.modules && Object.keys(st.modules).length ? `<dt>Modules</dt><dd>${esc(JSON.stringify(st.modules))}</dd>` : "";
   const place = M.data?.places?.[st.location];
+  const away = st.active === false || st.location === "Away";
+  // NEED, WORDING, reminding links (v2 mechanisms; hidden rows when the mechanism is off and nothing was logged)
+  const matters = openMattersAt(recs, aid, t), words = wordingsAt(recs, aid, t);
+  const reminds = (d.remindings || []).filter((m) => m.tick <= t);
+  const byNode = {}; for (const m of [...(d.memories || []), ...(d.reflections || [])]) byNode[m.node_id] = m;
+  const memText = (nid) => byNode[nid] ? esc(byNode[nid].text) : `<span class="muted">${esc(nid)} (older memory)</span>`;
+  const showNeed = cfgOn("need") || st.open_matters > 0 || matters.length, showWord = cfgOn("memory", "verbatim") || st.wordings > 0 || words.length;
+  const showRem = cfgOn("reminding") || reminds.length;
+  const needHtml = showNeed ? `<details ${matters.length ? "open" : ""}><summary>Open matters (${st.open_matters})</summary>${matters.slice(0, 8).map((m) => `<div class="mem matter"><div>${esc(m.text)}</div>
+      <div class="meta"><span class="meter" title="strength ${m.now.toFixed(2)}"><i style="width:${Math.round(Math.min(1, m.now) * 100)}%"></i></span> strength ${m.now.toFixed(2)} · opened ${esc(labelAt(m.opened))}${m.reason ? ` (${esc(m.reason.replace(/_/g, " "))})` : ""}${m.discussed ? ` · talked about ${m.discussed}×` : ""}</div></div>`).join("") || '<div class="muted small">nothing on their mind</div>'}</details>` : "";
+  const wordHtml = showWord ? `<details ${words.length ? "open" : ""}><summary>Stuck wordings (${st.wordings})</summary>${words.slice(0, 10).map((w) => `<div class="mem wording"><div>“${esc(w.phrase)}”</div>
+      <div class="meta">heard from ${esc(name(w.heard_from))} · ${esc(labelAt(w.tick))} · ${esc(w.source_type)}${w.utterance_id ? ` · <a href="#" data-chain="${esc(w.utterance_id)}">trace</a>` : ""}</div></div>`).join("") || '<div class="muted small">none held</div>'}</details>` : "";
+  const remHtml = showRem ? `<details><summary>Reminding links (${reminds.length})</summary>${reminds.slice(0, 8).map((m) => `<div class="mem link">
+      <div class="small"><b>felt alike:</b> ${esc(m.what_felt_alike || "—")}</div>
+      <div class="small">new: ${memText(m.evidence?.[0])}</div><div class="small">earlier: ${memText(m.evidence?.[1])}</div>
+      <div class="meta">${esc(labelAt(m.tick))} · importance ${m.importance ?? "—"}</div></div>`).join("") || '<div class="muted small">none yet</div>'}</details>` : "";
+  const personalLabels = { goal: "Personal goal", values: "Values", strengths: "Strengths", blind_spots: "Blind spots",
+    stress_response: "Response to stress", coping_strategy: "Coping strategy", social_energy: "Social energy",
+    trust_style: "How trust develops", conflict_style: "Approach to conflict", humor_style: "Sense of humor",
+    pet_peeves: "Pet peeves", small_joys: "Small joys" };
+  const personal = Object.entries(p.personal || {}).map(([key, value]) =>
+    `<dt>${esc(personalLabels[key] || key.replaceAll("_", " "))}</dt><dd>${esc(Array.isArray(value) ? value.join(", ") : value)}</dd>`).join("");
+  const friends = (p.friend_groups || []).map((g) =>
+    `<div class="small"><b>${esc(g.name)}</b><br>${g.members.map(esc).join(", ")}</div>`).join("");
   $("#agentPanel").innerHTML = `
-    <div class="agent-head"><div class="avatar" style="background-image:url(/ga_assets/characters/${p.sprite}.png)"></div>
-      <div><div style="font-weight:700">${esc(p.name)}</div><div class="muted small">${esc(p.demographics.year)} · ${esc(p.demographics.major)} · ${esc(p.demographics.role)}</div>
-      <button class="pill" id="btnLocate">locate on map</button></div></div>
+    <div class="agent-head"><div class="avatar" style="background-image:url(/ga_assets/characters/${encodeURIComponent(p.sprite || "")}.png)"></div>
+      <div><div style="font-weight:700">${esc(p.name || aid)} ${agentBadges(st)}</div><div class="muted small">${[demo.year, demo.major, demo.role].filter(Boolean).map(esc).join(" · ")}</div>
+      <button class="pill" id="btnLocate" ${away ? "disabled title='not on the map'" : ""}>locate on map</button></div></div>
     <dl class="kv">
-      <dt>Now</dt><dd>${esc(st.activity)} <span class="muted">@ ${esc(st.location)}${place && place.label !== st.location ? ` (${esc(place.label)})` : ""} / ${esc(st.arena)}</span></dd>
+      <dt>Now</dt><dd>${away ? `<span class="badge away">away</span> <span class="muted">off campus / not on the co-op roster</span>` : `${esc(st.activity)} <span class="muted">@ ${esc(st.location)}${place && place.label && place.label !== st.location ? ` (${esc(place.label)})` : ""} / ${esc(st.arena)}</span>`}</dd>
+      ${st.role || st.cohort ? `<dt>Co-op role</dt><dd>${esc(roleName(st.role) || "—")}${st.cohort ? ` · ${esc(st.cohort)}` : ""}</dd>` : ""}
       <dt>Goal</dt><dd>${esc(st.goal || "follow the routine")}</dd>
-      <dt>Personality</dt><dd>${esc(p.personality.traits.join(", "))}; ${esc(p.personality.communication_style)}</dd>
-      <dt>Interests</dt><dd>${esc([...p.interests.topics, ...p.interests.hobbies].join(", "))}</dd>
-      <dt>Clubs</dt><dd>${esc(p.interests.clubs.join(", ") || "—")}</dd>
+      ${showNeed ? `<dt>Open matters</dt><dd>${st.open_matters}</dd>` : ""}
+      ${showWord ? `<dt>Stuck wordings</dt><dd>${st.wordings}</dd>` : ""}
+      ${showRem ? `<dt>Reminding links</dt><dd>${reminds.length}</dd>` : ""}
+      <dt>Personality</dt><dd>${esc((pers.traits || []).join(", "))}${pers.communication_style ? `; ${esc(pers.communication_style)}` : ""}</dd>
+      <dt>Interests</dt><dd>${esc([...(intr.topics || []), ...(intr.hobbies || [])].join(", ") || "—")}</dd>
+      <dt>Clubs</dt><dd>${esc((intr.clubs || []).join(", ") || "—")}</dd>
       <dt>Background</dt><dd>${esc(p.background)}</dd>
       <dt>Memories</dt><dd>${d.n_memories} in stream</dd>${mods}
     </dl>
+    ${coopAgentHtml(aid, st, t)}${needHtml}${wordHtml}${remHtml}
+    ${personal ? `<details open><summary>Personal traits and motivations</summary><dl class="kv">${personal}</dl></details>` : ""}
+    ${friends ? `<details open><summary>Friend groups</summary>${friends}</details>` : ""}
     <details><summary>Relationships</summary><div class="small">${rel}</div></details>
-    <details><summary>Routine</summary><div class="small">${p.routine.map((r) => `${r.time} ${esc(r.activity)} <span class="muted">@ ${esc(r.location)}</span>`).join("<br>")}</div></details>
-    <details open><summary>Last retrieved memories ${d.retrieved.tick != null ? `<span class="muted small">(tick ${d.retrieved.tick})</span>` : ""}</summary>${d.retrieved.memories.map(mem).join("") || '<div class="muted small">none yet</div>'}</details>
-    <details open><summary>Reflections (${d.reflections.length})</summary>${d.reflections.map(mem).join("") || '<div class="muted small">none yet</div>'}</details>
-    <details><summary>Recent memories</summary>${d.memories.slice(0, 25).map(mem).join("")}</details>
-    <details><summary>Recent conversations (${d.conversations.length})</summary>${d.conversations.map((c) => `<div class="mem chat">${c.transcript.map(([s, t]) => `<b>${esc(s.split(" ")[0])}:</b> ${esc(t)}`).join("<br>")}<div class="meta">${esc(c.time.slice(11, 16))} @ ${esc(c.location)}</div></div>`).join("")}</details>`;
+    <details><summary>Routine</summary><div class="small">${(p.routine || []).map((r) => `${esc(r.time)} ${esc(r.activity)} <span class="muted">@ ${esc(r.location)}</span>`).join("<br>")}</div></details>
+    <details open><summary>Last retrieved memories ${d.retrieved?.tick != null ? `<span class="muted small">(tick ${d.retrieved.tick})</span>` : ""}</summary>${(d.retrieved?.memories || []).map(mem).join("") || '<div class="muted small">none yet</div>'}</details>
+    <details open><summary>Reflections (${(d.reflections || []).length})</summary>${(d.reflections || []).map(mem).join("") || '<div class="muted small">none yet</div>'}</details>
+    <details><summary>Recent memories</summary>${(d.memories || []).slice(0, 25).map(mem).join("")}</details>
+    <details><summary>Recent conversations (${(d.conversations || []).length})</summary>${(d.conversations || []).map((c) => `<div class="mem chat">${(c.transcript || []).map(([s, tx]) => `<b>${esc(String(s).split(" ")[0])}:</b> ${esc(tx)}`).join("<br>")}<div class="meta">${esc(c.time?.slice(11, 16))} @ ${esc(c.location)}</div></div>`).join("")}</details>`;
   $("#btnLocate").onclick = () => { const a = drawState.pos[aid]; if (a) { if (cam.zoom < 0.75) cam.zoom = 1; centerOn(a.x, a.y); } cam.follow = true; $("#followSel").checked = true; };
+  $$("#agentPanel [data-chain]").forEach((el) => el.onclick = (e) => { e.preventDefault(); openChain(el.dataset.chain); });
 }
 
 // ---------------------------------------------------------------- culture
+// trends dashboard (culture.js); debounced inside, follows the replay tick
+function drawTrends() { if (S.runId) renderCultureTrends($("#cultureTrends"), { runId: S.runId, tick: S.tick, api }); }
 const STATUS = { established: "●", spreading: "▲", emerging: "○", fading: "▽" };
 function orderedCands() {
   const cs = [...(S.analysis?.candidates || [])];
@@ -741,6 +1119,154 @@ function latentHtml(ev) {
     <dt>Semantic drift</dt><dd>${ev.drift ? `precision ${ev.drift.precision_first_half} → ${ev.drift.precision_second_half}` : "—"}</dd></dl>`;
 }
 
+// ------------------------------------------------------------------ trace explorer
+// Filters go to GET /runs/<id>/trace (type, agent, tick_from/tick_to, conversation, limit); the type list comes
+// from GET /schema, which lists hidden (observer-only) types only in Research Debug Mode.
+const trState = { types: new Set(), records: null, limit: 500 };
+const TR_PRESETS = {
+  talk: ["conversation", "utterance", "exposure", "invitation", "decision", "clarification", "handover", "meeting"],
+  memory: ["observation", "viewpoint", "memory_encoded", "memory_forgotten", "memory_merged", "memory_link", "reflection", "reminding", "wording", "open_matter", "open_matter_focal", "priming"],
+};
+const AGENT_KEYS = ["agent", "speaker", "speaker_id", "operator", "stores", "outgoing"];
+const TARGET_KEYS = ["target", "ask_target", "incoming", "heard_from"];
+const LIST_KEYS = ["listeners", "listener_ids", "participants", "invited", "movers"];
+
+function bindTraceExplorer() {
+  $("#trLoad").onclick = loadTrace;
+  $("#trNow").onclick = () => { $("#trTo").value = S.tick; loadTrace(); };
+  for (const id of ["#trFrom", "#trTo", "#trConv", "#trLimit"]) $(id).onkeydown = (e) => { if (e.key === "Enter") loadTrace(); };
+  $("#trAgent").onchange = loadTrace;
+  $$(".trace-presets [data-preset]").forEach((b) => b.onclick = () => {
+    const types = Object.keys(S.schema?.types || {}), p = b.dataset.preset;
+    trState.types = new Set(p === "coop" ? types.filter((k) => S.schema.types[k].since === "v3")
+      : p === "world" ? types.filter((k) => S.schema.types[k].layer === "world")
+      : (TR_PRESETS[p] || []).filter((k) => types.includes(k)));
+    renderTypeFilter();
+  });
+}
+function resetTraceExplorer() {
+  const ids = Object.keys(S.order).sort((a, b) => firstName(a).localeCompare(firstName(b)));
+  const keep = $("#trAgent").value;
+  $("#trAgent").innerHTML = `<option value="">any</option>` + ids.map((aid) => `<option value="${esc(aid)}">${esc(S.manifest.agents[aid]?.name || aid)}</option>`).join("");
+  if (ids.includes(keep)) $("#trAgent").value = keep;
+  $("#trFrom").placeholder = "0"; $("#trTo").placeholder = String(Math.max(0, S.frames.length - 1));
+  // drop selected types this run's schema does not know
+  if (S.schema?.types) trState.types = new Set([...trState.types].filter((k) => S.schema.types[k]));
+  trState.records = null;
+  $("#trResults").innerHTML = ""; $("#trInfo").textContent = "Pick filters and load records.";
+  renderTypeFilter();
+}
+function renderTypeFilter() {
+  const box = $("#trTypes"), sc = S.schema;
+  if (!sc?.types) { box.innerHTML = `<div class="muted small">Trace schema unavailable: all record types are returned.</div>`; return; }
+  const layers = sc.layers?.length ? sc.layers : [...new Set(Object.values(sc.types).map((v) => v.layer))];
+  box.innerHTML = layers.map((L) => {
+    const ts = Object.entries(sc.types).filter(([, v]) => v.layer === L).sort(([a], [b]) => a.localeCompare(b));
+    if (!ts.length) return "";
+    return `<div class="type-col"><div class="type-layer l-${esc(L)}">${esc(L)}</div>${ts.map(([k, v]) => {
+      const tip = `${v.description || ""}\n${v.section ? "§ " + v.section : ""}\nrequired: ${(v.required || []).join(", ")}${v.optional?.length ? "\noptional: " + v.optional.join(", ") : ""}${v.hidden ? "\nHIDDEN (observer only)" : ""}${v.hidden_fields?.length ? "\nhidden fields: " + v.hidden_fields.join(", ") : ""}`;
+      return `<label class="tchk" title="${esc(tip)}"><input type="checkbox" value="${esc(k)}" ${trState.types.has(k) ? "checked" : ""}> ${esc(k)}<sup>${esc(v.since || "")}</sup>${v.hidden ? ` <span class="tag gt">hidden</span>` : ""}</label>`;
+    }).join("")}</div>`;
+  }).join("");
+  $$("#trTypes input").forEach((c) => c.onchange = () => { c.checked ? trState.types.add(c.value) : trState.types.delete(c.value); countTypes(); });
+  countTypes();
+}
+function countTypes() { $("#trTypeCount").textContent = trState.types.size ? `${trState.types.size} selected` : "none selected = all types"; }
+
+async function loadTrace() {
+  if (!S.runId) return;
+  const q = new URLSearchParams();
+  if (trState.types.size) q.set("type", [...trState.types].join(","));
+  const ag = $("#trAgent").value; if (ag) q.set("agent", ag);
+  const from = $("#trFrom").value, to = $("#trTo").value;
+  if (from !== "") q.set("tick_from", Math.max(0, Math.floor(+from)));
+  if (to !== "") q.set("tick_to", Math.max(0, Math.floor(+to)));
+  const conv = $("#trConv").value.trim(); if (conv) q.set("conversation", conv);
+  trState.limit = Math.max(1, Math.floor(+$("#trLimit").value || 500)); q.set("limit", trState.limit);
+  $("#trInfo").textContent = "loading…";
+  const req = (trState.req = (trState.req || 0) + 1);
+  let recs;
+  try { recs = await api(`/runs/${S.runId}/trace?${q}`); } catch (e) { $("#trInfo").textContent = `Could not load records: ${e.message}`; return; }
+  if (req !== trState.req) return;
+  trState.records = Array.isArray(recs) ? recs : [];
+  renderTraceTable();
+}
+const clip = (s, n = 240) => { s = String(s ?? ""); return s.length > n ? s.slice(0, n - 1) + "…" : s; };
+const factText = (fs) => (fs || []).map((f) => (typeof f === "string" ? f : f?.text || "")).filter(Boolean).join(" · ");
+function recWho(r) {
+  const who = AGENT_KEYS.map((k) => r[k]).find((v) => typeof v === "string");
+  const tgt = TARGET_KEYS.map((k) => r[k]).find((v) => typeof v === "string" && v !== who);
+  const many = LIST_KEYS.map((k) => r[k]).find((v) => Array.isArray(v) && v.length);
+  const parts = [];
+  if (who) parts.push(`<b>${esc(name(who))}</b>`);
+  if (tgt) parts.push(`→ ${esc(name(tgt))}`);
+  else if (many) parts.push(`${who ? "→ " : ""}${many.slice(0, 5).map((a) => esc(name(a))).join(", ")}${many.length > 5 ? ` +${many.length - 5}` : ""}`);
+  return parts.join(" ");
+}
+function recSummary(r) {
+  switch (r.type) {
+    case "utterance": return `“${esc(clip(r.text))}”`;
+    case "move": return `${esc(r.frm ?? "")} → ${esc(r.to ?? "")}${r.activity ? ` · ${esc(r.activity)}` : ""}`;
+    case "conversation": return `@ ${esc(r.location)} / ${esc(r.arena)} · ${(r.utterance_ids || []).length} lines${r.trigger?.topic ? ` · ${esc(r.trigger.topic)}` : ""}`;
+    case "observation": case "coop_fact": case "viewpoint": return `${r.source_type || r.kind ? `<span class="muted">${esc(r.source_type || r.kind)}</span> ` : ""}${esc(clip(factText(r.facts)))}`;
+    case "job_start": return `${esc(r.job)} · ${esc(r.project)}`;
+    case "job_decision": return `${esc(r.job)} #${esc(r.attempt)}: ${r.question ? `ask “${esc(clip(r.question, 120))}”` : `${esc(r.choice ?? "")} ${esc(r.action ?? "")}`}${r.reason ? ` — ${esc(clip(r.reason, 120))}` : ""}`;
+    case "job_attempt": return `${esc(r.job)} #${esc(r.attempt)}: ${esc(r.action)} → ${esc(r.outcome)}`;
+    case "job_end": return `${esc(r.job)}: ${esc(r.result)} after ${Array.isArray(r.attempts) ? r.attempts.length : esc(r.attempts)} attempt(s)`;
+    case "record_write": return `${esc(r.offer)} → ${esc(r.choice)}${r.text ? `: ${esc(clip(r.text, 180))}` : ""}`;
+    case "record_read": return `${esc(r.context)} · shown ${(r.rev_ids || []).length + (r.entry_ids || []).length}, new ${(r.new_ids || []).length}`;
+    case "record_transition": return `day ${esc(r.day)}: ${esc(r.mode)}${r.archived_binder_id ? ` (archived ${esc(r.archived_binder_id)})` : ""}`;
+    case "roster_change": return `${esc(r.kind)} · ${esc(roleName(r.role))}${r.replaces ? ` · replaces ${esc(name(r.replaces))}` : ""}`;
+    case "memory_link": return `${esc(r.mechanism)}: ${esc(r.from)} → ${esc(r.to)}${r.reason ? ` · ${esc(clip(r.reason, 100))}` : ""}`;
+    case "open_matter": return `${esc(r.action)} (${r.strength}) · ${esc(clip(r.text, 180))}`;
+    case "wording": return `“${esc(r.phrase)}” from ${esc(name(r.heard_from))}`;
+    case "reminding": return r.reminded_of ? `felt alike: ${esc(clip(r.what_felt_alike || "", 120))}` : `<span class="muted">no reminding</span>`;
+    case "day_plan": return `${Array.isArray(r.plan) ? r.plan.length + " plan items" : esc(clip(JSON.stringify(r.plan), 160))}`;
+    case "tally": return esc(clip(r.text));
+    case "coop_day": return esc(Object.entries(r.counts || {}).map(([k, v]) => `${k} ${v}`).join(" · "));
+    case "handover": return `day ${esc(r.day)} shift handover${r.n_utterances != null ? ` · ${esc(r.n_utterances)} lines` : ""}`;
+    case "meeting": return `day ${esc(r.day)} co-op meeting · ${(r.invited || []).length} invited${r.n_utterances != null ? ` · ${esc(r.n_utterances)} lines` : ""}`;
+    case "onboarding": return `day ${esc(r.day)} orientation · ties to ${(r.ties || []).map((x) => `${esc(name(x.with))} (${esc(x.relation_type)})`).join(", ")}`;
+    case "exposure": return `heard “${esc(clip(r.utterance, 160))}” @ ${esc(r.location)}`;
+    case "priming": return `primed: ${(r.phrases || []).map((x) => `“${esc(typeof x === "string" ? x : x?.phrase || JSON.stringify(x))}”`).join(", ")}`;
+    case "open_matter_focal": return `focal: ${(r.texts || []).map((x) => esc(clip(x, 90))).join(" · ")}`;
+    case "invitation": return `invites ${esc(name(r.target))}${r.until ? ` until ${esc(hhmm(r.until) || r.until)}` : ""}`;
+    case "replan": return `${esc(r.reason ?? "")} → ${esc(typeof r.to === "string" ? r.to : JSON.stringify(r.to))}`;
+    case "checkpoint": return `${(r.files || []).length} checkpoint file(s)`;
+    case "reflection": return `${esc(clip(r.text))}${r.focal_point ? ` <span class="muted">(focal: ${esc(clip(r.focal_point, 80))})</span>` : ""}`;
+  }
+  for (const k of ["text", "phrase", "says_aloud", "question", "project", "into_text", "focal_point", "decision", "reason", "activity", "mode", "kind", "result"]) {
+    const v = r[k];
+    if (typeof v === "string" && v) return `${k !== "text" ? `<span class="muted">${esc(k)}:</span> ` : ""}${esc(clip(v))}`;
+    if (v && typeof v === "object" && !Array.isArray(v)) return `<span class="muted">${esc(k)}:</span> ${esc(clip(JSON.stringify(v), 160))}`;
+  }
+  const keys = Object.keys(r).filter((k) => !["id", "type", "tick", "time"].includes(k));
+  return `<span class="muted">${esc(keys.slice(0, 8).join(", "))}</span>`;
+}
+function renderTraceTable() {
+  const recs = trState.records || [], types = S.schema?.types || {};
+  const counts = {}; for (const r of recs) counts[r.type] = (counts[r.type] || 0) + 1;
+  $("#trInfo").innerHTML = `${recs.length} record${recs.length === 1 ? "" : "s"}${recs.length >= trState.limit ? ` <b>(limit reached: narrow the filters or raise the limit)</b>` : ""}` +
+    (recs.length ? ` · ${Object.entries(counts).sort((a, b) => b[1] - a[1]).map(([k, v]) => `<span class="tag">${esc(k)} ${v}</span>`).join("")}` : "");
+  $("#trResults").innerHTML = recs.length ? `<table class="table"><tr><th>When</th><th>Type</th><th>Who</th><th>Record</th><th></th></tr>${recs.map((r, i) => {
+    const L = types[r.type]?.layer || "", conv = r.conversation_id || (r.type === "conversation" ? r.id : null);
+    return `<tr class="tr-row"><td class="nowrap"><a href="#" data-jump="${esc(r.tick)}" title="show this tick on the campus map">${esc(labelAt(r.tick))}</a><div class="muted small">tick ${esc(r.tick)}</div></td>
+      <td><span class="ttype l-${esc(L)}" title="${esc(types[r.type]?.description || "")}">${esc(r.type)}</span></td>
+      <td class="small">${recWho(r)}</td>
+      <td>${recSummary(r)}${conv ? ` <a href="#" class="small" data-conv="${esc(conv)}" title="all records of this conversation">[conv ${esc(conv)}]</a>` : ""}${r.type === "utterance" ? ` <a href="#" class="small" data-chain="${esc(r.id)}">[causal trace]</a>` : ""}</td>
+      <td><button class="pill" data-raw="${i}" title="raw record">{ }</button></td></tr><tr class="raw-row" hidden><td colspan="5"></td></tr>`;
+  }).join("")}</table>` : `<div class="muted small">No records match.</div>`;
+  const box = $("#trResults");
+  $$("[data-raw]", box).forEach((b) => b.onclick = () => {
+    const row = b.closest("tr").nextElementSibling;
+    if (row.hidden && !row.firstElementChild.innerHTML) row.firstElementChild.innerHTML = `<pre class="raw">${esc(JSON.stringify(recs[+b.dataset.raw], null, 1))}</pre>`;
+    row.hidden = !row.hidden;
+  });
+  $$("[data-jump]", box).forEach((a) => a.onclick = (e) => { e.preventDefault(); showView("campus"); setTick(+a.dataset.jump); });
+  $$("[data-conv]", box).forEach((a) => a.onclick = (e) => { e.preventDefault(); $("#trConv").value = a.dataset.conv; loadTrace(); });
+  $$("[data-chain]", box).forEach((a) => a.onclick = (e) => { e.preventDefault(); openChain(a.dataset.chain); });
+}
+
 // ------------------------------------------------------------------ trace
 function allUtterances() { const out = []; S.frames.forEach((f, t) => f.utterances.forEach((u) => out.push([t, u]))); return out; }
 function renderTraceSearch() {
@@ -764,7 +1290,7 @@ async function chainHtml(uid) {
     inner += (m.from_utterances || []).map(uttNode).join("") + (m.from_memories || []).map(memNode).join("");
     return `<div class="node mem"><span class="kind">${esc(name(m.agent))}'s ${esc(m.kind)} memory · ${esc(m.source_type)}</span><div>${esc(m.text)}</div>${inner}</div>`;
   };
-  const uttNode = (u) => `<div class="node utt"><span class="kind">utterance · ${esc(name(u.speaker))} → ${u.listeners.map(name).map(esc).join(", ") || "nobody"} · ${esc(u.time?.slice(11, 16))}</span><div>“${esc(u.text)}”</div>
+  const uttNode = (u) => `<div class="node utt"><span class="kind">utterance · ${esc(name(u.speaker))} → ${(u.listeners || []).map(name).map(esc).join(", ") || "nobody"} · ${esc(u.time?.slice(11, 16))}</span><div>“${esc(u.text)}”</div>
       ${u.retrieved?.length ? `<div class="small muted" style="margin-left:18px">retrieved memories:</div>${u.retrieved.map(memNode).join("")}` : ""}</div>`;
   return `${uttNode(c)}
     <div class="node lmem"><span class="kind">listener memories formed from this utterance</span>${(c.listener_memories || []).map((m) => `<div><b>${esc(name(m.agent))}</b> (${esc(m.source_type)}): ${esc(m.text)}</div>`).join("") || "<div class='muted'>none</div>"}</div>
@@ -793,49 +1319,7 @@ async function launchRun() {
   $("#launchMsg").textContent = r.ok ? "Launched — it will appear in the list shortly (refresh)." : "Launch failed.";
 }
 
-function statsHtml(items) {
-  return items.map(([label, value]) => `<div class="stat"><div class="v">${esc(value ?? "—")}</div><div class="l">${esc(label)}</div></div>`).join("");
-}
-
-function renderWorld() {
-  const frame = S.frames[S.tick], world = frame?.commons;
-  if (!world) return;
-  $("#worldClock").textContent = frame.label;
-  $("#worldScrub").value = S.tick;
-  const projects = Object.values(world.projects);
-  $("#worldSummary").innerHTML = statsHtml([
-    ["Requests completed", `${projects.filter((p) => p.completed !== null).length} / ${projects.length}`],
-    ["Components", world.supplies.components], ["Test supplies", world.supplies.test_supplies],
-    ["Archive", world.records_enabled ? "Available" : "Unavailable"], ["Outdoor conditions", world.outdoor_condition],
-  ]);
-  $("#worldProjects").innerHTML = `<table class="table"><tr><th>Project / kit</th><th>Site</th><th>State</th><th>Location / custody</th><th>Attempts</th></tr>` + projects.map((p) => {
-    const k = world.kits[p.kit];
-    const state = p.completed !== null ? `Complete at tick ${p.completed}` : !k.assembled ? "Needs assembly" : k.calibration === null ? "Needs calibration" : `Calibrated ${k.calibration}; request open`;
-    const holder = k.holder ? ` · ${S.manifest.agents[k.holder]?.name || k.holder}` : "";
-    return `<tr><td>${esc(p.title)}<div class="muted small">${esc(k.id)} · due tick ${p.due}</div></td><td>${esc(p.site)}</td><td>${esc(state)}</td><td>${esc(k.location + holder)}</td><td>${p.attempts}</td></tr>`;
-  }).join("") + "</table>";
-  $("#worldActivity").innerHTML = Object.values(world.residents).filter((r) => r.active).map((r) => {
-    const op = world.operations[r.id];
-    return `<div class="mem"><b>${esc(r.name)}</b> · ${esc(r.location)}<div class="muted small">${op ? `${esc(op.intention.action)}${op.intention.kit ? " · " + esc(op.intention.kit) : ""} · until tick ${op.due}` : "Available"}${r.joined ? ` · joined at tick ${r.joined}` : ""}</div></div>`;
-  }).join("");
-  const records = Object.values(world.records);
-  $("#worldRecords").innerHTML = !world.records_enabled ? '<p class="muted">The shared archive is unavailable in this condition.</p>'
-    : !records.length ? '<p class="muted">No shared records have been written yet.</p>'
-    : records.map((r) => `<details class="record-history"><summary>${esc(r.versions.at(-1).title)} <span class="muted">${esc(r.id)} · ${r.versions.length} version(s)</span></summary>${r.versions.map((v) => {
-      const reads = (S.analysis?.record_access || []).filter((e) => e.record === r.id && e.version === v.version && e.tick <= S.tick);
-      const readers = [...new Set(reads.map((e) => S.manifest.agents[e.actor]?.name || e.actor))];
-      return `<article class="mem"><div class="meta">Version ${v.version} · ${esc(S.manifest.agents[v.author]?.name || v.author)} · tick ${v.tick}</div><div class="record-text">${esc(v.text)}</div><div class="meta">${S.analysis?.mode === "commons" ? `Read ${reads.length} time(s) by ${esc(readers.join(", ") || "nobody yet")}` : "Read history available after analysis"}</div></article>`;
-    }).join("")}</details>`).join("");
-}
-
-function renderCommonsResearch(A) {
-  const s = A.summary;
-  $("#cultureSummary").innerHTML = statsHtml([["Projects completed", s.projects_completed], ["Unfinished", s.projects_unfinished], ["Failed deliveries", s.failed_deliveries], ["Record versions", s.record_versions], ["Explicit reads", s.record_reads], ["Local utterances", s.n_utterances]]);
-  $("#cards").innerHTML = "";
-  $("#memeDetail").innerHTML = `<div class="panel table-scroll"><h3>Before and after the common intervention boundary</h3><p class="muted small">The same boundary is used in stable controls. These are descriptive summaries, not estimates of a treatment effect.</p><table class="table"><tr><th>Period</th><th>Attempts</th><th>Successful</th><th>Failed</th><th>Success / attempt</th></tr>${Object.entries(A.phases).map(([label, p]) => `<tr><td>${esc(label.replace(/_/g, " "))}</td><td>${p.attempts}</td><td>${p.successful_deliveries}</td><td>${p.failed_deliveries}</td><td>${p.success_per_attempt ?? "—"}</td></tr>`).join("")}</table></div>
-    <div class="panel table-scroll"><h3>Newcomer participation</h3><table class="table"><tr><th>Member</th><th>Ticks to first successful delivery</th><th>Record reads</th><th>Reads of prearrival records</th></tr>${A.newcomers.map((n) => `<tr><td>${esc(S.manifest.agents[n.agent]?.name || n.agent)}</td><td>${n.ticks_to_first_success ?? "No success before run ended"}</td><td>${n.record_reads}</td><td>${n.prearrival_record_reads}</td></tr>`).join("")}</table></div>
-    <div class="panel"><h3>Research question coverage</h3>${Object.entries(A.question_status).map(([q, text]) => `<p><b>${esc(q)}</b> ${esc(text)}</p>`).join("")}</div>
-    <div class="panel"><h3>Interpretation</h3>${A.limitations.map((text) => `<p class="small">${esc(text)}</p>`).join("")}</div>`;
-}
+// console / test hook (read-only use: inspect state, drive the replay)
+window.MW = { S, M, setTick, renderAgent, showView, zoomFit, loadRun };
 
 boot();

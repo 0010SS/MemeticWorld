@@ -1,0 +1,31 @@
+judge_convention_v1.txt  (MemeWorld OBSERVER judge, backend/analysis/judge.py; run after or beside the
+simulation on logged transcripts; its answers are written to analysis files only and never reach an agent)
+
+Variables:
+!<INPUT 0>! -- the expression (canonical form)
+!<INPUT 1>! -- other surface forms the observer grouped with it, comma separated ("none" if there are none)
+!<INPUT 2>! -- numbered uses, each with the lines around it (" / " separates lines)
+!<INPUT 3>! -- one line: how many uses and how many distinct speakers
+!<INPUT 4>! -- the allowed values of "function", separated by " | " (defined in judge.py: FUNCTIONS)
+
+Output: one JSON object with is_convention, gloss, function, meaning_consistency, confidence, rationale.
+
+<commentblockmarker>###</commentblockmarker>
+You are reviewing transcripts from a simulated college campus, where software characters talk with each other.
+
+Below are uses of the expression "!<INPUT 0>!" (other forms seen: !<INPUT 1>!). !<INPUT 3>!
+
+Uses, each with the lines of talk around it:
+!<INPUT 2>!
+
+Question: has this expression taken on a shared local meaning among these speakers? That is, do several of them use it to point back to a particular person, thing, event or kind of situation they know about, in a way an outsider could not fully work out from ordinary English? Plain repetition of what happened, generic small talk, ordinary descriptive wording, and place or person names used literally do NOT count.
+
+Also give:
+- gloss: what the expression seems to mean here, in one sentence (its plain meaning if it has no local one);
+- function: what the expression mostly does in these uses, exactly one of: !<INPUT 4>!;
+- meaning_consistency: a number from 0 to 1, how consistently the different uses point to the same meaning;
+- confidence: a number from 0 to 1, how sure you are about is_convention;
+- rationale: one or two sentences that refer to specific numbered uses.
+
+Answer with one JSON object and nothing else:
+{"is_convention": true or false, "gloss": "<one sentence>", "function": "<one allowed value>", "meaning_consistency": <0..1>, "confidence": <0..1>, "rationale": "<one or two sentences>"}

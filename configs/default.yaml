@@ -13,7 +13,8 @@ seed: 42
 world_seed: null            # null -> seed. The world script (events, casting, referents) uses only this seed,
                             # so conditions sharing world_seed see identical events (common random numbers).
 population: configs/population/homewood8.yaml
-population_size: 10         # first N agents of the population file
+population_size: 16         # first N agents of the population file
+initial_memories_file: null # optional per-agent one-time seed memories; no permanent linguistic habit
 simulation_days: 3
 start_date: "2026-09-14"    # a Monday
 day_start: "07:30"
@@ -134,6 +135,10 @@ conversation:
 routine:
   jitter_minutes: 20
   deviation_prob: 0.08
+  errands_per_day: 2        # short trips to public places, inserted into free gaps of the routine (0 = v2.0 plans)
+  errand_places: null       # null -> the public places (backend.simulation.world.PUBLIC_PLACES)
+  errand_minutes: [30, 45]
+  errand_window: ["08:00", "21:00"]
 
 latent_events:
   event_rate: 0.12          # instances per usable tick. A start in a day's last 4 ticks would cross the day end,
@@ -229,16 +234,8 @@ branch: {parent: null, at_day: null, salt: null}
 probe: {backend: claude_cli, model: haiku, workers: 8, k: 6, tau: 0.7, framings: [note, text, overheard]}
 
 analysis:
-  pipeline: legacy                 # legacy | memetics (open concept observer and reports)
-  memetics:
-    window_chars: 18000
-    history_chars: 16000
-    overlap: 3
-    max_tokens: 6000
-    temperature: 0
-    max_windows: null              # null covers the complete history
-    include_private: true
-    fail_fast: {max_consecutive_errors: 2, pause_seconds: 1, max_pauses: 1}
+  judge: {provider: claude_cli, model: sonnet, prompt_version: v1}   # LLM-as-judge (backend/analysis/judge.py); swap for a stronger judge
+  live: {min_speakers: 1, min_uses: 2, pool: 60, trend_window: 12, transmission_top: 10}
   coder: {backend: claude_cli, model: sonnet, second: haiku, blind: true, human_sample: 120}
   llm_classifier: true
   probes: true

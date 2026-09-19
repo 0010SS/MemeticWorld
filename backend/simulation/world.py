@@ -12,18 +12,34 @@ from collections import deque
 WORLD_NAME = "the Homewood campus"
 
 WORLD_GRAPH = {
-    "Dorm": ["Dining Hall", "Quad"],
-    "Dining Hall": ["Dorm", "Quad", "Classroom"],
-    "Classroom": ["Dining Hall", "Library", "Quad"],
-    "Library": ["Classroom", "Quad", "Research Lab", "Cafe"],
-    "Research Lab": ["Library", "Quad"],
-    "Gym": ["Quad"],
-    "Cafe": ["Quad", "Library"],
-    "Quad": ["Dorm", "Dining Hall", "Classroom", "Library", "Research Lab", "Gym", "Cafe"],
+    # The first eight places and their original edges are unchanged. Edges to the campus places added later are
+    # appended at the END of each neighbour list, so every shortest path between two original places is the same
+    # as before (BFS still reaches the old intermediate first). All edges are reciprocal; the Quad stays the hub.
+    "Dorm": ["Dining Hall", "Quad", "Athletic Center"],
+    "Dining Hall": ["Dorm", "Quad", "Classroom", "Science Hall"],
+    "Classroom": ["Dining Hall", "Library", "Quad", "Student Center"],
+    "Library": ["Classroom", "Quad", "Research Lab", "Cafe", "Museum", "Theater"],
+    "Research Lab": ["Library", "Quad", "Engineering Hall", "Auditorium", "Admin Building"],
+    "Gym": ["Quad", "Science Hall", "Athletic Center"],
+    "Cafe": ["Quad", "Library", "Student Center", "Admin Building"],
+    "Quad": ["Dorm", "Dining Hall", "Classroom", "Library", "Research Lab", "Gym", "Cafe",
+             "Student Center", "Science Hall", "Museum", "Theater"],
+    # campus places (real walking neighbours on the Homewood map)
+    "Student Center": ["Cafe", "Classroom", "Quad", "Admin Building"],      # Glass Pavilion, on Levering
+    "Auditorium": ["Research Lab", "Engineering Hall", "Shuttle Stop"],       # Shriver Hall
+    "Engineering Hall": ["Research Lab", "Auditorium"],                      # Malone Hall, south of Hackerman
+    "Science Hall": ["Quad", "Gym", "Dining Hall"],                          # Mudd Hall
+    "Museum": ["Quad", "Library", "Apartments"],                             # Homewood Museum
+    "Theater": ["Quad", "Library", "Shuttle Stop"],                          # Merrick Barn, behind Brody
+    "Apartments": ["Museum", "Shuttle Stop"],                                # The Charles, on N Charles St
+    "Athletic Center": ["Gym", "Dorm"],                                      # White Athletic Center
+    "Admin Building": ["Cafe", "Student Center", "Research Lab"],            # Garland Hall
+    "Shuttle Stop": ["Auditorium", "Theater", "Apartments"],                 # N Charles St at the Gatehouse
 }
 
 ARENAS = {
-    "Dorm": ["Room 214", "Room 310", "Room 118", "Room 105", "Room 402", "Grad Apartment", "Lounge"],
+    "Dorm": ["Room 214", "Room 310", "Room 118", "Room 105", "Room 402", "Grad Apartment", "Lounge",
+             "Room 216", "Room 120", "Room 107", "Room 312", "Room 404"],
     "Dining Hall": ["Main Floor"],
     "Classroom": ["Lecture Hall", "Seminar Room"],
     "Library": ["Study Tables", "Quiet Floor"],
@@ -31,7 +47,22 @@ ARENAS = {
     "Gym": ["Main Floor"],
     "Cafe": ["Counter"],
     "Quad": ["Lawn"],
+    # campus places (appended; ARENAS[loc][0] is the default arena)
+    "Student Center": ["Common Room", "Club Room"],
+    "Auditorium": ["Main Hall", "Lobby"],
+    "Engineering Hall": ["Computer Lab", "Study Lounge"],
+    "Science Hall": ["Teaching Lab", "Lecture Room"],
+    "Museum": ["Gallery", "Garden"],
+    "Theater": ["Stage", "Green Room"],
+    "Apartments": ["Kitchen", "Study Room"],
+    "Athletic Center": ["Field House", "Track"],
+    "Admin Building": ["Front Desk", "Mailroom"],
+    "Shuttle Stop": ["Bench"],
 }
+
+# Places anyone on campus knows and may drop by (every profile's known_locations; the default errand places).
+PUBLIC_PLACES = ["Student Center", "Auditorium", "Engineering Hall", "Science Hall", "Museum", "Theater",
+                 "Athletic Center", "Admin Building", "Shuttle Stop", "Cafe", "Library", "Quad"]
 
 # Display-only labels for the frontend map (agents only ever see the generic names).
 HOMEWOOD_LABELS = {   # the real Homewood buildings each place is drawn as (frontend/homewood_map.json)
@@ -43,13 +74,28 @@ HOMEWOOD_LABELS = {   # the real Homewood buildings each place is drawn as (fron
     "Gym": "O'Connor Rec Center",
     "Cafe": "Levering Cafe",
     "Quad": "Keyser Quad",
+    "Student Center": "Glass Pavilion",
+    "Auditorium": "Shriver Hall",
+    "Engineering Hall": "Malone Hall",
+    "Science Hall": "Mudd Hall",
+    "Museum": "Homewood Museum",
+    "Theater": "Merrick Barn",
+    "Apartments": "The Charles",
+    "Athletic Center": "White Athletic Center",
+    "Admin Building": "Garland Hall",
+    "Shuttle Stop": "Gatehouse stop, N Charles St",
 }
 
-# Normalised map coordinates for the frontend (0..1).
+# Normalised map coordinates for the frontend (0..1): a display-only schematic (the tile map in
+# frontend/homewood_map.json has the real positions). New places sit next to their graph neighbours.
 MAP_POS = {
     "Dorm": (0.19, 0.2), "Dining Hall": (0.13, 0.66), "Classroom": (0.42, 0.78),
     "Library": (0.62, 0.52), "Research Lab": (0.86, 0.3), "Gym": (0.5, 0.1),
     "Cafe": (0.84, 0.74), "Quad": (0.44, 0.44),
+    "Student Center": (0.63, 0.7), "Auditorium": (0.76, 0.12), "Engineering Hall": (0.95, 0.14),
+    "Science Hall": (0.3, 0.32), "Museum": (0.76, 0.52), "Theater": (0.6, 0.35),
+    "Apartments": (0.88, 0.44), "Athletic Center": (0.32, 0.06), "Admin Building": (0.95, 0.6),
+    "Shuttle Stop": (0.72, 0.26),
 }
 
 

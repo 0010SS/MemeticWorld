@@ -756,6 +756,47 @@ simulation code must not import the analysis package.
   without generated topology or planting.
 - `group_conversation.py` imports private helpers from `conversation.py`.
 
+**D-proposed (observer; number to be assigned by the integrator): candidate quality, system wording, three
+tiers.** Mock runs showed "conventions" such as "remembers that ethan", "maya chen are roommates" and "labmates
+they know each". Those were memory frames and relationship lines the mock LLM had stitched into its dialogue,
+and a mock judge then labelled them. Four changes follow:
+(1) *Well-formedness* (`analysis/wording.py`, used by `candidates.py` and so by `live.py`). N-grams are counted
+only if they are plausible reusable units. Person names (manifest, population file, any case for a full name;
+Zipf ≥ 4.5 names such as Miles or Park only when capitalized) are allowed only inside nickname constructions:
+"the Leo thing", "pulling a Maya", "classic Priya", "Leo-proof". Also rejected:
+- a function word, auxiliary, pronoun, reporting verb or time word at either edge;
+- a reporting frame ("remembers that", "thinking about how");
+- an auxiliary frame at the end ("is preparing", "are friends");
+- bare relation, role or place nouns;
+- digits and clock times ("nine-thirty");
+- spans across punctuation, quotes or *stage directions*;
+- unigrams whose lemma has Zipf ≥ 3.6.
+(2) *System wording* (`wording.Infrastructure`). This corpus holds what the system put into agents' heads:
+- relationship lines and templates;
+- routines and day plans;
+- seed and ambient memories;
+- memory, reminding, need and priming frames;
+- the situational lines of conversation contexts;
+- profile text (minus the planted habit), place names, NPC roles and co-op roster, menu and binder text;
+- the population lexicon.
+A verbatim, name-slotted ("template") or inflection-folded (multi-word only) match gives the new status
+`system_wording`, which ranks below `planted` and above `world_wording`. It is down-ranked ×0.3 and blocks
+`emerged` (`emergence.in_system_text`). Phrases used mostly inside ≥ 8-token runs copied from the speaker's own
+earlier memory or reflection text are flagged (`recited_share`) and down-ranked.
+(3) *Tiers* (`analysis/tiers.py`, used the same way in analysis.json, outcomes.json, live and report):
+- `candidate`: frequency only;
+- `spreading`: ≥ 1 carried adopter, not system or world wording;
+- `convention`: emerged, plus a real judge verdict `is_convention=true`, plus not system or world wording. The
+  planted phrase can reach it only as the control, and it is never counted.
+(4) *Judge provenance* (`judge.is_real_verdict`). Mock or replay verdicts are placeholders.
+`llm.is_convention` is null for them and the mock answer is kept under `llm.placeholder`. Judge files say
+`placeholder: true`, and summaries say "no real judge has run". An old analysis.json's legacy `llm` block counts
+as a prompt-v0 verdict, with its provider/model read from analysis_llm_calls.jsonl. When the observer is mock,
+`pipeline_spec` now forces a mock judge. Since `analysis.judge` became a default, `analyze()` on a mock run had
+been calling the `claude` CLI. The UI card keeps the lifecycle in `card.status`. `card.is_convention` is null
+without a real verdict, and true only for the convention tier. Per-run top-25 lists on the real runs are in
+`runs/test_candidate_quality/`.
+
 ## 9. Things the plan asked for that are simplified
 
 **D42. Research-linked commons mode.** A separate `world.mode: commons` adds a pure
