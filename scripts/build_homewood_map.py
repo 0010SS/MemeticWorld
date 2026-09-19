@@ -283,7 +283,7 @@ def largest_rect(cells):
 
 KIND_FLOOR = {"bedroom": "beige", "lounge": "wood", "hall": "wood", "dining": "peach", "cafe": "wood", "lecture": "wood",
               "seminar": "beige", "library_quiet": "wood", "library_study": "beige", "makerspace": "stone", "drylab": "stone",
-              "wetlab": "teal", "gym": "wood"}
+              "wetlab": "teal", "stockroom": "stone", "gym": "wood"}
 
 
 def furnish(kind_, cells, rect_, avoid, rnd):
@@ -410,6 +410,10 @@ def furnish(kind_, cells, rect_, avoid, rnd):
             grid("food_case2", x0 + 1, y0 + 3, x1 - 1, y1 - 1, 4, 3)
         grid("food_case2", x0 + 1, y0 + 3, x1 - 1, y1 - 1, 4, 3)
         place("washer", x1 - 1, y1 - 1)
+    elif kind_ == "stockroom":
+        wall_row(["store_shelf", "orange_shelf", "snack_rack", "store_shelf"], x0, x1)
+        grid("bookshelf3", x0, y0 + 3, x1 - 2, y1 - 2, 4, 4)
+        place("drink_fridge", x1 - 1, y1 - 1); place("washer", x0, y1 - 1)
     elif kind_ == "gym":
         wall_row(["gym_machine", "gym_machine", "gym_machine", "gym_machine", "potted_plants", "gym_machine", "gym_machine"], x0, x1)
         grid("bike", x0 + 1, y0 + 4, x1 - 1, y0 + 4, 2, 1)
@@ -568,12 +572,13 @@ def place_buildings(geo, rnd, extra_walk):
     single("Gym", "Main Floor", "gym")
     single("Dining Hall", "Main Floor", "dining")
     single("Cafe", "Counter", "cafe")
-    # Hackerman: three labs stacked north to south
+    # Hackerman: four rooms stacked north to south (the Stockroom is the v3 arena)
     mask = P["Research Lab"]["cells"]; ix0, iy0, ix1, iy1 = bbox(erode(mask)); h = iy1 - iy0 + 1
-    rooms = {"Makerspace": [(ix0, iy0, ix1, iy0 + h // 3 - 1)], "Dry Lab": [(ix0, iy0 + h // 3 + 1, ix1, iy0 + 2 * h // 3 - 1)],
-             "Wet Lab": [(ix0, iy0 + 2 * h // 3 + 1, ix1, iy1)]}
+    q = h // 4
+    rooms = {"Makerspace": [(ix0, iy0, ix1, iy0 + q - 1)], "Dry Lab": [(ix0, iy0 + q + 1, ix1, iy0 + 2 * q - 1)],
+             "Wet Lab": [(ix0, iy0 + 2 * q + 1, ix1, iy0 + 3 * q - 1)], "Stockroom": [(ix0, iy0 + 3 * q + 1, ix1, iy1)]}
     make_building("Research Lab", PLACE_LABELS["Research Lab"], mask, caps["Research Lab"], floors["Research Lab"], rooms,
-                  {"Makerspace": "makerspace", "Dry Lab": "drylab", "Wet Lab": "wetlab"}, rnd, extra_walk=extra_walk)
+                  {"Makerspace": "makerspace", "Dry Lab": "drylab", "Wet Lab": "wetlab", "Stockroom": "stockroom"}, rnd, extra_walk=extra_walk)
     # Gilman: lecture hall west, seminar room east, a hallway along the south
     mask = P["Classroom"]["cells"]; ix0, iy0, ix1, iy1 = bbox(erode(mask)); mx = (ix0 + ix1) // 2
     rooms = {"Lecture Hall": [(ix0, iy0, mx - 1, iy1 - 7)], "Seminar Room": [(mx + 1, iy0, ix1, iy1 - 7)], "Hallway": [(ix0, iy1 - 5, ix1, iy1)]}
