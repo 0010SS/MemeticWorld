@@ -1,4 +1,4 @@
-// MemeWorld frontend: campus replay, culture dashboard, causal trace explorer.
+// MemeWorld frontend: pixel-art Homewood campus replay, culture dashboard, causal trace explorer.
 // Normal demo mode never requests hidden ground truth; Research Debug Mode adds ?debug=1.
 
 const $ = (s, el = document) => el.querySelector(s);
@@ -7,8 +7,8 @@ const esc = (s) => String(s ?? "").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<
 
 const S = {
   runs: [], runId: null, debug: false, manifest: null, frames: [], analysis: null,
-  tick: 0, tf: 0, playing: false, speed: 1, sel: null, sprites: {}, layout: null,
-  selMeme: null, agentReq: 0,
+  tick: 0, tf: 0, playing: false, speed: 1, sel: null, sprites: {},
+  selMeme: null, agentReq: 0, order: {},
 };
 
 async function api(path, opts = {}) {
@@ -45,22 +45,30 @@ async function boot() {
   $("#btnAnalyze").onclick = async () => { await fetch(`/api/runs/${S.runId}/analyze`, { method: "POST" }); $("#cultureSummary").innerHTML = `<span class="muted">Analysis launched; reload this run in a minute.</span>`; };
   $("#traceQuery").oninput = renderTraceSearch;
   $("#btnLaunch").onclick = launchRun;
-  const canvas = $("#map");
-  canvas.onclick = onMapClick;
-  canvas.onmousemove = onMapHover;
-  canvas.onmouseleave = hideTip;
+  bindMapControls();
   window.addEventListener("keydown", (e) => {
-    if (e.target.tagName === "INPUT") return;
+    if (e.target.tagName === "INPUT" || e.target.tagName === "SELECT") return;
     if (e.code === "Space") { e.preventDefault(); togglePlay(); }
     if (e.code === "ArrowRight") setTick(S.tick + 1);
     if (e.code === "ArrowLeft") setTick(S.tick - 1);
+    if (e.key === "+" || e.key === "=") zoomBy(1);
+    if (e.key === "-") zoomBy(-1);
   });
+  const mapReady = loadMap();
   S.runs = await api("/runs");
   const sel = $("#runSelect");
   sel.innerHTML = S.runs.map((r) => `<option value="${r.run_id}">${esc(r.run_id)} (${r.status}${r.has_analysis ? ", analyzed" : ""})</option>`).join("");
   const want = new URLSearchParams(location.search).get("run");
   const first = S.runs.find((r) => r.run_id === want) || S.runs.find((r) => r.status === "finished" && r.has_analysis) || S.runs[0];
   if (first) { sel.value = first.run_id; await loadRun(first.run_id); }
+  await mapReady;
+  const qs = new URLSearchParams(location.search);
+  if (qs.get("tick")) setTick(+qs.get("tick"));
+  if (qs.get("view") === "fit") zoomFit();
+  if (qs.get("zoom")) setZoom(+qs.get("zoom"));
+  if (qs.get("place") && M.data.places[qs.get("place")]) { const b = M.data.places[qs.get("place")].box; centerOn((b[0] + b[2] + 1) / 2 * TILE, (b[1] + b[3] + 1) / 2 * TILE); }
+  if (qs.get("frac")) S.tf = S.tick + Math.min(0.999, Math.max(0, +qs.get("frac")));
+  if (qs.get("agent")) { S.sel = qs.get("agent"); renderAgent(S.sel); if (qs.get("follow")) { cam.follow = true; $("#followSel").checked = true; } }
   renderRuns();
   requestAnimationFrame(loop);
 }
@@ -71,7 +79,7 @@ function showView(v) {
   if (v === "culture") renderCulture();
   if (v === "trace") renderTraceSearch();
   if (v === "runs") renderRuns();
-  if (v === "world") renderWorld();
+  if (v === "campus") resizeMap();
 }
 
 async function loadRun(id, keepTick = false) {
@@ -90,10 +98,11 @@ async function loadRun(id, keepTick = false) {
     : "Detected by the external observer only (n-gram statistics + variant grouping + LLM classifier). Nothing on this page is ever shown to agents.";
   if (!commons && $("#view-world").classList.contains("active")) showView("campus");
   try { S.analysis = await api(`/runs/${id}/analysis`); } catch { S.analysis = null; }
-  S.layout = computeLayout(man);
+  S.order = {}; Object.keys(man.agents).sort().forEach((aid, i) => S.order[aid] = i);
   for (const [aid, a] of Object.entries(man.agents)) {
     if (!S.sprites[a.sprite]) { const img = new Image(); img.src = `/ga_assets/characters/${a.sprite}.png`; S.sprites[a.sprite] = img; }
   }
+  posCache.length = 0;
   $("#scrub").max = Math.max(0, frames.length - 1);
   $("#worldScrub").max = Math.max(0, frames.length - 1);
   if (!keepTick) setTick(0); else setTick(S.tick);
@@ -101,43 +110,202 @@ async function loadRun(id, keepTick = false) {
   renderCulture();
 }
 
-// ------------------------------------------------------------------ layout
-const W = 1000, H = 620;
-function computeLayout(man) {
-  const L = {};
-  for (const [loc, [x, y]] of Object.entries(man.world.map_pos)) {
-    const quad = loc === "Quad";
-    const arenas = man.world.arenas[loc];
-    const cols = Math.min(arenas.length, loc === "Dorm" ? 4 : 3);
-    const rows = Math.ceil(arenas.length / cols);
-    const w = quad ? 230 : Math.max(170, cols * 80), h = quad ? 130 : 40 + rows * 60;
-    const cx = x * W, cy = y * H;
-    const slots = {};
-    arenas.forEach((ar, i) => {
-      const c = i % cols, r = Math.floor(i / cols);
-      slots[ar] = { x: cx - w / 2 + (c + 0.5) * (w / cols), y: cy - h / 2 + 22 + (r + 0.5) * ((h - 34) / rows) };
-    });
-    L[loc] = { x: cx, y: cy, w, h, slots, label: man.world.labels[loc] };
-  }
-  return L;
+// ================================================================== pixel map
+const TILE = 32;
+const M = { data: null, images: {}, layers: null, thumb: null, ready: false, cost: null, W: 0, H: 0, CW: 0, CHn: 0, fgHas: null, pathCache: new Map() };
+const cam = { x: 0, y: 0, zoom: 0.5, drag: null, moved: false, follow: false };
+const ZOOMS = [0.125, 0.25, 0.35, 0.5, 0.75, 1, 1.5, 2];
+let dpr = 1;
+
+async function loadMap() {
+  const d = await (await fetch("/static/homewood_map.json")).json();
+  d.tilesets.sort((a, b) => a.firstgid - b.firstgid);
+  M.data = d; M.W = d.width; M.H = d.height;
+  const n = d.width * d.height;
+  const dec = (arr) => { if (d.encoding !== "rle") return arr; const out = new Int32Array(n); let i = 0; for (let k = 0; k < arr.length; k += 2) { const v = arr[k], r = arr[k + 1]; if (v) out.fill(v, i, i + r); i += r; } return out; };
+  M.layers = {}; for (const [name, arr] of Object.entries(d.layers)) M.layers[name] = dec(arr);
+  M.cost = dec(d.cost);
+  M.CW = Math.ceil(d.width / CH); M.CHn = Math.ceil(d.height / CH);
+  M.fgHas = new Uint8Array(M.CW * M.CHn);
+  for (const name of d.fg_layers) { const L = M.layers[name]; for (let i = 0; i < n; i++) if (L[i]) M.fgHas[Math.floor(Math.floor(i / d.width) / CH) * M.CW + Math.floor((i % d.width) / CH)] = 1; }
+  await Promise.all(d.tilesets.map((ts) => new Promise((res) => {
+    const im = new Image(); im.onload = res; im.onerror = res; im.src = ts.image; M.images[ts.name] = im;
+  })));
+  M.thumb = new Image(); M.thumb.src = d.thumb || "/static/homewood_thumb.png";
+  const mini = $("#minimap"); mini.height = Math.round(mini.width * M.H / M.W);
+  try { await document.fonts.load("600 14px 'Pixelify Sans'"); } catch { /* fallback font */ }
+  chunkCache.clear();
+  M.ready = true;
+  $("#mapLoading").hidden = true;
+  resizeMap();
+  zoomQuad();
 }
 
-function positions(frame) {
-  const out = {}, groups = {};
-  if (!frame) return out;
-  for (const [aid, a] of Object.entries(frame.agents)) {
-    const key = a.location + "|" + a.arena;
-    (groups[key] = groups[key] || []).push(aid);
+function tileSrc(gid) {
+  const ts = M.data.tilesets;
+  for (let i = ts.length - 1; i >= 0; i--) if (gid >= ts[i].firstgid) {
+    const t = ts[i], l = gid - t.firstgid;
+    return [M.images[t.name], (l % t.columns) * TILE, Math.floor(l / t.columns) * TILE];
   }
+  return null;
+}
+
+// ---- chunked map rendering: 32x32-tile chunks rendered on demand at three detail levels, LRU-cached
+const CH = 32;
+const chunkCache = new Map();
+const CHUNK_MAX = 220;
+let chunkBudget = 0;
+function levelFor(zoom) { return zoom >= 0.75 ? 1 : zoom >= 0.35 ? 0.5 : 0.25; }
+function renderChunk(level, cx, cy, fg) {
+  const size = Math.round(CH * TILE * level), ts = TILE * level;
+  const c = document.createElement("canvas"); c.width = size; c.height = size;
+  const ctx = c.getContext("2d"); ctx.imageSmoothingEnabled = level < 1; if (level < 1) ctx.imageSmoothingQuality = "high";
+  const layers = fg ? M.data.fg_layers : ["bottom", "ground", "deco1", "deco2", "floor", "wall", "furn1", "furn2"];
+  const x0 = cx * CH, y0 = cy * CH, x1 = Math.min(x0 + CH, M.W), y1 = Math.min(y0 + CH, M.H);
+  for (const name of layers) {
+    const L = M.layers[name];
+    for (let y = y0; y < y1; y++) for (let x = x0; x < x1; x++) {
+      const g = L[y * M.W + x]; if (!g) continue;
+      const src = tileSrc(g); if (!src || !src[0]?.naturalWidth) continue;
+      ctx.drawImage(src[0], src[1], src[2], TILE, TILE, (x - x0) * ts, (y - y0) * ts, ts, ts);
+    }
+  }
+  return c;
+}
+function getChunk(level, cx, cy, fg) {
+  if (fg && !M.fgHas[cy * M.CW + cx]) return null;
+  const k = `${fg ? "f" : "b"}${level}:${cx}:${cy}`;
+  let c = chunkCache.get(k);
+  if (c) { chunkCache.delete(k); chunkCache.set(k, c); return c; }
+  if (chunkBudget <= 0) return null;
+  chunkBudget--;
+  c = renderChunk(level, cx, cy, fg);
+  chunkCache.set(k, c);
+  while (chunkCache.size > CHUNK_MAX) chunkCache.delete(chunkCache.keys().next().value);
+  return c;
+}
+function drawChunks(ctx, fg) {
+  const [vw, vh] = viewSize(), level = levelFor(cam.zoom), px = CH * TILE;
+  if (cam.zoom < 0.2) {   // far out: the pre-rendered thumbnail is sharper than 8 px tiles and costs nothing
+    if (!fg && M.thumb?.naturalWidth) ctx.drawImage(M.thumb, 0, 0, M.W * TILE, M.H * TILE);
+    return;
+  }
+  const cx0 = Math.max(0, Math.floor(cam.x / px)), cy0 = Math.max(0, Math.floor(cam.y / px));
+  const cx1 = Math.min(M.CW - 1, Math.floor((cam.x + vw / cam.zoom) / px)), cy1 = Math.min(M.CHn - 1, Math.floor((cam.y + vh / cam.zoom) / px));
+  const th = M.thumb, tk = th?.naturalWidth ? th.naturalWidth / (M.W * TILE) : 0;
+  for (let cy = cy0; cy <= cy1; cy++) for (let cx = cx0; cx <= cx1; cx++) {
+    const c = getChunk(level, cx, cy, fg);
+    if (c) ctx.drawImage(c, cx * px, cy * px, px, px);
+    else if (!fg && tk) ctx.drawImage(th, cx * px * tk, cy * px * tk, px * tk, px * tk, cx * px, cy * px, px, px);
+  }
+}
+
+// ---- camera
+function viewSize() { const c = $("#map"); return [c.clientWidth, c.clientHeight]; }
+function resizeMap() {
+  const c = $("#map"); dpr = Math.min(2, window.devicePixelRatio || 1);
+  const [vw, vh] = viewSize();
+  if (c.width !== Math.round(vw * dpr) || c.height !== Math.round(vh * dpr)) { c.width = Math.round(vw * dpr); c.height = Math.round(vh * dpr); }
+  clampCam();
+}
+function clampCam() {
+  if (!M.data) return;
+  const [vw, vh] = viewSize(), w = M.W * TILE, h = M.H * TILE;
+  const maxX = Math.max(-vw / cam.zoom * 0.5, w - vw / cam.zoom + vw / cam.zoom * 0.5), maxY = Math.max(-vh / cam.zoom * 0.5, h - vh / cam.zoom + vh / cam.zoom * 0.5);
+  cam.x = Math.max(-vw / cam.zoom * 0.5, Math.min(maxX, cam.x));
+  cam.y = Math.max(-vh / cam.zoom * 0.5, Math.min(maxY, cam.y));
+}
+function centerOn(wx, wy) { const [vw, vh] = viewSize(); cam.x = wx - vw / cam.zoom / 2; cam.y = wy - vh / cam.zoom / 2; clampCam(); }
+function setZoom(z, ax, ay) {
+  // keep the world point under (ax, ay) screen px fixed
+  const [vw, vh] = viewSize(); ax = ax ?? vw / 2; ay = ay ?? vh / 2;
+  const wx = cam.x + ax / cam.zoom, wy = cam.y + ay / cam.zoom;
+  cam.zoom = z; cam.x = wx - ax / z; cam.y = wy - ay / z; clampCam();
+}
+function zoomBy(dir, ax, ay) {
+  let i = ZOOMS.findIndex((z) => z >= cam.zoom - 1e-6); if (i < 0) i = ZOOMS.length - 1;
+  setZoom(ZOOMS[Math.max(0, Math.min(ZOOMS.length - 1, i + dir))], ax, ay);
+}
+function zoomFit() { const [vw, vh] = viewSize(); cam.zoom = Math.min(vw / (M.W * TILE), vh / (M.H * TILE)); cam.follow = false; $("#followSel").checked = false; centerOn(M.W * TILE / 2, M.H * TILE / 2); }
+function zoomQuad() { cam.zoom = 0.35; const q = M.data.places.Quad?.box || [21, 48, 41, 59]; centerOn((q[0] + q[2] + 1) / 2 * TILE, (q[1] + q[3] + 1) / 2 * TILE - 40); }
+function screenToWorld(e) { const r = $("#map").getBoundingClientRect(); return { x: cam.x + (e.clientX - r.left) / cam.zoom, y: cam.y + (e.clientY - r.top) / cam.zoom }; }
+
+function bindMapControls() {
+  const c = $("#map");
+  c.onpointerdown = (e) => { cam.drag = { x: e.clientX, y: e.clientY, cx: cam.x, cy: cam.y }; cam.moved = false; c.setPointerCapture(e.pointerId); c.classList.add("dragging"); };
+  c.onpointermove = (e) => {
+    if (cam.drag) {
+      const dx = e.clientX - cam.drag.x, dy = e.clientY - cam.drag.y;
+      if (Math.hypot(dx, dy) > 3) { cam.moved = true; cam.follow = false; $("#followSel").checked = false; }
+      cam.x = cam.drag.cx - dx / cam.zoom; cam.y = cam.drag.cy - dy / cam.zoom; clampCam(); hideTip();
+    } else onMapHover(e);
+  };
+  c.onpointerup = (e) => { c.classList.remove("dragging"); if (cam.drag && !cam.moved) onMapClick(e); cam.drag = null; };
+  c.onpointerleave = () => { hideTip(); };
+  c.onwheel = (e) => { e.preventDefault(); const r = c.getBoundingClientRect(); zoomBy(e.deltaY < 0 ? 1 : -1, e.clientX - r.left, e.clientY - r.top); };
+  $("#zoomIn").onclick = () => zoomBy(1); $("#zoomOut").onclick = () => zoomBy(-1);
+  $("#zoomFit").onclick = zoomFit; $("#zoomQuad").onclick = zoomQuad;
+  $("#followSel").onchange = (e) => { cam.follow = e.target.checked; };
+  $("#minimap").onclick = (e) => { const r = e.target.getBoundingClientRect(); centerOn((e.clientX - r.left) / r.width * M.W * TILE, (e.clientY - r.top) / r.height * M.H * TILE); cam.follow = false; $("#followSel").checked = false; };
+  new ResizeObserver(resizeMap).observe($("#mapWrap"));
+}
+
+// ---- agent placement: one stable spot per agent inside its arena
+const posCache = [];
+function positions(t) {
+  if (posCache[t]) return posCache[t];
+  const frame = S.frames[t], out = {};
+  if (!frame || !M.data) return out;
+  const groups = {};
+  for (const [aid, a] of Object.entries(frame.agents)) (groups[a.location + "|" + a.arena] = groups[a.location + "|" + a.arena] || []).push(aid);
   for (const [key, ids] of Object.entries(groups)) {
     const [loc, ar] = key.split("|");
-    const L = S.layout[loc]; if (!L) continue;
-    const slot = L.slots[ar] || { x: L.x, y: L.y };
-    ids.sort();
-    ids.forEach((aid, i) => { out[aid] = { x: slot.x + (i - (ids.length - 1) / 2) * 26, y: slot.y + 4 }; });
+    const pl = M.data.places[loc]; if (!pl) continue;
+    const arena = pl.arenas[ar] || Object.values(pl.arenas)[0];
+    const spots = arena.spots; if (!spots?.length) continue;
+    ids.sort((a, b) => S.order[a] - S.order[b]);
+    const used = new Set();
+    for (const aid of ids) {
+      let k = S.order[aid] % spots.length, n = 0;
+      while (used.has(k) && n < spots.length) { k = (k + 1) % spots.length; n++; }
+      used.add(k);
+      out[aid] = { cx: spots[k][0], cy: spots[k][1] };
+    }
   }
+  posCache[t] = out;
   return out;
 }
+
+// ---- A* over the walk-cost grid (4-neighbour, like Smallville)
+function findPath(a, b) {
+  const key = a.cx + "," + a.cy + ">" + b.cx + "," + b.cy;
+  if (M.pathCache.has(key)) return M.pathCache.get(key);
+  const W = M.W, H = M.H, cost = M.cost, start = a.cy * W + a.cx, goal = b.cy * W + b.cx;
+  const g = new Float32Array(W * H).fill(Infinity), prev = new Int32Array(W * H).fill(-1), closed = new Uint8Array(W * H);
+  const hx = (i) => Math.abs((i % W) - b.cx) + Math.abs(Math.floor(i / W) - b.cy);
+  const open = [[hx(start), start]]; g[start] = 0;
+  const push = (it) => { open.push(it); let i = open.length - 1; while (i > 0) { const p = (i - 1) >> 1; if (open[p][0] <= open[i][0]) break; [open[p], open[i]] = [open[i], open[p]]; i = p; } };
+  const pop = () => { const top = open[0], last = open.pop(); if (open.length) { open[0] = last; let i = 0; for (;;) { let l = 2 * i + 1, r = l + 1, m = i; if (l < open.length && open[l][0] < open[m][0]) m = l; if (r < open.length && open[r][0] < open[m][0]) m = r; if (m === i) break; [open[m], open[i]] = [open[i], open[m]]; i = m; } } return top; };
+  let found = false, steps = 0;
+  while (open.length && steps++ < 60000) {
+    const [, cur] = pop();
+    if (cur === goal) { found = true; break; }
+    if (closed[cur]) continue; closed[cur] = 1;
+    const cx = cur % W, cy = Math.floor(cur / W);
+    for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
+      const nx = cx + dx, ny = cy + dy; if (nx < 0 || ny < 0 || nx >= W || ny >= H) continue;
+      const ni = ny * W + nx, c = cost[ni]; if (!c && ni !== goal) continue;
+      const ng = g[cur] + (c || 1);
+      if (ng < g[ni]) { g[ni] = ng; prev[ni] = cur; push([ng + hx(ni), ni]); }
+    }
+  }
+  let path;
+  if (found) { path = []; for (let i = goal; i !== -1; i = prev[i]) path.push({ cx: i % W, cy: Math.floor(i / W) }); path.reverse(); }
+  else path = [a, b];
+  M.pathCache.set(key, path);
+  return path;
+}
+const px = (c) => ({ x: c.cx * TILE + TILE / 2, y: c.cy * TILE + TILE / 2 });
 
 // -------------------------------------------------------------------- loop
 let lastT = performance.now();
@@ -174,106 +342,189 @@ function jumpTo(key) {
 }
 
 // -------------------------------------------------------------------- draw
-function cssVar(n) { return getComputedStyle(document.documentElement).getPropertyValue(n).trim(); }
-function roundRect(ctx, x, y, w, h, r) { ctx.beginPath(); ctx.roundRect(x, y, w, h, r); }
+const PIX = "'Pixelify Sans', ui-monospace, monospace";
+const drawState = { pos: {}, tick: -1 };
+
+function agentDrawPositions() {
+  // world-pixel position, facing and walking state of every agent at the current sub-tick time
+  const frame = S.frames[S.tick]; if (!frame) return {};
+  const p = S.tf - S.tick;
+  const cur = positions(S.tick), prev = S.tick > 0 ? positions(S.tick - 1) : cur;
+  const out = {};
+  for (const aid of Object.keys(frame.agents)) {
+    const to = cur[aid]; if (!to) continue;
+    const from = prev[aid] || to;
+    let pos = px(to), dir = 0, walking = false;
+    if (from.cx !== to.cx || from.cy !== to.cy) {
+      const path = findPath(from, to);
+      const dur = Math.min(0.9, Math.max(0.3, (path.length - 1) / 24));   // ≈ 12 tiles per second at 1×
+      const k = Math.min(1, p / dur);
+      if (k < 1) {
+        const f = k * (path.length - 1), i = Math.min(path.length - 2, Math.floor(f)), t = f - i;
+        const a = px(path[i]), b = px(path[i + 1]);
+        pos = { x: a.x + (b.x - a.x) * t, y: a.y + (b.y - a.y) * t };
+        const dx = b.x - a.x, dy = b.y - a.y;
+        dir = Math.abs(dx) > Math.abs(dy) ? (dx < 0 ? 1 : 2) : (dy < 0 ? 3 : 0);
+        walking = true;
+      } else {
+        const a = px(path[Math.max(0, path.length - 2)]), b = px(path[path.length - 1]);
+        const dx = b.x - a.x, dy = b.y - a.y;
+        dir = Math.abs(dx) > Math.abs(dy) ? (dx < 0 ? 1 : 2) : (dy < 0 ? 3 : 0);
+      }
+    }
+    out[aid] = { ...pos, dir, walking, cx: to.cx, cy: to.cy };
+  }
+  return out;
+}
 
 function draw() {
   const cv = $("#map"), ctx = cv.getContext("2d");
-  const C = { grass: cssVar("--grass"), path: cssVar("--path"), b: cssVar("--building"), be: cssVar("--building-edge"),
-    text: cssVar("--text"), muted: cssVar("--muted"), accent: cssVar("--accent"), acc2: cssVar("--accent-2"),
-    bubble: cssVar("--bubble"), btext: cssVar("--bubble-text") };
-  ctx.clearRect(0, 0, W, H);
-  ctx.fillStyle = C.grass; ctx.fillRect(0, 0, W, H);
-  if (!S.layout) return;
-  const man = S.manifest;
-  // paths
-  ctx.strokeStyle = C.path; ctx.lineWidth = 10; ctx.lineCap = "round";
-  for (const [a, nbs] of Object.entries(man.world.graph)) for (const b of nbs) if (a < b) {
-    ctx.beginPath(); ctx.moveTo(S.layout[a].x, S.layout[a].y); ctx.lineTo(S.layout[b].x, S.layout[b].y); ctx.stroke();
-  }
+  const [vw, vh] = viewSize();
+  ctx.setTransform(1, 0, 0, 1, 0, 0);
+  ctx.fillStyle = getComputedStyle(document.documentElement).getPropertyValue("--map-bg").trim() || "#5aa84a";
+  ctx.fillRect(0, 0, cv.width, cv.height);
+  if (!M.ready) return;
   const frame = S.frames[S.tick];
+  const man = S.manifest;
+  const pos = frame ? agentDrawPositions() : {};
+  drawState.pos = pos;
+  if (cam.follow && S.sel && pos[S.sel]) { const t = pos[S.sel]; cam.x += (t.x - vw / cam.zoom / 2 - cam.x) * 0.15; cam.y += (t.y - vh / cam.zoom / 2 - cam.y) * 0.15; clampCam(); }
+  // world layer
+  const z = cam.zoom * dpr;
+  ctx.setTransform(z, 0, 0, z, -cam.x * z, -cam.y * z);
+  ctx.imageSmoothingEnabled = cam.zoom < 0.75;
+  chunkBudget = 6;
+  drawChunks(ctx, false);
+  // active-event outline on buildings
   const active = new Set((frame?.beats || []).map((b) => b.location));
-  // buildings
-  for (const [loc, L] of Object.entries(S.layout)) {
-    const x = L.x - L.w / 2, y = L.y - L.h / 2;
-    ctx.fillStyle = loc === "Quad" ? C.grass : C.b; ctx.strokeStyle = active.has(loc) ? C.acc2 : C.be; ctx.lineWidth = active.has(loc) ? 3 : 1.5;
-    roundRect(ctx, x, y, L.w, L.h, 10); ctx.fill(); ctx.stroke();
-    ctx.fillStyle = C.text; ctx.font = "600 13px system-ui"; ctx.textAlign = "left"; ctx.fillText(loc, x + 8, y + 16);
-    const lw = ctx.measureText(loc).width;
-    ctx.fillStyle = C.muted; ctx.font = "11px system-ui"; ctx.fillText(L.label, x + 14 + lw, y + 16);
-    ctx.font = "9.5px system-ui"; ctx.textAlign = "center";
-    for (const [ar, p] of Object.entries(L.slots)) if (Object.keys(L.slots).length > 1) ctx.fillText(ar, p.x, p.y + 33);
-    if (active.has(loc)) { ctx.fillStyle = C.acc2; ctx.font = "700 14px system-ui"; ctx.fillText("!", x + L.w - 12, y + 17); }
+  for (const loc of active) {
+    const pl = M.data.places[loc]; if (!pl) continue;
+    const [x0, y0, x1, y1] = pl.box;
+    ctx.strokeStyle = "#eb6834"; ctx.lineWidth = 3 / cam.zoom; ctx.setLineDash([8 / cam.zoom, 6 / cam.zoom]);
+    ctx.strokeRect(x0 * TILE - 2, y0 * TILE - 2, (x1 - x0 + 1) * TILE + 4, (y1 - y0 + 1) * TILE + 4); ctx.setLineDash([]);
   }
-  if (!frame) return;
-  // agents, interpolated from the previous frame along the semantic path
-  const p = S.tf - S.tick;
-  const cur = positions(frame), prev = positions(S.frames[S.tick - 1] || frame);
-  const drawPos = {};
-  for (const [aid, a] of Object.entries(frame.agents)) {
-    const to = cur[aid], from = prev[aid] || to;
-    let pos = to, dir = 0, walking = false;
-    const k = Math.min(1, p / 0.45);
-    if (k < 1 && from && (from.x !== to.x || from.y !== to.y)) {
-      const pts = [from, ...(a.path || []).slice(1, -1).map((l) => S.layout[l]).filter(Boolean), to];
-      const segs = []; let tot = 0;
-      for (let i = 1; i < pts.length; i++) { const d = Math.hypot(pts[i].x - pts[i - 1].x, pts[i].y - pts[i - 1].y); segs.push(d); tot += d; }
-      let dist = k * tot, i = 0;
-      while (i < segs.length - 1 && dist > segs[i]) { dist -= segs[i]; i++; }
-      const a0 = pts[i], a1 = pts[i + 1], f = segs[i] ? dist / segs[i] : 1;
-      pos = { x: a0.x + (a1.x - a0.x) * f, y: a0.y + (a1.y - a0.y) * f };
-      const dx = a1.x - a0.x, dy = a1.y - a0.y;
-      dir = Math.abs(dx) > Math.abs(dy) ? (dx < 0 ? 1 : 2) : (dy < 0 ? 3 : 0);
-      walking = true;
+  // agents, painter's order by y
+  const ids = Object.keys(pos).sort((a, b) => pos[a].y - pos[b].y);
+  for (const aid of ids) {
+    const a = pos[aid], prof = man.agents[aid], img = S.sprites[prof.sprite];
+    const fx = a.walking ? [0, 32, 64][Math.floor(performance.now() / 140) % 3] : 32;
+    if (S.sel === aid) {
+      ctx.fillStyle = "rgba(42,120,214,.35)"; ctx.beginPath(); ctx.ellipse(a.x, a.y + 8, 14, 7, 0, 0, 7); ctx.fill();
     }
-    drawPos[aid] = pos;
-    const prof = man.agents[aid], img = S.sprites[prof.sprite];
-    const fx = walking ? [0, 32, 64][Math.floor(performance.now() / 150) % 3] : 32;
-    if (S.sel === aid) { ctx.fillStyle = C.accent; ctx.globalAlpha = .25; ctx.beginPath(); ctx.arc(pos.x, pos.y, 20, 0, 7); ctx.fill(); ctx.globalAlpha = 1; }
-    if (img?.complete && img.naturalWidth) { ctx.imageSmoothingEnabled = false; ctx.drawImage(img, fx, dir * 32, 32, 32, pos.x - 16, pos.y - 24, 32, 32); }
-    else { ctx.fillStyle = C.accent; ctx.beginPath(); ctx.arc(pos.x, pos.y - 8, 9, 0, 7); ctx.fill(); }
-    ctx.fillStyle = C.text; ctx.font = "600 10px system-ui"; ctx.textAlign = "center"; ctx.fillText(prof.name.split(" ")[0], pos.x, pos.y + 18);
-    if (a.conversation) { ctx.fillStyle = C.accent; ctx.fillText("…", pos.x + 14, pos.y - 22); }
+    if (img?.complete && img.naturalWidth) ctx.drawImage(img, fx, a.dir * 32, 32, 32, Math.round(a.x - 16), Math.round(a.y - 22), 32, 32);
+    else { ctx.fillStyle = "#2a78d6"; ctx.beginPath(); ctx.arc(a.x, a.y - 6, 9, 0, 7); ctx.fill(); }
+  }
+  drawChunks(ctx, true);
+  // screen-space overlays (labels, names, bubbles, badges)
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  const sx = (wx) => (wx - cam.x) * cam.zoom, sy = (wy) => (wy - cam.y) * cam.zoom;
+  drawContextLabels(ctx, sx, sy, vw, vh);
+  drawPlaceLabels(ctx, sx, sy, active);
+  for (const aid of ids) {
+    const a = pos[aid], x = sx(a.x), y = sy(a.y);
+    if (x < -40 || y < -40 || x > vw + 40 || y > vh + 40) continue;
+    const nm = man.agents[aid].name.split(" ")[0];
+    ctx.font = `600 ${cam.zoom >= 0.75 ? 13 : 11}px ${PIX}`; ctx.textAlign = "center"; ctx.textBaseline = "top";
+    const w = ctx.measureText(nm).width + 8, yy = y + 12 * cam.zoom;
+    ctx.fillStyle = S.sel === aid ? "#2a78d6" : "rgba(20,20,18,.78)";
+    ctx.fillRect(Math.round(x - w / 2), Math.round(yy), Math.round(w), 15);
+    ctx.fillStyle = "#fff"; ctx.fillText(nm, Math.round(x), Math.round(yy) + 1);
+    if (frame.agents[aid].conversation) { ctx.fillStyle = "#ffd866"; ctx.font = `700 12px ${PIX}`; ctx.fillText("…", Math.round(x + 18), Math.round(y - 34 * cam.zoom)); }
   }
   // speech bubbles (cycle through a conversation's lines within the tick)
-  if (p > 0.45) {
+  const p = S.tf - S.tick;
+  if (frame && p > 0.45) {
     const convs = {};
     for (const u of frame.utterances) (convs[u.conversation_id || u.id] = convs[u.conversation_id || u.id] || []).push(u);
     for (const us of Object.values(convs)) {
       const k = Math.min(us.length - 1, Math.floor(((p - 0.45) / 0.55) * us.length));
-      const u = us[k], sp = drawPos[u.speaker]; if (!sp) continue;
-      ctx.strokeStyle = C.accent; ctx.globalAlpha = 0.5; ctx.setLineDash([3, 3]); ctx.lineWidth = 1;
-      for (const l of u.listeners) { const lp = drawPos[l]; if (lp) { ctx.beginPath(); ctx.moveTo(sp.x, sp.y - 10); ctx.lineTo(lp.x, lp.y - 10); ctx.stroke(); } }
-      ctx.setLineDash([]); ctx.globalAlpha = 1;
-      bubble(ctx, sp.x, sp.y - 30, u.text, C);
+      const u = us[k], sp = pos[u.speaker]; if (!sp) continue;
+      if (sx(sp.x) < -20 || sx(sp.x) > vw + 20 || sy(sp.y) < -20 || sy(sp.y) > vh + 20) continue;
+      ctx.strokeStyle = "rgba(42,120,214,.6)"; ctx.setLineDash([3, 3]); ctx.lineWidth = 1;
+      for (const l of u.listeners) { const lp = pos[l]; if (lp) { ctx.beginPath(); ctx.moveTo(sx(sp.x), sy(sp.y) - 10); ctx.lineTo(sx(lp.x), sy(lp.y) - 10); ctx.stroke(); } }
+      ctx.setLineDash([]);
+      bubble(ctx, sx(sp.x), sy(sp.y) - 26 * cam.zoom, u.text, vw);
     }
   }
+  drawMinimap(pos, vw, vh);
 }
-function bubble(ctx, x, y, text, C) {
-  ctx.font = "11px system-ui";
+
+function drawContextLabels(ctx, sx, sy, vw, vh) {
+  if (!M.data.context || cam.zoom < 0.35) return;
+  ctx.textAlign = "center"; ctx.textBaseline = "middle";
+  for (const c of M.data.context) {
+    if (c.kind === "campus" && cam.zoom < 0.5) continue;
+    if (c.kind === "other" && cam.zoom < 1) continue;
+    if (c.kind === "green" && cam.zoom < 0.5) continue;
+    const x = sx((c.x + 0.5) * TILE), y = sy((c.y + 0.5) * TILE);
+    if (x < -120 || x > vw + 120 || y < -20 || y > vh + 20) continue;
+    ctx.font = `${c.kind === "campus" ? 600 : 500} ${c.kind === "campus" ? 12 : 11}px ${PIX}`;
+    const w = ctx.measureText(c.name).width + 8;
+    if (c.kind === "road") { ctx.fillStyle = "rgba(40,40,40,.85)"; ctx.fillRect(Math.round(x - w / 2), Math.round(y - 8), Math.round(w), 16); ctx.fillStyle = "#fff"; }
+    else if (c.kind === "green") { ctx.fillStyle = "rgba(255,255,255,.5)"; ctx.fillRect(Math.round(x - w / 2), Math.round(y - 8), Math.round(w), 16); ctx.fillStyle = "#2f5a2a"; }
+    else { ctx.fillStyle = "rgba(255,255,255,.75)"; ctx.fillRect(Math.round(x - w / 2), Math.round(y - 8), Math.round(w), 16); ctx.fillStyle = "#222"; }
+    ctx.fillText(c.name, Math.round(x), Math.round(y));
+  }
+}
+
+function drawPlaceLabels(ctx, sx, sy, active) {
+  if (cam.zoom < 0.3) return;
+  ctx.textBaseline = "top"; ctx.textAlign = "left";
+  for (const pl of Object.values(M.data.places)) {
+    const [x0, y0, x1] = pl.box;
+    const x = sx(x0 * TILE) + 2, y = sy(y0 * TILE) - 20;
+    const name = pl.name, sub = pl.label === pl.name ? "" : pl.label;
+    ctx.font = `700 13px ${PIX}`; const w1 = ctx.measureText(name).width;
+    ctx.font = `500 11px ${PIX}`; const w2 = sub ? ctx.measureText(sub).width : 0;
+    const w = w1 + (sub ? w2 + 8 : 0) + 10, maxw = (x1 - x0 + 1) * TILE * cam.zoom;
+    ctx.fillStyle = active.has(name) ? "rgba(235,104,52,.92)" : "rgba(20,20,18,.8)";
+    ctx.fillRect(Math.round(x), Math.round(y), Math.round(Math.max(w, Math.min(maxw, w))), 18);
+    ctx.fillStyle = "#fff"; ctx.font = `700 13px ${PIX}`; ctx.fillText(name, Math.round(x) + 5, Math.round(y) + 2);
+    if (sub) { ctx.fillStyle = "#e8e4d4"; ctx.font = `500 11px ${PIX}`; ctx.fillText(sub, Math.round(x) + 5 + w1 + 8, Math.round(y) + 4); }
+    if (active.has(name)) { ctx.fillStyle = "#fff"; ctx.font = `700 13px ${PIX}`; ctx.fillText("!", Math.round(x) + Math.round(Math.max(w, Math.min(maxw, w))) - 12, Math.round(y) + 2); }
+  }
+}
+
+function bubble(ctx, x, y, text, vw) {
+  ctx.font = `500 12px ${PIX}`; ctx.textBaseline = "top"; ctx.textAlign = "left";
   const words = text.split(" "), lines = []; let line = "";
-  for (const w of words) { if (ctx.measureText(line + " " + w).width > 190 && line) { lines.push(line); line = w; } else line = line ? line + " " + w : w; if (lines.length >= 3) break; }
+  for (const w of words) { if (ctx.measureText(line + " " + w).width > 200 && line) { lines.push(line); line = w; } else line = line ? line + " " + w : w; if (lines.length >= 3) break; }
   if (lines.length < 3 && line) lines.push(line);
   if (lines.length === 3 && text.length > lines.join(" ").length) lines[2] += "…";
-  const w = Math.max(...lines.map((l) => ctx.measureText(l).width)) + 14, h = lines.length * 14 + 8;
-  const bx = Math.max(4, Math.min(W - w - 4, x - w / 2)), by = Math.max(4, y - h);
-  ctx.fillStyle = C.bubble; ctx.strokeStyle = C.accent; ctx.lineWidth = 1;
-  roundRect(ctx, bx, by, w, h, 7); ctx.fill(); ctx.stroke();
-  ctx.fillStyle = C.btext; ctx.textAlign = "left";
-  lines.forEach((l, i) => ctx.fillText(l, bx + 7, by + 15 + i * 14));
+  const w = Math.max(...lines.map((l) => ctx.measureText(l).width)) + 14, h = lines.length * 15 + 10;
+  const bx = Math.round(Math.max(4, Math.min(vw - w - 4, x - w / 2))), by = Math.round(Math.max(4, y - h - 6));
+  ctx.fillStyle = "#1c1c1a"; ctx.fillRect(bx - 2, by - 2, w + 4, h + 4);
+  ctx.fillStyle = "#fffdf5"; ctx.fillRect(bx, by, w, h);
+  ctx.fillStyle = "#1c1c1a"; ctx.fillRect(Math.round(x) - 3, by + h, 6, 4); ctx.fillRect(Math.round(x) - 1, by + h + 4, 2, 3);
+  ctx.fillStyle = "#1c1c1a"; lines.forEach((l, i) => ctx.fillText(l, bx + 7, by + 6 + i * 15));
 }
-function mapXY(e) { const r = $("#map").getBoundingClientRect(); return { x: (e.clientX - r.left) * W / r.width, y: (e.clientY - r.top) * H / r.height }; }
+
+function drawMinimap(pos, vw, vh) {
+  const c = $("#minimap"), ctx = c.getContext("2d");
+  ctx.imageSmoothingEnabled = false;
+  if (M.thumb?.naturalWidth) ctx.drawImage(M.thumb, 0, 0, c.width, c.height);
+  const kx = c.width / (M.W * TILE), ky = c.height / (M.H * TILE);
+  for (const [aid, a] of Object.entries(pos)) { ctx.fillStyle = aid === S.sel ? "#ffd866" : "#e34948"; ctx.fillRect(Math.round(a.x * kx) - 1, Math.round(a.y * ky) - 1, 3, 3); }
+  ctx.strokeStyle = "#fff"; ctx.lineWidth = 1;
+  ctx.strokeRect(Math.round(cam.x * kx) + .5, Math.round(cam.y * ky) + .5, Math.round(vw / cam.zoom * kx), Math.round(vh / cam.zoom * ky));
+}
+
 function agentAt(e) {
-  const { x, y } = mapXY(e), pos = positions(S.frames[S.tick]);
-  let best = null, bd = 22;
-  for (const [aid, p] of Object.entries(pos)) { const d = Math.hypot(p.x - x, p.y - 8 - y); if (d < bd) { bd = d; best = aid; } }
+  const { x, y } = screenToWorld(e);
+  let best = null, bd = 18 / Math.min(1, cam.zoom);
+  for (const [aid, p] of Object.entries(drawState.pos)) { const d = Math.hypot(p.x - x, p.y - 8 - y); if (d < bd) { bd = d; best = aid; } }
   return best;
 }
 function onMapClick(e) { const a = agentAt(e); if (a) { S.sel = a; renderAgent(a); } }
 function onMapHover(e) {
   const a = agentAt(e); const f = S.frames[S.tick];
   if (a && f) { const st = f.agents[a]; showTip(e, `<b>${esc(S.manifest.agents[a].name)}</b><br>${esc(st.activity)}<br><span class="muted">${esc(st.location)} · ${esc(st.arena)}</span>`); }
-  else hideTip();
+  else {
+    const { x, y } = screenToWorld(e); const cx = Math.floor(x / TILE), cy = Math.floor(y / TILE);
+    const pl = Object.values(M.data?.places || {}).find((p) => cx >= p.box[0] && cx <= p.box[2] && cy >= p.box[1] && cy <= p.box[3]);
+    if (pl) { const ar = Object.entries(pl.arenas).find(([, a]) => cx >= a.rect[0] && cx <= a.rect[2] && cy >= a.rect[1] && cy <= a.rect[3]); showTip(e, `<b>${esc(pl.name)}</b> · ${esc(pl.label)}${ar ? `<br><span class="muted">${esc(ar[0])}</span>` : ""}`); }
+    else hideTip();
+  }
 }
 
 // ------------------------------------------------------------ side panels
@@ -300,11 +551,13 @@ async function renderAgent(aid) {
     .map(([o, r]) => `${esc(name(o))} <span class="muted">(${r.relation_type}, fam ${r.familiarity}, aff ${r.affinity})</span>`).join("<br>");
   const mem = (m) => `<div class="mem ${m.kind}"><div>${esc(m.text)}</div><div class="meta">${esc(m.time?.slice(11, 16))} · ${m.kind} · ${m.source_type} · importance ${m.importance}${m.score ? ` · score ${m.score.s} (rel ${m.score.rel}, rec ${m.score.rec}, imp ${m.score.imp})` : ""}${S.debug && m.originating_event_ids?.length ? ` <span class="tag gt">events ${m.originating_event_ids.join(",")}</span>` : ""}</div></div>`;
   const mods = st.modules && Object.keys(st.modules).length ? `<dt>Modules</dt><dd>${esc(JSON.stringify(st.modules))}</dd>` : "";
+  const place = M.data?.places?.[st.location];
   $("#agentPanel").innerHTML = `
     <div class="agent-head"><div class="avatar" style="background-image:url(/ga_assets/characters/${p.sprite}.png)"></div>
-      <div><div style="font-weight:700">${esc(p.name)}</div><div class="muted small">${esc(p.demographics.year)} · ${esc(p.demographics.major)} · ${esc(p.demographics.role)}</div></div></div>
+      <div><div style="font-weight:700">${esc(p.name)}</div><div class="muted small">${esc(p.demographics.year)} · ${esc(p.demographics.major)} · ${esc(p.demographics.role)}</div>
+      <button class="pill" id="btnLocate">locate on map</button></div></div>
     <dl class="kv">
-      <dt>Now</dt><dd>${esc(st.activity)} <span class="muted">@ ${esc(st.location)} / ${esc(st.arena)}</span></dd>
+      <dt>Now</dt><dd>${esc(st.activity)} <span class="muted">@ ${esc(st.location)}${place && place.label !== st.location ? ` (${esc(place.label)})` : ""} / ${esc(st.arena)}</span></dd>
       <dt>Goal</dt><dd>${esc(st.goal || "follow the routine")}</dd>
       <dt>Personality</dt><dd>${esc(p.personality.traits.join(", "))}; ${esc(p.personality.communication_style)}</dd>
       <dt>Interests</dt><dd>${esc([...p.interests.topics, ...p.interests.hobbies].join(", "))}</dd>
@@ -318,6 +571,7 @@ async function renderAgent(aid) {
     <details open><summary>Reflections (${d.reflections.length})</summary>${d.reflections.map(mem).join("") || '<div class="muted small">none yet</div>'}</details>
     <details><summary>Recent memories</summary>${d.memories.slice(0, 25).map(mem).join("")}</details>
     <details><summary>Recent conversations (${d.conversations.length})</summary>${d.conversations.map((c) => `<div class="mem chat">${c.transcript.map(([s, t]) => `<b>${esc(s.split(" ")[0])}:</b> ${esc(t)}`).join("<br>")}<div class="meta">${esc(c.time.slice(11, 16))} @ ${esc(c.location)}</div></div>`).join("")}</details>`;
+  $("#btnLocate").onclick = () => { const a = drawState.pos[aid]; if (a) { if (cam.zoom < 0.75) cam.zoom = 1; centerOn(a.x, a.y); } cam.follow = true; $("#followSel").checked = true; };
 }
 
 // ---------------------------------------------------------------- culture
@@ -499,7 +753,7 @@ async function chainHtml(uid) {
     if (m.missing) return `<div class="node mem"><span class="kind">memory</span> <span class="muted">(${esc(m.node_id)} not found)</span></div>`;
     let inner = "";
     if (m.world_event) inner += `<div class="node world"><span class="kind">world event (ground truth)</span> <span class="tag gt">${esc(m.world_event.latent_type)} · ${esc(m.world_event.id)} · ${esc(m.world_event.scenario)}</span><div>${esc(m.world_event.narrative)}</div></div>`;
-    if (m.observation) inner += `<div class="node obs"><span class="kind">${esc(m.observation.source_type)} observation — what ${esc(name(m.agent))} actually noticed</span><div>${(m.observation.facts || []).map((f) => esc(f.text) + (f.p_attend != null ? ` <span class="muted small">(p=${f.p_attend})</span>` : "")).join("<br>")}</div>${inner.includes("world") ? "" : ""}</div>`;
+    if (m.observation) inner += `<div class="node obs"><span class="kind">${esc(m.observation.source_type)} observation — what ${esc(name(m.agent))} actually noticed</span><div>${(m.observation.facts || []).map((f) => esc(f.text) + (f.p_attend != null ? ` <span class="muted small">(p=${f.p_attend})</span>` : "")).join("<br>")}</div></div>`;
     inner += (m.from_utterances || []).map(uttNode).join("") + (m.from_memories || []).map(memNode).join("");
     return `<div class="node mem"><span class="kind">${esc(name(m.agent))}'s ${esc(m.kind)} memory · ${esc(m.source_type)}</span><div>${esc(m.text)}</div>${inner}</div>`;
   };

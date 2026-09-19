@@ -34,13 +34,13 @@ ARENAS = {
 }
 
 # Display-only labels for the frontend map (agents only ever see the generic names).
-HOMEWOOD_LABELS = {
-    "Dorm": "AMR / Wolman",
-    "Dining Hall": "FFC",
-    "Classroom": "Hodson / Gilman",
-    "Library": "MSE Library",
-    "Research Lab": "Hackerman",
-    "Gym": "Rec Center",
+HOMEWOOD_LABELS = {   # the real Homewood buildings each place is drawn as (frontend/homewood_map.json)
+    "Dorm": "AMR II",
+    "Dining Hall": "Hopkins Cafe (FFC)",
+    "Classroom": "Gilman Hall",
+    "Library": "MSE Library / Brody",
+    "Research Lab": "Hackerman Hall",
+    "Gym": "O'Connor Rec Center",
     "Cafe": "Levering Cafe",
     "Quad": "Keyser Quad",
 }
