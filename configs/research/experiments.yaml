@@ -1,74 +1,78 @@
-"version": 1
-"experiments":
-  -
-    "id": "emergence"
-    "title": "Spontaneous emergence and cultural development"
-    "design": "configs/designs/memetics/emergence.yaml"
-    "questions":
-      - "What ideas appear, circulate, change, and persist in these societies?"
-  -
-    "id": "memory"
-    "title": "Memory and transformation"
-    "design": "configs/designs/memetics/memory.yaml"
-    "questions":
-      - "How do reconstructive memory and wording retention affect the preservation and transformation of ideas?"
-  -
-    "id": "abstraction"
-    "title": "Reflection, abstraction and recombination"
-    "design": "configs/designs/memetics/abstraction.yaml"
-    "questions":
-      - "How do private reflections and remembered experiences contribute to publicly expressed concepts?"
-  -
-    "id": "communities"
-    "title": "Social structure and local cultures"
-    "design": "configs/designs/memetics/communities.yaml"
-    "questions":
-      - "How do social ties relate to shared and diverging interpretations, including transformations across groups?"
-  -
-    "id": "communication"
-    "title": "Communication and negotiation"
-    "design": "configs/designs/memetics/communication.yaml"
-    "questions":
-      - "How do clarification, handovers and meetings affect meaning, negotiation and later reuse?"
-  -
-    "id": "records"
-    "title": "Speech, records and cultural memory"
-    "design": "configs/designs/memetics/records.yaml"
-    "questions":
-      - "How do ideas move between speech, writing and private memory, and what changes along those paths?"
-  -
-    "id": "inheritance"
-    "title": "Turnover and cultural inheritance"
-    "design": "configs/designs/memetics/inheritance.yaml"
-    "questions":
-      - "What do newcomers acquire, reinterpret or introduce, and what persists after departures?"
-  -
-    "id": "circumstances"
-    "title": "Changing circumstances and historical dependence"
-    "design": "configs/designs/memetics/circumstances.yaml"
-    "questions":
-      - "How do changing circumstances affect concepts and explanations, and what persists when circumstances return?"
-  -
-    "id": "influence"
-    "title": "Influence, competition and coexistence"
-    "design": "configs/designs/memetics/influence.yaml"
-    "questions":
-      - "How do implemented influence mechanisms affect the circulation and coexistence of interpretations?"
-  -
-    "id": "social_meaning"
-    "title": "Social and pragmatic meaning"
-    "design": "configs/designs/memetics/social_meaning.yaml"
-    "questions":
-      - "How do expressions and ideas acquire or change social, evaluative and pragmatic functions?"
-  -
-    "id": "contingency"
-    "title": "Contingency and recurring cultural patterns"
-    "design": "configs/designs/memetics/contingency.yaml"
-    "questions":
-      - "Which ideas recur across independent societies and agent models, and which histories are society-specific?"
-  -
-    "id": "long_horizon"
-    "title": "Long-horizon cultural development"
-    "design": "configs/designs/memetics/long_horizon.yaml"
-    "questions":
-      - "Does the repertoire accumulate, stabilize, cycle, fragment or repeatedly forget over extended histories?"
+version: 1
+experiments:
+- id: emergence
+  title: Spontaneous emergence and cultural development
+  design: configs/designs/memetics/emergence.yaml
+  questions:
+  - What ideas appear, circulate, change, and persist in these societies?
+  environment: campus
+- id: memory
+  title: Memory and transformation
+  design: configs/designs/memetics/memory.yaml
+  questions:
+  - How do reconstructive memory and wording retention affect the preservation and
+    transformation of ideas?
+  environment: campus
+- id: abstraction
+  title: Reflection, abstraction and recombination
+  design: configs/designs/memetics/abstraction.yaml
+  questions:
+  - How do private reflections and remembered experiences contribute to publicly expressed
+    concepts?
+  environment: campus
+- id: communities
+  title: Social structure and local cultures
+  design: configs/designs/memetics/communities.yaml
+  questions:
+  - How do social ties relate to shared and diverging interpretations, including transformations
+    across groups?
+  environment: campus
+- id: communication
+  title: Communication and negotiation
+  design: configs/designs/memetics/communication.yaml
+  questions:
+  - How do conversation length, friend catch-ups and group conversations affect interpretation,
+    negotiation and later reuse?
+  environment: campus
+- id: influence
+  title: Influence, competition and coexistence
+  design: configs/designs/memetics/influence.yaml
+  questions:
+  - How do implemented influence mechanisms affect the circulation and coexistence
+    of interpretations?
+  environment: campus
+- id: social_meaning
+  title: Social and pragmatic meaning
+  design: configs/designs/memetics/social_meaning.yaml
+  questions:
+  - How do expressions and ideas acquire or change social, evaluative and pragmatic
+    functions?
+  environment: campus
+- id: contingency
+  title: Contingency and recurring cultural patterns
+  design: configs/designs/memetics/contingency.yaml
+  questions:
+  - Which ideas recur across independent societies and agent models, and which histories
+    are society-specific?
+  environment: campus
+- id: long_horizon
+  title: Long-horizon cultural development
+  design: configs/designs/memetics/long_horizon.yaml
+  questions:
+  - Does the repertoire accumulate, stabilize, cycle, fragment or repeatedly forget
+    over extended histories?
+  environment: campus
+- id: shared_background
+  title: Shared background and cultural development
+  design: configs/designs/memetics/shared_background.yaml
+  questions:
+  - How is supplied shared knowledge reused, rejected or reinterpreted, and what additional
+    ideas develop?
+  environment: campus
+- id: naming
+  title: Campus naming and shared referents
+  design: configs/designs/memetics/naming.yaml
+  questions:
+  - How do dining-hall naming practices circulate across cohorts, and do different
+    names coexist with mutual understanding?
+  environment: campus

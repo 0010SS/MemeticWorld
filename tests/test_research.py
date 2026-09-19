@@ -158,7 +158,7 @@ def test_mock_is_explicitly_not_a_semantic_result(society):
 def test_all_study_presets_and_independent_agent_replicas(tmp_path):
     from backend.research.experiments import catalog, resolve
     from backend.experiment.design import expand
-    assert len(catalog()) == 12
+    assert len(catalog()) == 11
     for item in catalog():
         d = resolve(item["id"], tmp_path)
         cells = expand(d)
@@ -178,7 +178,7 @@ def test_api_evidence_exports_and_path_confinement(society, monkeypatch):
     observe(society, judge_backend=ScriptedJudge())
     monkeypatch.setattr(server, "RUNS", society.parent)
     client = TestClient(server.app)
-    assert len(client.get("/api/research/experiments").json()) == 12
+    assert len(client.get("/api/research/experiments").json()) == 11
     analysis = client.get("/api/research/analysis", params={"run": "society"}).json()
     assert analysis["threads"][0]["occurrences"][0]["event_id"] == "u0"
     assert client.get("/api/research/evidence", params={"run": "society", "event_id": "hidden1"}).json() == []

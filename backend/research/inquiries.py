@@ -13,7 +13,7 @@ from backend.research.reports import export_inquiry
 
 
 def inquire(run_dir, question, *, backend=None, model=None, start=None, end=None,
-            actor=None, include_private=True, limit=100, judge_backend=None):
+            actor=None, include_private=True, limit=100, judge_backend=None, analysis_config=None):
     question = question.strip()
     if not question:
         raise ValueError("A research question is required")
@@ -26,8 +26,9 @@ def inquire(run_dir, question, *, backend=None, model=None, start=None, end=None
     index = evidence.build()
     analysis = read_json(run / "analysis.json", {})
     if analysis.get("kind") != "memetics" or analysis.get("input", {}).get("fingerprint") != index["fingerprint"]:
-        analysis = observe(run, backend, model, judge_backend=judge_backend)
-    spec = settings(evidence.cfg, backend, model)
+        analysis = observe(run, backend, model, judge_backend=judge_backend, analysis_config=analysis_config)
+    cfg = {**evidence.cfg, "analysis": analysis_config} if analysis_config is not None else evidence.cfg
+    spec = settings(cfg, backend, model)
     scope = {"start": start, "end": end, "actor": actor,
              "channels": ["speech", "record", "environment", "initial"] + (["private"] if include_private else [])}
     request = {"question": question, "scope": scope, "limit": limit, "analysis_id": analysis["analysis_id"],

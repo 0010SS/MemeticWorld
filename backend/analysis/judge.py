@@ -300,7 +300,7 @@ def _mock_factory(spec, run_dir):
     return MockJudge(spec.get("model") or "mock", spec["prompt_version"], spec.get("id"))
 
 
-PROVIDERS: dict[str, Callable] = {"claude_cli": _llm_factory, "anthropic": _llm_factory, "auto": _llm_factory,
+PROVIDERS: dict[str, Callable] = {"claude_cli": _llm_factory, "anthropic": _llm_factory, "openai": _llm_factory, "auto": _llm_factory,
                                   "mock": _mock_factory, "replay": _mock_factory}
 
 

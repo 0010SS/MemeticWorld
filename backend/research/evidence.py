@@ -15,7 +15,7 @@ import yaml
 
 from backend.research.common import digest, jsonl, lock, read_json, write_json
 
-SCHEMA = 3
+SCHEMA = 4
 PRIVATE = {"memory_encoded", "memory_merged", "reflection", "reminding", "viewpoint",
            "observation", "job_decision", "record_write_decision", "record_read"}
 HIDDEN = {"job_truth", "regime_active", "world_event_start", "event_beat"}
@@ -95,6 +95,8 @@ class Evidence:
                 kind = row.get("type", "unknown")
                 eid = str(row.get("id") or f"trace:{seq}")
                 channel = PUBLIC.get(kind, "private" if kind in PRIVATE else "environment")
+                if kind == "shared_background" or (kind == "memory_encoded" and row.get("source_type") == "seed"):
+                    channel = "initial"
                 if kind in HIDDEN:
                     channel = "hidden"
                 actor = row.get("speaker") or row.get("agent") or row.get("operator") or row.get("actor")

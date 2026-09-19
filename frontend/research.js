@@ -16,6 +16,15 @@ function query(params) { return new URLSearchParams(Object.entries(params).filte
 function message(text, error = false) { const el = $("#researchMessage"); el.textContent = text; el.classList.toggle("error", error); }
 function guarded(fn) { return async (...args) => { try { await fn(...args); } catch(e) { message(e.message, true); } }; }
 function observer() { return {backend: $("#observerBackend").value || null, model: $("#observerModel").value.trim() || null}; }
+function studyOptions() {
+  return {experiment:$("#studySelect").value, backend:$("#studyBackend").value || null,
+    population:$("#studyPopulation").value.trim() || null,
+    population_size:$("#studySize").value ? +$("#studySize").value : null,
+    days:$("#studyDays").value ? +$("#studyDays").value : null,
+    background_markdown:$("#studyBackground").value.trim() || null,
+    agent_model:$("#studyAgentModel").value.trim() || null,
+    observer_model:$("#studyObserverModel").value.trim() || null};
+}
 async function launch(body) {
   const job = await api("/jobs", {method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify(body)});
   message(`Started ${body.action}. The job continues if this page closes. Saved progress and logs appear below.`);
@@ -30,11 +39,17 @@ export function mountResearch(callbacks) {
     <div id="researchMessage" role="status" aria-live="polite"></div>
     <div class="research-columns"><section class="panel"><h2>Experiment library</h2><p class="muted">Editable designs change existing world conditions. The observer remains open to developments beyond the motivating questions.</p>
       <label class="research-field">Study<select id="studySelect" aria-label="Study"></select></label><div id="studyDescription"></div>
-      <div class="research-controls"><label class="research-field">Execution<select id="studyBackend"><option value="mock">Mock · software verification</option><option value="">Configured live providers</option><option value="claude_cli">Claude CLI</option><option value="anthropic">Anthropic API</option></select></label><label class="research-field">Parallel societies<input id="studyParallel" type="number" min="1" max="64" value="1"></label></div>
+      <details><summary>Population, duration and shared background</summary>
+        <div class="research-controls"><label class="research-field">Population file<input id="studyPopulation" placeholder="From study, e.g. configs/population/homewood500.yaml"></label><label class="research-field">Number of people<input id="studySize" type="number" min="1" placeholder="From study"></label><label class="research-field">Days per society<input id="studyDays" type="number" min="1" placeholder="From study"></label></div>
+        <label class="research-field">Shared world introduction (Markdown)<textarea id="studyBackground" rows="5" placeholder="Optional background, shared knowledge or an existing expression given to every agent."></textarea></label>
+        <p class="muted small">The introduction is included in identity prompts throughout the run and recorded as supplied starting material. In the shared-background comparison, the absent condition stays empty.</p>
+        <div class="research-controls"><label class="research-field">Agent model<input id="studyAgentModel" placeholder="From study"></label><label class="research-field">Observer model<input id="studyObserverModel" placeholder="From study"></label></div>
+      </details>
+      <div class="research-controls"><label class="research-field">Execution<select id="studyBackend"><option value="mock">Mock · software verification</option><option value="">Configured live providers</option><option value="openai">GPT API · .env key</option><option value="claude_cli">Claude CLI</option><option value="anthropic">Anthropic API</option></select></label><label class="research-field">Parallel societies<input id="studyParallel" type="number" min="1" max="64" value="1"></label></div>
       <div class="research-controls"><button class="primary" id="runStudy">Run full experiment</button><button class="pill" id="reportStudy">Refresh report</button></div>
       <p id="studyExecutionNote" class="muted small"></p><div id="studyStatus"></div></section>
     <section class="panel"><h2>Investigate the selected society</h2><p class="muted" id="researchRunName">Select a run in the header.</p>
-      <div class="research-controls"><label class="research-field">Observer<select id="observerBackend"><option value="">From run configuration</option><option value="mock">Mock · no semantic judgments</option><option value="claude_cli">Claude CLI</option><option value="anthropic">Anthropic API</option></select></label><label class="research-field">Model override<input id="observerModel" placeholder="From configuration"></label></div>
+      <div class="research-controls"><label class="research-field">Observer<select id="observerBackend"><option value="">From run configuration</option><option value="mock">Mock · no semantic judgments</option><option value="openai">GPT API · .env key</option><option value="claude_cli">Claude CLI</option><option value="anthropic">Anthropic API</option></select></label><label class="research-field">Model override<input id="observerModel" placeholder="From configuration"></label></div>
       <div class="research-controls"><button class="primary" id="observeRun">Observe recorded history</button><button class="pill" id="auditRun">Audit interpretations</button><button class="pill" id="pauseRun">Pause simulation</button></div>
       <details><summary>Continue or extend a recorded society</summary><div class="research-controls"><label class="research-field">New run directory<input id="continueOut" placeholder="e.g. extended_society"></label><label class="research-field">Total days<input id="continueDays" type="number" min="1" placeholder="Original horizon"></label><button class="pill" id="continueRun">Continue and analyze</button></div><p class="muted small">Replays and verifies the committed prefix before continuing. Uses a new recording and the original simulation code.</p></details>
       <label class="research-field">Research question<textarea id="researchQuestion" rows="3" placeholder="How did the ideas around responsibility change, and did different groups interpret them differently?"></textarea></label>
@@ -47,8 +62,9 @@ export function mountResearch(callbacks) {
   $("#studySelect").onchange = guarded(refreshStudy);
   $("#studyBackend").onchange = guarded(refreshStudy);
   $("#snapshotSelect").onchange = guarded(() => refreshAnalysis($("#snapshotSelect").value));
-  $("#runStudy").onclick = guarded(() => launch({action:"experiment", experiment:$("#studySelect").value, backend:$("#studyBackend").value || null, parallel:+$("#studyParallel").value}));
-  $("#reportStudy").onclick = guarded(() => launch({action:"report", experiment:$("#studySelect").value, backend:$("#studyBackend").value || null}));
+  for (const id of ["studyPopulation", "studySize", "studyDays", "studyBackground", "studyAgentModel", "studyObserverModel"]) $("#" + id).onchange = guarded(refreshStudy);
+  $("#runStudy").onclick = guarded(() => launch({action:"experiment", ...studyOptions(), parallel:+$("#studyParallel").value}));
+  $("#reportStudy").onclick = guarded(() => launch({action:"report", ...studyOptions()}));
   $("#observeRun").onclick = guarded(() => launch({action:"observe", run:hooks.run(), ...observer()}));
   $("#auditRun").onclick = guarded(() => launch({action:"audit", run:hooks.run(), ...observer()}));
   $("#pauseRun").onclick = guarded(async () => { await api("/pause?" + query({run:hooks.run()}), {method:"POST"}); message("Pause requested. The simulation will stop after its current tick is committed."); });
@@ -56,7 +72,7 @@ export function mountResearch(callbacks) {
   $("#askRun").onclick = guarded(() => launch({action:"inquire", run:hooks.run(), question:$("#researchQuestion").value,
     start:$("#inquiryStart").value ? +$("#inquiryStart").value : null, end:$("#inquiryEnd").value ? +$("#inquiryEnd").value : null,
     agent:$("#inquiryAgent").value || null, public_only:$("#inquiryPublic").checked, ...observer()}));
-  $("#askStudy").onclick = guarded(() => launch({action:"synthesize", experiment:$("#studySelect").value, backend:$("#studyBackend").value || null, question:$("#researchQuestion").value}));
+  $("#askStudy").onclick = guarded(() => launch({action:"synthesize", ...studyOptions(), question:$("#researchQuestion").value}));
   clearInterval(timer);
   timer = setInterval(() => { if (root.classList.contains("active")) guarded(refreshJobs)(); }, 5000);
 }
@@ -85,7 +101,8 @@ async function refreshStudy() {
   $("#studyDescription").innerHTML = `<div class="research-tags"><span>${entry.runs} societies</span><span>${entry.seeds.length} world seeds</span><span>${entry.replicates} agent replica(s)</span><span>base horizon ${entry.days} days</span></div><ul>${entry.questions.map(q => `<li>${esc(q)}</li>`).join("")}</ul><details><summary>Conditions and resolved overlays</summary><pre>${esc(JSON.stringify(entry.factors, null, 2))}</pre><p class="muted small">Design: ${esc(entry.design)}. Copy and edit this YAML to create another study.</p></details>`;
   const backend = $("#studyBackend").value;
   $("#studyExecutionNote").textContent = backend === "mock" ? "Mock mode exercises the software only. It cannot provide evidence about memes or meaning change." : `This launches ${entry.runs} simulations plus observer and inquiry calls using the selected live providers.`;
-  const result = await api("/experiment?" + query({name:entry.id, backend}));
+  const result = await api("/experiment-preview", {method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify({action:"experiment", ...studyOptions()})});
+  $("#studyExecutionNote").textContent += ` Population: ${result.population} (${result.population_size ?? "all"} people); horizon: ${result.days.join(" / ")} days. ${entry.environment === "workshop" ? "This study uses the workshop environment and its crew population." : "Campus society."}`;
   const counts = {};
   result.runs.forEach(r => counts[r.status] = (counts[r.status] || 0) + 1);
   $("#studyStatus").innerHTML = `<p>${Object.entries(counts).map(([s,n]) => `<span class="tag">${n} ${esc(s)}</span>`).join(" ")}</p>` + (result.pipeline ? `<p class="muted">Pipeline: ${esc(result.pipeline.status)} · ${esc(result.pipeline.stage)}</p>` : "") +

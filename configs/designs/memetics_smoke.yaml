@@ -1,0 +1,20 @@
+# Complete offline pipeline: simulate, observe, inquire, synthesize and report.
+name: memetics_smoke
+base: configs/memetics.yaml
+seeds: [11, 12]
+days: 1
+common:
+  population_size: 4
+  day_start: "11:00"
+  day_end: "14:00"
+  llm: {backend: mock}
+observer: {backend: mock, model: mock}
+factors:
+  introduction:
+    absent:
+      shared_background: {file: null, markdown: null}
+    supplied:
+      shared_background: {file: configs/backgrounds/campus.md}
+questions:
+  - How was the supplied introduction reused or reinterpreted?
+outcomes: [memetics.n_threads, memetics.n_multi_agent_threads, memetics.n_changes]

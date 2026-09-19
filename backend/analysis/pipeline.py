@@ -54,10 +54,14 @@ def analyze(run_dir: Path, llm_backend: str | None = None, probes: bool = True, 
             verbose: bool = True, llm_model: str | None = None) -> dict:
     """llm_backend / llm_model override the observer spec; otherwise cfg analysis.observer is used,
     falling back to the agents' llm settings."""
-    rd = RunData(run_dir)
-    if (rd.cfg.get("analysis") or {}).get("pipeline") == "memetics":
+    # Open research builds its own committed-history index. Avoid loading the entire
+    # legacy trace and final memories first (particularly costly for large campuses).
+    import yaml
+    cfg = yaml.safe_load((Path(run_dir) / "config.resolved.yaml").read_text(encoding="utf-8"))
+    if (cfg.get("analysis") or {}).get("pipeline") == "memetics":
         from backend.research.observer import observe
         return observe(run_dir, backend=llm_backend, model=llm_model)
+    rd = RunData(run_dir)
     if rd.cfg.get("world", {}).get("mode") == "commons":
         from backend.analysis.commons import analyze_commons
         out = analyze_commons(run_dir)

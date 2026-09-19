@@ -92,6 +92,9 @@ class Agent:
         sc.age = profile.demographics.get("age")
         sc.innate = profile.ga_innate()
         sc.learned = profile.ga_learned()
+        background = (cfg.get("shared_background") or {}).get("markdown")
+        if background:
+            sc.learned += "\n\nShared introduction to the world:\n" + background
         sc.currently = ""
         sc.lifestyle = profile.ga_lifestyle()
         sc.living_area = f"{profile.home['location']}:{profile.home['arena']}"

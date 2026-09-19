@@ -6,6 +6,8 @@ import itertools
 import json
 import math
 import random
+import os
+import shutil
 from collections import defaultdict
 from pathlib import Path
 from statistics import mean
@@ -29,6 +31,96 @@ def resolve(name, runs_root=None):
     else:
         path = name
     return D.load_design(path, runs_root=runs_root)
+
+
+def configure(design, *, population=None, population_size=None, days=None, background=None,
+              agent_model=None, observer_model=None):
+    """Save a concrete custom design so subprocesses, status and reports use the same inputs."""
+    options = {k: v for k, v in locals().copy().items() if k != "design" and v is not None}
+    if not options:
+        return design
+    if population_size is not None and population_size < 1:
+        raise ValueError("Population size must be positive")
+    if days is not None and days < 1:
+        raise ValueError("Days must be positive")
+    raw = yaml.safe_load(design.path.read_text(encoding="utf-8"))
+    common = raw.setdefault("common", {})
+    if population:
+        common["population"] = population
+        if population_size is None:
+            common["population_size"] = None  # use the entire selected file
+    if population_size is not None:
+        common["population_size"] = population_size
+    if days is not None:
+        raw["days"] = days
+    if background:
+        from backend.config import resolve_background
+        spec = resolve_background({"shared_background": {"file": background}})["shared_background"]
+        # Freeze the text in the design; neither workers nor replay re-read an edited file.
+        spec["file"] = None
+        common["shared_background"] = spec
+        if "introduction" in raw.get("factors", {}):
+            raw["factors"]["introduction"]["supplied"]["shared_background"] = spec
+    if agent_model:
+        common.setdefault("llm", {})["model"] = agent_model
+    if observer_model:
+        raw.setdefault("observer", {})["model"] = observer_model
+    suffix = digest(raw)[:12]
+    raw["name"] = design.name + "_custom_" + suffix
+    directory = design.runs_root / ".designs"
+    directory.mkdir(parents=True, exist_ok=True)
+    path = directory / (raw["name"] + ".yaml")
+    path.write_text(yaml.safe_dump(raw, sort_keys=False, allow_unicode=True), encoding="utf-8")
+    result = D.load_design(path, design.runs_root)
+    for cell in D.expand(result):
+        cell.config()
+    return result
+
+
+def check(design, backend_override=None, cells=None):
+    """Local readiness checks, without making paid provider calls or exposing credentials."""
+    from backend.config import read_config_yaml, input_fingerprints
+    cells = D.expand(design, backend_override) if cells is None else cells
+    errors, providers, populations = [], set(), {}
+    for cell in cells:
+        cfg = cell.config()
+        path = Path(cfg['population'])
+        if not path.is_absolute():
+            path = REPO_ROOT / path
+        data = read_config_yaml(path)
+        size = cfg.get('population_size')
+        available = len(data.get('agents', []))
+        if not available or (size is not None and (not isinstance(size, int) or not 1 <= size <= available)):
+            errors.append(f'{cell.cell_id}: population_size must be between 1 and {available}, or null for all')
+        populations[str(path)] = size if size is not None else available
+        input_fingerprints(cfg)
+        from backend.simulation.world import Clock
+        clock = Clock(cfg)
+        if clock.ticks_per_day < 1 or clock.total_ticks < 1:
+            errors.append(f'{cell.cell_id}: duration must contain at least one tick')
+        from backend.research.observer import settings
+        for label, spec in [('agents', cfg['llm']), ('observer', settings(cfg))]:
+            backend = spec['backend']
+            if backend == 'auto':
+                backend = 'anthropic' if os.environ.get('ANTHROPIC_API_KEY') else 'claude_cli'
+            providers.add((label, backend, spec.get('model')))
+    for label, backend, model in sorted(providers):
+        if backend == 'openai':
+            from backend.llm.environment import setting
+            if not setting('OPENAI_API_KEY'):
+                errors.append(f'{label}: paste OPENAI_API_KEY into the project .env file')
+        if backend == 'claude_cli' and not shutil.which('claude'):
+            errors.append(f'{label}: claude CLI is not on PATH; install/authenticate it or select another backend')
+        if backend == 'anthropic':
+            if not os.environ.get('ANTHROPIC_API_KEY'):
+                errors.append(f'{label}: ANTHROPIC_API_KEY is not set')
+            if model in (None, 'haiku', 'sonnet', 'opus'):
+                errors.append(f'{label}: Anthropic API requires a full model ID; set --agent-model / --observer-model')
+        if backend not in ('mock', 'openai', 'claude_cli', 'anthropic'):
+            errors.append(f'{label}: unsupported backend {backend}')
+    return {'name': design.name, 'ready': not errors, 'runs': len(cells), 'populations': populations,
+            'providers': [{'role': role, 'backend': backend, 'model': model} for role, backend, model in sorted(providers)],
+            'errors': sorted(set(errors)), 'authentication': 'Presence checked locally; live authentication is not verified.'}
 
 
 def interval(values, seed=0, samples=2000):
@@ -179,7 +271,7 @@ def synthesize(design, question, backend_override=None, cells=None):
         raise ValueError("No complete, compatible society analyses are available")
     results, sources, contexts = [], {}, []
     for c in complete:
-        result = inquire(c.run_dir, question, backend=backend_override)
+        result = inquire(c.run_dir, question, backend=backend_override, analysis_config=c.config()["analysis"])
         results.append({"run": str(c.run_dir), "inquiry": result["id"], "analysis": result["analysis_id"]})
         namespace = c.run_dir.relative_to(D.design_dir(design, backend_override)).as_posix()
         evidence = read_json(c.run_dir / "inquiries" / result["id"] / "evidence.json", [])
@@ -261,6 +353,9 @@ def run(design, cells=None, *, backend_override=None, parallel=1, dry_run=False,
         raise ValueError("Parallelism must be between 1 and 64")
     if dry_run:
         return D.run_design(design, cells, parallel, backend_override, dry_run=True)
+    readiness = check(design, backend_override, cells)
+    if not readiness['ready']:
+        raise ValueError('Experiment is not ready: ' + '; '.join(readiness['errors']))
     root = D.design_dir(design, backend_override)
     with lock(root / ".pipeline.lock"):
         state = {"status": "running", "stage": "simulate_and_observe", "errors": [],

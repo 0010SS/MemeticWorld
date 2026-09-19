@@ -206,7 +206,7 @@ def load_population(path: str | Path, n: int | None = None, include_reserves: bo
     p = Path(path)
     if not p.is_absolute():
         p = REPO_ROOT / p
-    with p.open() as source:
+    with p.open(encoding="utf-8-sig") as source:
         data = yaml.safe_load(source)
     friend_definitions = _friend_group_definitions(data)
     raw = [dict(a, _reserve=False) for a in data["agents"][: n or None]]

@@ -620,6 +620,8 @@ def launch(config: str, days: int | None = None, backend: str | None = None):
     if backend:
         sets.append(f"llm.backend={backend}")
         sets.append(f"analysis.observer.backend={backend}")
+        if backend == "openai":
+            sets += ["llm.model=$OPENAI_MODEL", "analysis.observer.model=$OPENAI_OBSERVER_MODEL"]
     if sets:
         cmd += ["--set", *sets]
     RUNS.mkdir(parents=True, exist_ok=True)

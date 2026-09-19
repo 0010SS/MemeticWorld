@@ -75,6 +75,10 @@ class ProviderFailure(RuntimeError):
     """A provider failure must not be interpreted as an in-world statement."""
 
 
+class NonRetryableProviderFailure(ProviderFailure):
+    """Configuration or authentication must change before another request can succeed."""
+
+
 class Backend:
     name = "base"
 
@@ -132,6 +136,48 @@ class AnthropicBackend(Backend):
             kw["system"] = system
         msg = self.client.messages.create(**kw)
         return "".join(b.text for b in msg.content if getattr(b, "type", "") == "text")
+
+
+class OpenAIBackend(Backend):
+    """Stateless Responses API calls; prompts and replies use the existing record/replay layer."""
+    name = "openai"
+
+    def __init__(self, model=None, timeout=120):
+        from backend.llm.environment import resolve_model
+        self.model = resolve_model(model)
+        self.timeout = timeout
+
+    def generate(self, prompt, system, max_tokens, temperature):
+        import httpx
+        from backend.llm.environment import setting
+        key = setting("OPENAI_API_KEY")
+        if not key:
+            raise NonRetryableProviderFailure("Paste OPENAI_API_KEY into the project's .env file")
+        payload = {"model": self.model, "input": prompt, "store": False,
+                   "max_output_tokens": max(16, int(max_tokens))}
+        if system:
+            payload["instructions"] = system
+        # These GPT presets support no-reasoning mode, preserving the short GA token budgets.
+        # Other model families keep their provider defaults instead of receiving unsupported knobs.
+        if self.model.startswith(("gpt-5.4", "gpt-5.2", "gpt-5.1")):
+            payload["reasoning"] = {"effort": "none"}
+            payload["temperature"] = temperature
+        elif self.model.startswith(("gpt-4", "gpt-3.5")):
+            payload["temperature"] = temperature
+        response = httpx.post("https://api.openai.com/v1/responses", json=payload,
+                              headers={"Authorization": "Bearer " + key}, timeout=self.timeout)
+        if response.status_code >= 400:
+            # Never include the response body: authentication errors may echo the supplied key.
+            error = NonRetryableProviderFailure if response.status_code in (400, 401, 403, 404) else ProviderFailure
+            raise error(f"OpenAI request failed (HTTP {response.status_code}); check API access and model settings")
+        data = response.json()
+        if data.get("status") != "completed":
+            raise ProviderFailure("OpenAI response did not complete; check output budget and provider status")
+        text = "".join(part.get("text", "") for item in data.get("output", []) if item.get("type") == "message"
+                       for part in item.get("content", []) if part.get("type") == "output_text")
+        if not text.strip():
+            raise ProviderFailure("OpenAI returned no text")
+        return text
 
 
 class PrefixDivergence(RuntimeError):
@@ -298,6 +344,8 @@ class LLMClient:
         if self.fail_fast is None:
             try:
                 return self.backend.generate(prompt, system, max_tokens, temperature)
+            except NonRetryableProviderFailure:
+                raise
             except Exception as e:  # noqa: BLE001 - legacy v2 behaviour
                 with self._lock:
                     self.stats["errors"] += 1
@@ -312,6 +360,12 @@ class LLMClient:
             attempt += 1
             try:
                 return self.backend.generate(prompt, system, max_tokens, temperature)
+            except NonRetryableProviderFailure as e:
+                self._error(key, scope, purpose, e, attempt)
+                with self._lock:
+                    self._unavailable = self._unavailable or str(e)
+                self._halt.set()
+                raise LLMUnavailable(self._unavailable) from e
             except Exception as e:  # noqa: BLE001 - retried / paused below
                 self._error(key, scope, purpose, e, attempt)
                 failures += 1
@@ -390,6 +444,8 @@ class LLMClient:
 
 def make_backend(cfg: dict) -> Backend:
     kind = cfg.get("backend", "mock")
+    if kind == "openai":
+        return OpenAIBackend(cfg.get("model"), cfg.get("timeout", 120))
     if kind == "claude_cli":
         return ClaudeCLIBackend(cfg.get("model", "haiku"))
     if kind == "anthropic":

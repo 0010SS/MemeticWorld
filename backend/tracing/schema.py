@@ -43,6 +43,9 @@ def _t(layer: str, since: str, section: str, description: str, required=(), opti
 
 
 TRACE_TYPES: dict[str, dict] = {
+    "shared_background": _t(
+        "controller", "v3", "EXPERIMENT_PIPELINE.md", "Shared Markdown supplied in identity prompts; initial material, not agent invention.",
+        ["agent", "text", "sha256", "presentation"]),
     # ------------------------------------------------------------------------------------------------ WORLD
     "world_event_start": _t(
         "world", "v1", "v2 §1.1, §1.7; D51, D73",

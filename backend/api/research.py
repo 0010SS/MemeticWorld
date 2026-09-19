@@ -10,7 +10,7 @@ from pydantic import BaseModel, Field
 
 from backend.config import REPO_ROOT
 from backend.research import experiments as E, jobs
-from backend.research.common import read_json
+from backend.research.common import digest, read_json
 from backend.research.evidence import Evidence
 
 router = APIRouter(prefix="/api/research")
@@ -113,7 +113,7 @@ class JobRequest(BaseModel):
     action: Literal["experiment", "observe", "inquire", "continue", "audit", "report", "synthesize"]
     run: str | None = None
     experiment: str | None = None
-    backend: Literal["mock", "claude_cli", "anthropic"] | None = None
+    backend: Literal["mock", "openai", "claude_cli", "anthropic"] | None = None
     model: str | None = None
     question: str | None = None
     parallel: int = Field(default=1, ge=1, le=64)
@@ -126,6 +126,49 @@ class JobRequest(BaseModel):
     limit: int = Field(default=100, ge=1, le=1000)
     no_questions: bool = False
     fresh: bool = False
+    population: str | None = None
+    population_size: int | None = Field(default=None, ge=1, le=10000)
+    background_markdown: str | None = Field(default=None, max_length=100000)
+    agent_model: str | None = None
+    observer_model: str | None = None
+
+
+def configured_experiment(request):
+    if not request.experiment:
+        raise HTTPException(400, "Choose an experiment")
+    population = request.population
+    if population:
+        p = (REPO_ROOT / population).resolve()
+        if (REPO_ROOT / "configs" / "population").resolve() not in p.parents or p.suffix != ".yaml" or not p.is_file():
+            raise HTTPException(400, "Choose a population YAML inside configs/population")
+    background = None
+    if request.background_markdown is not None:
+        if not request.background_markdown.strip():
+            raise HTTPException(400, "Shared background must contain nonempty Markdown")
+        p = runs_root() / ".backgrounds" / (digest(request.background_markdown) + ".md")
+        p.parent.mkdir(parents=True, exist_ok=True)
+        p.write_text(request.background_markdown, encoding="utf-8")
+        background = str(p)
+    try:
+        return E.configure(experiment(request.experiment), population=population,
+                           population_size=request.population_size, days=request.days, background=background,
+                           agent_model=request.agent_model, observer_model=request.observer_model)
+    except (ValueError, OSError) as exc:
+        raise HTTPException(400, str(exc)) from exc
+
+
+@router.post("/experiment-preview")
+def preview(request: JobRequest):
+    d = configured_experiment(request)
+    root = E.D.design_dir(d, request.backend)
+    cells = E.D.expand(d, request.backend)
+    cfg = cells[0].config()
+    return {"name": d.name, "runs": E.D.status(d, cells=cells), "questions": d.questions,
+            "pipeline": read_json(root / "pipeline.json"), "report": read_json(root / "report.json"),
+            "directory": root.relative_to(runs_root()).as_posix(),
+            "population": cfg["population"], "population_size": cfg["population_size"],
+            "days": sorted({c.config()["simulation_days"] for c in cells}),
+            "agent_model": cfg["llm"]["model"], "observer": cfg["analysis"]["observer"]}
 
 
 @router.post("/jobs")
@@ -134,7 +177,7 @@ def launch(request: JobRequest):
     if request.action in ("experiment", "report", "synthesize"):
         if not request.experiment:
             raise HTTPException(400, "Choose an experiment")
-        d = experiment(request.experiment)
+        d = configured_experiment(request)
         action = "run" if request.action == "experiment" else request.action
         args = ["experiment", action, str(d.path), "--runs-root", str(runs_root())]
         if action == "run":

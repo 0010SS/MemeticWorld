@@ -343,7 +343,8 @@ def main():
     for name,data in [("homewood500.yaml",pop),("homewood500_initial_memories.yaml",mem),
                       ("homewood500_both_names_memories.yaml",both)]:
         (args.out_dir/name).write_text(yaml.safe_dump(data,sort_keys=False,allow_unicode=True,width=110),encoding="utf-8")
-    digest=hashlib.sha256((args.out_dir/"homewood500.yaml").read_bytes()).hexdigest()
+    # Hash canonical UTF-8/LF text, independent of a Windows checkout's CRLF conversion.
+    digest=hashlib.sha256((args.out_dir/"homewood500.yaml").read_text(encoding="utf-8").encode("utf-8")).hexdigest()
     payload={"schema_version":1,"seed":args.seed,"synthetic":True,"summary":summary,
              "profile_sha256":digest,"agents":audit,
              "source_document":"docs/HOMEWOOD_500_EXPERIMENT.md",

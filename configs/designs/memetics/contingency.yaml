@@ -1,34 +1,34 @@
-# Complete experiment preset. Edit levels, horizons and seeds for the research question.
-"name": "memetics_contingency"
-"description": "Contingency and recurring cultural patterns"
-"base": "configs/memetics.yaml"
-"seeds":
-  - 11
-  - 12
-  - 13
-  - 14
-  - 15
-"replicates": 2
-"observer":
-  "backend": "claude_cli"
-  "model": "sonnet"
-"questions":
-  - "Which ideas recur across independent societies and agent models, and which histories are society-specific?"
-"common": {}
-"factors":
-  "agent_model":
-    "haiku":
-      "llm":
-        "model": "haiku"
-    "sonnet":
-      "llm":
-        "model": "sonnet"
-"outcomes":
-  - "memetics.n_threads"
-  - "memetics.n_multi_agent_threads"
-  - "memetics.n_changes"
-  - "memetics.mean_public_users"
-  - "memetics.mean_senses"
-  - "memetics.mean_persistence_days"
-  - "memetics.n_supported_reuses"
-  - "memetics.mean_agent_agreement"
+name: memetics_contingency
+description: Contingency and recurring cultural patterns
+base: configs/memetics.yaml
+seeds:
+- 11
+- 12
+- 13
+- 14
+- 15
+replicates: 2
+observer:
+  backend: openai
+  model: $OPENAI_OBSERVER_MODEL
+questions:
+- Which ideas recur across independent societies and agent models, and which histories
+  are society-specific?
+common: {}
+factors:
+  agent_model:
+    mini:
+      llm:
+        model: gpt-5.4-mini
+    full:
+      llm:
+        model: gpt-5.4
+outcomes:
+- memetics.n_threads
+- memetics.n_multi_agent_threads
+- memetics.n_changes
+- memetics.mean_public_users
+- memetics.mean_senses
+- memetics.mean_persistence_days
+- memetics.n_supported_reuses
+- memetics.mean_agent_agreement

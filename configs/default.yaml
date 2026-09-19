@@ -15,6 +15,10 @@ world_seed: null            # null -> seed. The world script (events, casting, r
 population: configs/population/homewood8.yaml
 population_size: 16         # first N agents of the population file
 initial_memories_file: null # optional per-agent one-time seed memories; no permanent linguistic habit
+shared_background:          # optional shared Markdown introduction, retained in identity prompts
+  file: null                # UTF-8 Markdown file, relative to repository root or absolute
+  markdown: null            # inline text; resolved files are frozen here for replay
+  sha256: null
 simulation_days: 3
 start_date: "2026-09-14"    # a Monday
 day_start: "07:30"
@@ -234,6 +238,8 @@ branch: {parent: null, at_day: null, salt: null}
 probe: {backend: claude_cli, model: haiku, workers: 8, k: 6, tau: 0.7, framings: [note, text, overheard]}
 
 analysis:
+  pipeline: legacy          # legacy | memetics
+  memetics: {}               # open observer settings (windows, history, private evidence)
   judge: {provider: claude_cli, model: sonnet, prompt_version: v1}   # LLM-as-judge (backend/analysis/judge.py); swap for a stronger judge
   live: {min_speakers: 1, min_uses: 2, pool: 60, trend_window: 12, transmission_top: 10}
   coder: {backend: claude_cli, model: sonnet, second: haiku, blind: true, human_sample: 120}

@@ -89,7 +89,7 @@ def _load_initial_memories(path: str | Path | None) -> dict[str, list[str]]:
     p = Path(path)
     if not p.is_absolute():
         p = ga_compat.REPO_ROOT / p
-    data = yaml.safe_load(p.read_text())
+    data = yaml.safe_load(p.read_text(encoding="utf-8-sig"))
     if not isinstance(data, dict):
         raise ValueError("initial_memories_file must contain a mapping of agent ids to lists of text")
     out = {}
@@ -156,7 +156,11 @@ def _code_version() -> dict:
 
 class Simulation:
     def __init__(self, cfg: dict, run_dir: Path, replay_from: Path | None = None, progress=True):
+        from backend.config import resolve_background
+        resolve_background(cfg, frozen=bool((cfg.get("shared_background") or {}).get("sha256")))
         self.cfg = cfg
+        from backend.config import input_fingerprints
+        self.input_fingerprints = input_fingerprints(cfg)
         mode_name = cfg.get("world", {}).get("mode", "latent_events")
         if mode_name not in ("latent_events", "commons"):
             raise ValueError(f"Unknown world mode: {mode_name}")
@@ -166,6 +170,9 @@ class Simulation:
         if any((self.run_dir / name).exists() for name in ("manifest.json", "trace.jsonl", "llm_calls.jsonl")):
             raise FileExistsError(f"Run directory already contains a recording: {self.run_dir}. Choose a new output directory.")
         self.run_dir.mkdir(parents=True, exist_ok=True)
+        background = (cfg.get("shared_background") or {}).get("markdown")
+        if background:
+            (self.run_dir / "shared_background.md").write_text(background, encoding="utf-8")
         self.progress = progress
         yaml.safe_dump(cfg, open(self.run_dir / "config.resolved.yaml", "w"), sort_keys=False)
         self.clock = Clock(cfg)
@@ -262,6 +269,9 @@ class Simulation:
         with llm_scope("seed"):
             for a in self.agents.values():
                 a.set_time(t0)
+                if background := (self.cfg.get("shared_background") or {}).get("markdown"):
+                    self.tracer.log("shared_background", agent=a.id, text=background,
+                                    sha256=self.cfg["shared_background"]["sha256"], presentation="identity")
                 for oid, other in sorted(self.agents.items()):
                     if oid == a.id or a.profile.rel(oid).relation_type == "stranger":
                         continue
@@ -299,6 +309,7 @@ class Simulation:
             "assignment": self.cfg["latent_events"].get("assignment"),
             "condition": self.cfg.get("_condition"),
             "code_version": self.code_version,
+            "input_fingerprints": self.input_fingerprints,
             "world_script_sha256": self.world_sha,
             "population_lexicon": self.lexicon,
             "topology": self.topology,
@@ -920,6 +931,9 @@ class Simulation:
                       f"llm={s['calls']} err={s['errors']} {time.time() - t_start:.0f}s", flush=True)
             if tick % 8 == 0:
                 self.write_manifest("running")
+        if self.cfg.get("_continuation"):
+            from backend.tracing.replay import check_continuation
+            check_continuation(self, self.clock.total_ticks)
         self.finish(time.time() - t_start)
 
     def finish(self, seconds: float, status="finished"):

@@ -1,0 +1,37 @@
+name: memetics_naming
+description: Campus naming and shared referents
+base: configs/homewood500_naming.yaml
+seeds:
+- 11
+- 12
+- 13
+- 14
+- 15
+replicates: 1
+observer:
+  backend: openai
+  model: $OPENAI_OBSERVER_MODEL
+questions:
+- How do dining-hall naming practices circulate across cohorts, and do different names
+  coexist with mutual understanding?
+common:
+  llm:
+    backend: openai
+    model: $OPENAI_MODEL
+  analysis:
+    pipeline: memetics
+    probes: false
+factors:
+  information:
+    preferred: {}
+    both_names:
+      initial_memories_file: configs/population/homewood500_both_names_memories.yaml
+outcomes:
+- memetics.n_threads
+- memetics.n_multi_agent_threads
+- memetics.n_changes
+- memetics.mean_public_users
+- memetics.mean_senses
+- memetics.mean_persistence_days
+- memetics.n_supported_reuses
+- memetics.mean_agent_agreement

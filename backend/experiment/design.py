@@ -128,7 +128,7 @@ def load_design(path: str | Path, runs_root: str | Path | None = None) -> "Desig
     """Parse and validate a design file. Factors must be orthogonal (no two factors may set the same
     config key), or the full factorial would silently collapse cells."""
     p = _abs(path)
-    text = p.read_text()
+    text = p.read_text(encoding="utf-8-sig")
     raw = yaml.safe_load(text) or {}
     kind = raw.get("kind", "factorial")
     if kind == "tree":
@@ -322,6 +322,10 @@ def cell_status(cell: Cell) -> str:
     if man and man.get("config") and man.get("status") in ("finished", "paused", "failed"):
         if simulation_signature(man["config"]) != simulation_signature(cell.config()):
             return "incompatible"
+        if man.get("input_fingerprints"):
+            from backend.config import input_fingerprints
+            if man["input_fingerprints"] != input_fingerprints(cell.config()):
+                return "incompatible"
     if man and man.get("status") == "paused":
         return "paused"
     if man and man.get("status") == "finished":
@@ -340,7 +344,9 @@ def cell_status(cell: Cell) -> str:
 
 def simulation_signature(cfg):
     """Prevent old simulations satisfying a changed design. Observer/question changes are separate."""
-    core = {k: v for k, v in cfg.items() if k not in ("analysis", "run_name") and not k.startswith("_")}
+    core = copy.deepcopy({k: v for k, v in cfg.items() if k not in ("analysis", "run_name") and not k.startswith("_")})
+    for key in ("replay_from", "replay_until_tick"):
+        core.get("llm", {}).pop(key, None)
     return hashlib.sha256(json.dumps(core, sort_keys=True, default=str).encode()).hexdigest()
 
 
@@ -380,9 +386,28 @@ def run_cell(cell: Cell, progress: bool = False) -> str:
     """Simulate (if needed) and analyze one cell x seed in this process with the design's observer.
     Returns the final status. Skips cells that are analyzed or running elsewhere."""
     st = prepare(cell)
-    if st in ("analyzed", "running", "paused"):
+    if st in ("analyzed", "running"):
         return st
     cfg = cell.config()
+    if st == "paused":
+        from backend.experiment.execution import continue_run, validate_continuation
+        from backend.tracing.logger import read_digests
+        if not read_digests(cell.run_dir):
+            # A provider can fail during initialization, before any history is committed.
+            _move_aside(cell.run_dir)
+            st = "missing"
+        else:
+            validate_continuation(cell.run_dir, cfg["simulation_days"])
+            parent = _move_aside(cell.run_dir)
+            try:
+                continue_run(parent, cell.run_dir, days=cfg["simulation_days"], progress=progress)
+            except BaseException:
+                if not cell.run_dir.exists():
+                    parent.rename(cell.run_dir)
+                raise
+            st = cell_status(cell)
+            if st == "paused":
+                return st
     cell.run_dir.mkdir(parents=True, exist_ok=True)
     side = {"pid": os.getpid(), "host": socket.gethostname(), "started": _now(),
             "stage": "simulate" if st == "missing" else "analyze", "cell": cell.cell_id, "seed": cell.seed}
@@ -407,9 +432,13 @@ def run_cell(cell: Cell, progress: bool = False) -> str:
                 return "paused"
             side["stage"] = "analyze"
             write()
-        from backend.analysis.pipeline import analyze
-        backend, model = observer_spec(cfg)
-        analyze(cell.run_dir, llm_backend=backend, llm_model=model, verbose=progress)
+        if cfg.get("analysis", {}).get("pipeline") == "memetics":
+            from backend.research.observer import observe
+            observe(cell.run_dir, analysis_config=cfg["analysis"])
+        else:
+            from backend.analysis.pipeline import analyze
+            backend, model = observer_spec(cfg)
+            analyze(cell.run_dir, llm_backend=backend, llm_model=model, verbose=progress)
     except BaseException as e:
         side.update(error=f"{type(e).__name__}: {e}", ended=_now())
         write()
@@ -420,6 +449,7 @@ def run_cell(cell: Cell, progress: bool = False) -> str:
 
 
 ACTIONS = {"missing": "simulate+analyze", "failed": "simulate+analyze (retry)", "finished": "analyze",
+           "paused": "verified continuation+analyze",
            "incompatible": "simulate+analyze (changed design; retain previous recording)",
            "stale": "re-analyze"}
 

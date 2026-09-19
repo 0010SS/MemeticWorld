@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import copy
+import hashlib
 import warnings
 from functools import lru_cache
 from pathlib import Path
@@ -84,7 +85,46 @@ def load_config(path: str | Path | None = None, overrides: dict | None = None) -
     if overrides:
         check_keys(overrides, "overrides")
         cfg = deep_merge(cfg, overrides)
+    resolve_background(cfg)
+    from backend.llm.environment import resolve_model
+    if cfg['llm']['backend'] == 'openai' or str(cfg['llm'].get('model', '')).startswith('$OPENAI_'):
+        cfg['llm']['model'] = resolve_model(cfg['llm'].get('model'))
+    observer = cfg.get('analysis', {}).get('observer') or {}
+    if observer.get('backend') == 'openai' or str(observer.get('model', '')).startswith('$OPENAI_'):
+        observer['model'] = resolve_model(observer.get('model'), observer=True)
     return cfg
+
+
+def resolve_background(cfg: dict, *, frozen=False):
+    """Read an introduction before execution; a resolved recording is self-contained for replay."""
+    spec = cfg.setdefault("shared_background", {"file": None, "markdown": None, "sha256": None})
+    if not isinstance(spec, dict):
+        raise ValueError("shared_background must be a mapping")
+    if spec.get("file") and not frozen:
+        path = Path(spec["file"])
+        if not path.is_absolute():
+            path = REPO_ROOT / path
+        spec["markdown"] = path.read_text(encoding="utf-8-sig")
+    text = spec.get("markdown")
+    if text is not None and (not isinstance(text, str) or not text.strip()):
+        raise ValueError("Shared background must contain nonempty Markdown text")
+    actual = hashlib.sha256(text.encode("utf-8")).hexdigest() if text is not None else None
+    if frozen and spec.get("sha256") not in (None, actual):
+        raise ValueError("Shared background hash does not match the recorded Markdown")
+    spec["sha256"] = actual
+    return cfg
+
+
+def input_fingerprints(cfg):
+    """Record mutable file inputs so edits cannot silently satisfy or resume an old study."""
+    result = {}
+    for key in ("population", "initial_memories_file"):
+        if cfg.get(key):
+            path = Path(cfg[key])
+            if not path.is_absolute():
+                path = REPO_ROOT / path
+            result[key] = hashlib.sha256(path.read_bytes()).hexdigest()
+    return result
 
 
 def observer_spec(cfg: dict, backend: str | None = None, model: str | None = None) -> tuple[str | None, str | None]:

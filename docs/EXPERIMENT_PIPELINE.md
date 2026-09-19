@@ -2,7 +2,7 @@
 
 This pipeline runs the existing agent society, observes the ideas that develop, and supports both planned comparisons and questions asked after seeing the history. It does not give agents a meme inventory, target vocabulary, definition of success, or researcher interpretations. The world and agent decision rules remain the experimental environment.
 
-The motivating experiment families follow the accepted table in [`experiment.md`](../experiment.md). The existing co-op environment is described in [`ONTOLOGY_V3.md`](ONTOLOGY_V3.md); older bottleneck and grounding instruments remain available under `backend/analysis`. The new observer lives in `backend/research` and is selected by `analysis.pipeline: memetics`.
+The main experiment library targets the **campus society**: ordinary routines, relationships, conversation, memory and reflection. Population is configurable; the default is the 16-person campus, and the supplied 500-person population is available for larger studies. The observer lives in `backend/research` and is selected by `analysis.pipeline: memetics`. The older workshop studies are outside the main library.
 
 ## What the complete workflow does
 
@@ -28,9 +28,9 @@ All commands below are for **Windows CMD**, from the repository root. They assum
 .venv\Scripts\python.exe -X utf8 -m backend.cli experiment run memory --parallel 2
 ```
 
-`experiment run` executes the full selected study, including discovery, the saved questions, cross-society interpretation, and reports. It skips compatible completed work when repeated. Simulation and observer failures remain visible; a failed call never becomes a finding of no cultural change. A nonzero exit status means the selected pipeline did not complete.
+`experiment run` executes the full selected study, including discovery, the saved questions, cross-society interpretation, and reports. It skips compatible completed work when repeated. Paused campus cells continue from a verified recorded prefix when the experiment is run again; simulation and observer failures remain visible; a failed call never becomes a finding of no cultural change. A nonzero exit status means the selected pipeline did not complete.
 
-The supplied designs use Claude CLI agent and observer settings inherited from their configurations. Live experiments require working provider authentication. Inspect the expansion before launching: these are full studies, not short demonstration runs, and observer/inquiry calls add to simulation usage. The interface displays the number of societies and whether the selected providers are live. No automatic launch of all 12 studies occurs.
+The supplied campus designs use the GPT API. Paste your key into `OPENAI_API_KEY=` in `.env`; this local file is ignored by Git. Optional `OPENAI_MODEL` and `OPENAI_OBSERVER_MODEL` fields select models; their resolved names are recorded with the run, while the key stays outside artifacts. Environment variables take precedence over `.env`. Live calls require a valid key with access to the selected models. Inspect the expansion before launching: these are full studies, not short demonstration runs, and observer/inquiry calls add to simulation usage. The interface displays the number of societies and whether the selected providers are live. Studies are launched individually.
 
 Mock execution is available for checking software and configuration:
 
@@ -53,28 +53,53 @@ Useful controls:
 
 Use `--runs-root` or `MEMEWORLD_RUNS_ROOT` to select a different artifact directory. A backend override that changes the agent backend uses a separate design output directory, such as `memetics_memory__mock`, so mock runs do not satisfy a live study's completion checks.
 
-## Included experiment families
+## Campus experiments
 
-All files are under [`configs/designs/memetics`](../configs/designs/memetics). These are configurable starting designs, not an exhaustive agenda or a fixed ontology of memes. Unless overridden, they use five world seeds, one agent replica, 30 simulated days, and a common observer.
+All main-library designs use the campus engine. Most default to five world seeds, 30 simulated days and 16 people. `naming` uses 500 people, three days and the existing cohort-specific initial memories. The default campus has no injected background and no scripted latent events. Enable latent events explicitly in a custom design if needed.
 
-| ID | Question and conditions | Reading the outcomes |
-|---|---|---|
-| `emergence` | What develops in ordinary societies? Independent repetitions under stable membership and circumstances. | Discover first observed appearances, private/public trajectories, later reuse, repertoire and unexpected developments. |
-| `memory` | How does remembering transform ideas? Encoding noise crossed with verbatim retention. | Follow paraphrases, retained wording, altered interpretations, memory-to-expression links and persistence. |
-| `abstraction` | How do experiences become broader ideas? Reminding crossed with reflection. | Follow private representations, generalization, distinctions, combinations and public expression. |
-| `communities` | How do local cultures develop and interact? Generated cross-group connection probability crossed with bridge count. | Compare observed group interpretations, circulation across actual exposure paths and reinterpretation after crossing. |
-| `communication` | How does negotiation affect shared understanding? Clarification, handover and meeting opportunities crossed. | Examine the actual exchanges, expressed agreement/disagreement, immediate echoes, later reuse and persistence. |
-| `records` | What changes when ideas enter shared writing? Hidden binder contents, current contents, or available history. | Trace speech-to-record and record-to-speech evidence, condensation, reinterpretation and longevity. |
-| `inheritance` | What do newcomers inherit or change? Stable membership, one replacement wave, or two waves crossed with record access. | Separate newcomers from continuing members; examine exposure, inherited uses, departures, abandonment and reinterpretation. |
-| `circumstances` | What persists when circumstances change? Stable regime, change, or change-and-reversion crossed with a visible cue condition. | Compare conceptual responses, retained implications, replacement and historical dependence. |
-| `influence` | Which interpretations circulate or coexist? Prestige off, degree-based, or reassigned, crossed with conformity. | Relate source exposure, later public use, source concentration, alternative senses and expressed stance. |
-| `social_meaning` | How do concepts acquire social functions? Social reward crossed with emotion. | Investigate warnings, affiliation, criticism, humor and other functions the observer actually finds. |
-| `contingency` | What recurs across independently developing societies? Agent model crossed with two agent replicas within each world seed. | Compare analogous concepts and divergent histories while keeping the observer consistent. Do not match ideas by label alone. |
-| `long_horizon` | Does culture accumulate, differentiate, recur or disappear? Compare 30-day and 90-day histories. | Inspect complete trajectories, repeated observations and censored persistence. Days within one society are dependent observations. |
+| ID | Active treatments |
+|---|---|
+| `emergence` | Independent campus societies under stable conditions |
+| `memory` | Encoding noise × verbatim wording retention |
+| `abstraction` | Reminding × reflection |
+| `communities` | Generated cross-group ties × bridge count |
+| `communication` | Dyadic exchange length × friend catch-ups × group conversation |
+| `influence` | Prestige weighting × conformity |
+| `social_meaning` | Social reward × emotion |
+| `contingency` | Agent model × independently seeded agent replicas |
+| `long_horizon` | 30-day and 90-day campus histories |
+| `shared_background` | No introduction versus a supplied Markdown world introduction |
+| `naming` | Preferred-name memories versus explicit knowledge of both dining-hall names |
 
-The common reference configuration is [`configs/memetics.yaml`](../configs/memetics.yaml), extending the existing v3 co-op. It makes membership and circumstances stable by default; relevant experiment conditions introduce turnover or regime changes explicitly. It does not introduce new mechanics or tasks. The presets total **270 societies**, which are launched only when their individual studies are requested.
+The common reference is [`configs/memetics.yaml`](../configs/memetics.yaml). The library contains 11 campus studies. Existing workshop-specific record, turnover and regime designs remain separate files and are not offered in the campus launcher.
 
-Condition settings describe opportunities and mechanisms. They do not establish that a meeting occurred, a record was consulted, or a pressure mechanism influenced an agent. Use the trace and actual exposure evidence when interpreting treatment realization. For example, persistent scheduling competition can make a nominal communication condition weak in practice.
+## Shared Markdown introduction and population
+
+The introduction is supplied to **every agent in identity prompts throughout the run**, including the upstream conversation prompts. This is persistent background context, rather than an episodic memory subject to forgetting. Agents receive ordinary Markdown text; no special meme inventory or forced adoption rule is added. The observer treats the introduction and all seed memories as **initial material**, separately from public invention, speech and transmission.
+
+Edit [`configs/backgrounds/campus.md`](../configs/backgrounds/campus.md), or create your own UTF-8 Markdown file. Its text and SHA-256 are frozen into the resolved configuration, and each run writes `shared_background.md` plus per-agent supply receipts. Replay uses the saved text even if the source Markdown changes or disappears. A changed introduction produces an incompatible condition instead of silently reusing an old simulation.
+
+```cmd
+REM Complete offline verification, including questions and cross-society reports
+.venv\Scripts\python.exe -X utf8 -m backend.cli experiment run configs\designs\memetics_smoke.yaml --parallel 2
+
+REM Compare supplied background with an empty-background control
+.venv\Scripts\python.exe -X utf8 -m backend.cli experiment run shared_background --background configs\backgrounds\campus.md --backend mock --days 1 --population-size 8 --seed 11
+
+REM Main campus study with a different population, inspected before a live run
+.venv\Scripts\python.exe -X utf8 -m backend.cli experiment expand emergence --population configs\population\homewood500.yaml --population-size 500 --days 30
+.venv\Scripts\python.exe -X utf8 -m backend.cli experiment check emergence --population configs\population\homewood500.yaml --population-size 500 --days 30
+.venv\Scripts\python.exe -X utf8 -m backend.cli experiment run emergence --population configs\population\homewood500.yaml --population-size 500 --days 30 --parallel 2
+
+REM One society with a supplied intro
+.venv\Scripts\python.exe -X utf8 -m backend.cli run --config configs\memetics.yaml --background configs\backgrounds\campus.md --set llm.backend=mock analysis.observer.backend=mock simulation_days=1 --analyze
+```
+
+`--population` alone uses the entire selected population file. `--population-size` selects its first N people; it is **not a representative or cohort-balanced sample**. In particular, a small prefix of the 500-person naming population cannot stand in for its full 20/80 split. `--days` overrides every cell's horizon for a pilot, including a long-horizon comparison; use the original horizons for the actual comparison.
+
+Customization is supported by `expand`, `check`, `run`, `status`, `report` and `synthesize`. Reuse the same options to address the same study. A custom design is saved under `runs/.designs/` with a stable content-derived name, so all workers use the same design and its results stay separate. Factor levels take precedence over common defaults; in `shared_background`, `--background` replaces only the supplied introduction, preserving the absent control. `--agent-model` sets the common agent model, while `--observer-model` sets the common observer. API backends require full provider model IDs, rather than CLI aliases.
+
+`experiment check` validates local population, duration and input files, provider availability and model configuration. It makes no paid calls and does not verify remote authentication. An empty GPT key fails before launching societies, with a message pointing to `.env`. The Research interface offers the same population, duration, model and Markdown fields and previews the corresponding run status.
 
 ## Creating or changing experiments
 
@@ -92,14 +117,14 @@ Change `name` in the copy so its recordings have a distinct output directory. Ch
 
 Changing a saved design does not change its existing simulated history. Use a new design name for a different condition definition, or preserve a clearly separated output root. Observer compatibility is checked before comparison, and alternative observer versions should be compared or audited separately.
 
-The controller also compares resolved simulation settings: an existing recording with different world/agent settings is marked `incompatible`, preserved, and rerun when requested. Changing only observer settings or research questions does not require a new simulation.
+The controller also compares resolved simulation settings and population/initial-memory file hashes: an existing recording with different world/agent settings is marked `incompatible`, preserved, and rerun when requested. Changing only observer settings or research questions does not require a new simulation.
 
 ## Open observation and additional questions
 
 An existing recorded society can be observed without rerunning its agents:
 
 ```cmd
-.venv\Scripts\python.exe -X utf8 -m backend.cli observe runs\MY_RUN --backend claude_cli --model sonnet
+.venv\Scripts\python.exe -X utf8 -m backend.cli observe runs\MY_RUN --backend openai --model gpt-5.4
 .venv\Scripts\python.exe -X utf8 -m backend.cli inquire runs\MY_RUN "How did the meaning of responsibility change, and which agents disagreed?"
 .venv\Scripts\python.exe -X utf8 -m backend.cli inquire runs\MY_RUN "What did newcomers reinterpret?" --start 600 --end 1199
 .venv\Scripts\python.exe -X utf8 -m backend.cli experiment synthesize inheritance "Which ideas outlived the departure of their earliest speakers?"
@@ -127,7 +152,7 @@ Every annotated occurrence has an exact source quotation and an evidence ID. Spe
 
 The observer distinguishes the following:
 
-- **Initial material:** persona background/habits, available from the person's arrival. A first locally observed expression is not automatically an invention independent of model pretraining or initialization.
+- **Initial material:** persona background/habits, supplied seed memories and shared Markdown background, available from the person's arrival. A first locally observed expression is not automatically an invention independent of model pretraining or initialization.
 - **Private representation:** memory, reflection, viewpoint or decision text. It is not counted as public circulation.
 - **Public use:** speech or an authored record containing the interpreted idea. Public use can express rejection, quotation, irony or uncertainty; it is not automatically endorsement.
 - **Exposure:** a logged listener or record-reading receipt. Exposure is not evidence of understanding or adoption.
@@ -170,7 +195,7 @@ Cross-society inquiry uses namespaced original evidence IDs. Similar concept lab
 ## Auditing the observer
 
 ```cmd
-.venv\Scripts\python.exe -X utf8 -m backend.cli audit runs\MY_RUN --backend claude_cli --model sonnet --sample 40 --seed 7
+.venv\Scripts\python.exe -X utf8 -m backend.cli audit runs\MY_RUN --backend openai --model gpt-5.4 --sample 40 --seed 7
 .venv\Scripts\python.exe -X utf8 -m backend.cli observe runs\MY_RUN --backend claude_cli --model haiku --no-publish
 ```
 
@@ -251,3 +276,5 @@ The runtime never reads research interpretations. Automated tests check that obs
 - Claude CLI does not expose all requested decoding controls; recorded requested temperature/token settings are not a guarantee of provider-enforced decoding equivalence. Preserve the provider/model settings when comparing observers.
 
 These limits are part of the evidence model. They do not restrict which ideas may emerge or which subsequent questions the researchers can investigate.
+
+The GPT backend uses the stateless [OpenAI Responses API](https://developers.openai.com/api/docs/guides/text), with no tools or shared provider conversation state. The configured GPT-5.4 defaults use no-reasoning mode for short simulation responses. Incomplete or empty responses fail instead of becoming agent speech.

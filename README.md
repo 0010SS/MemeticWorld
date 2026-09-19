@@ -3,11 +3,10 @@
 MemeWorld is a **controlled simulation environment for studying how memes form**, built on top of
 [Generative Agents](https://github.com/joonspk-research/generative_agents) (Park et al., 2023).
 
-Sixteen students live ordinary routines on a Homewood-style campus. A hidden *world script*, generated before the
-run, makes recurring *latent event structures* happen to them: a small slip that cascades, two mistakes that
-cancel out, an independent coincidence, a beneficial failure. Each is told through one of many everyday
-surface "skins". Agents never see the structure. They perceive fragments of it, form **lossy memories**,
-retrieve them stochastically, reflect and talk.
+People live ordinary routines on a Homewood-style campus. The main studies support configurable populations,
+including the supplied 500-person society. Agents perceive their surroundings, form **lossy memories**,
+retrieve them stochastically, reflect and talk. Studies can supply a shared Markdown introduction or enable
+recurring latent events; the reference campus study has no injected events.
 
 Each student has six personality traits and twelve personal properties, including goals, values, strengths,
 blind spots, stress responses, trust, humor and small joys. Five overlapping friend groups have explicit ties
@@ -29,14 +28,13 @@ memes, slang or labels, never see hidden families, skins, circles or assignment,
 
 ## Research direction
 
-The current experiment pipeline investigates **how ideas emerge, circulate, acquire meanings, and change**
-in the existing agent society. It combines 12 editable experimental families with open-ended LLM observation,
+The main campus experiment pipeline investigates **how ideas emerge, circulate, acquire meanings, and change**
+in the existing agent society. It combines 11 editable campus experimental families with open-ended LLM observation,
 evidence-linked concept histories, deterministic measurements, arbitrary research inquiries and portable reports.
 The motivating questions do not prescribe the concepts or developments the observer may discover.
 
 See **[the complete experiment guide](docs/EXPERIMENT_PIPELINE.md)** for designs, commands, measurement
-definitions, observer audits, visualization, sharing and interpretation limits. The environment contract is
-[ontology v3](docs/ONTOLOGY_V3.md). The earlier [v2 bottleneck design](docs/ONTOLOGY_V2.md) and grounding
+definitions, observer audits, visualization, sharing and interpretation limits. The main library uses the campus society with configurable population and optional shared Markdown background. Workshop studies remain separate from the main library. The earlier [v2 bottleneck design](docs/ONTOLOGY_V2.md) and grounding
 instruments remain available for their original studies.
 
 ```cmd
@@ -99,33 +97,35 @@ through `backend/ga_compat.py`. MemeWorld reuses:
 - GA's prompt and retry helpers
 - the character sprites
 
-All of GA's OpenAI calls are routed to Claude. Every deviation is logged in **[docs/DECISIONS.md](docs/DECISIONS.md)**.
+GA's model calls use the project's configurable record/replay client. The main campus studies use GPT.
+Earlier design decisions are logged in **[docs/DECISIONS.md](docs/DECISIONS.md)**.
 
 ## Quick start (Windows CMD)
+
+Paste your GPT API key into `OPENAI_API_KEY=` in the local [`.env`](.env). The file is ignored by Git; [`.env.example`](.env.example) is the shareable template. The main campus studies already select GPT for agents and the observer.
 
 ```cmd
 uv venv .venv --python 3.12
 uv pip install --python .venv\Scripts\python.exe -r requirements-dev.txt
+if not exist .env copy .env.example .env
 
-REM Offline commons run and descriptive research measures
-.venv\Scripts\python.exe -X utf8 -m backend.cli run --config configs\commons_smoke.yaml --analyze
+REM Offline end-to-end campus experiment: simulation, observation, inquiries and reports
+.venv\Scripts\python.exe -X utf8 -m backend.cli experiment run configs\designs\memetics_smoke.yaml --parallel 2
 
-# real run: Claude Haiku via the local `claude` CLI (or set llm.backend=anthropic with ANTHROPIC_API_KEY)
-.venv/bin/python -m backend.cli run --config configs/baseline.yaml --analyze
+REM Shared world background, compared with no supplied background
+.venv\Scripts\python.exe -X utf8 -m backend.cli experiment run shared_background --backend mock --days 1 --population-size 8 --seed 11
 
-# (re-)analyze a finished run; compare runs (refuses to mix observer specs)
-.venv/bin/python -m backend.cli analyze runs/<run_id>
-.venv/bin/python -m backend.cli compare runs/a runs/b
+REM Live readiness check and full campus study (requires authenticated provider)
+.venv\Scripts\python.exe -X utf8 -m backend.cli experiment check emergence
+.venv\Scripts\python.exe -X utf8 -m backend.cli experiment run emergence --parallel 2
 
-# deterministic replay from recorded LLM outputs (verifies the trace hash)
-.venv/bin/python -m backend.cli replay runs/<run_id>
-
-# UI: http://127.0.0.1:8765
-.venv/bin/python -m backend.cli serve
-
-# tests
-.venv/bin/python -m pytest -q tests
+REM Interface and regression suite
+.venv\Scripts\python.exe -X utf8 -m backend.cli serve --port 8765
+start http://127.0.0.1:8765/?view=research
+.venv\Scripts\python.exe -X utf8 -m pytest -q tests --basetemp=runs\pytest-work
 ```
+
+Use `--population configs\population\homewood500.yaml --population-size 500` to select the larger population. Add `--background configs\backgrounds\campus.md` to supply your Markdown introduction. Both are also editable in the Research launcher. See the [experiment guide](docs/EXPERIMENT_PIPELINE.md) for customization, replay and continuation.
 
 Any config value can be overridden with `--set`, for example `--set memory.encoding_noise=0.6 simulation_days=2`.
 
@@ -145,13 +145,12 @@ A design file in `configs/designs/*.yaml` contains:
 Every cell × seed runs with `seed = world_seed`, so all cells of a seed see the same world (common random
 numbers).
 
-```bash
-D=configs/designs/bottleneck_factorial.yaml
-.venv/bin/python -m backend.cli design expand $D                      # list cells and run dirs
-.venv/bin/python -m backend.cli design run $D --parallel 4            # run + analyze what is missing (resumable)
-.venv/bin/python -m backend.cli design run $D --only control --seed 1 # a pilot subset
-.venv/bin/python -m backend.cli design status $D                      # missing/running/failed/finished/stale/analyzed
-.venv/bin/python -m backend.cli design table $D --csv out.csv         # per-cell mean ± sd from outcomes.json
+```cmd
+set DESIGN=configs\designs\bottleneck_factorial.yaml
+.venv\Scripts\python.exe -X utf8 -m backend.cli design expand %DESIGN%
+.venv\Scripts\python.exe -X utf8 -m backend.cli design run %DESIGN% --parallel 4
+.venv\Scripts\python.exe -X utf8 -m backend.cli design status %DESIGN%
+.venv\Scripts\python.exe -X utf8 -m backend.cli design table %DESIGN% --csv out.csv
 ```
 
 - Each cell and seed runs in its own subprocess, into `runs/<design>/<cell_id>/s<seed>`.
@@ -265,7 +264,7 @@ implemented coverage of RQ1--RQ4. It explicitly marks semantic change as unevalu
 ```
 backend/
   ga_compat.py            bridge to upstream Generative Agents
-  llm/                    client (record/replay), claude CLI / Anthropic / mock backends, embeddings
+  llm/                    client (record/replay), GPT / Claude CLI / Anthropic / mock backends, embeddings
   simulation/             engine.py, world.py, scheduler.py, world_script.py, structures.py, skins/ (E1-E4),
                           referents.py, circles.py, lexicon.py, rngs.py, latent_events.py, legacy_scenarios_v1.py
   agents/                 profile.py, agent.py, perception.py, viewpoint.py, planner.py, conversation.py,

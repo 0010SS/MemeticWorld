@@ -17,10 +17,17 @@ def execute(args):
             d = E.resolve(item["id"], args.runs_root)
             print(f"{item['id']:18} {len(D.expand(d)) :4} runs  {item['title']}")
         return
-    if action in ("expand", "status", "run", "report", "synthesize"):
+    if action in ("expand", "status", "run", "report", "synthesize", "check"):
         d = E.resolve(args.experiment, args.runs_root)
+        d = E.configure(d, **{key: getattr(args, key, None) for key in
+                            ("population", "population_size", "days", "background", "agent_model", "observer_model")})
         cells = D.select(D.expand(d, args.backend), getattr(args, "only", None), getattr(args, "seed", None))
-        if action == "expand":
+        if action == "check":
+            result = E.check(d, args.backend, cells)
+            print(json.dumps(result, indent=2))
+            if not result["ready"]:
+                raise SystemExit(1)
+        elif action == "expand":
             print(json.dumps({"name": d.name, "questions": d.questions, "runs": [
                 {"cell": c.cell_id, "seed": c.seed, "replica": c.replica, "levels": c.levels,
                  "run_dir": str(c.run_dir), "overrides": c.overrides} for c in cells]}, indent=2))
@@ -88,11 +95,17 @@ def add_parsers(sub):
     p = commands.add_parser("list")
     p.add_argument("--runs-root")
     p.set_defaults(fn=execute, research_action="list")
-    for action in ("expand", "status", "run", "report", "synthesize"):
+    for action in ("expand", "status", "run", "report", "synthesize", "check"):
         p = commands.add_parser(action)
         p.add_argument("experiment", help="Library ID or custom design YAML")
         p.add_argument("--runs-root")
         p.add_argument("--backend", help="Override agents and observer together; mock is software verification only")
+        p.add_argument("--population", help="Population YAML; defaults to all people in the selected file")
+        p.add_argument("--population-size", type=int, help="Use the first N people from the population")
+        p.add_argument("--days", type=int, help="Override every cell horizon (useful for pilots)")
+        p.add_argument("--background", help="Shared UTF-8 Markdown intro; saved verbatim with the design")
+        p.add_argument("--agent-model", help="Agent model (factor levels still take precedence)")
+        p.add_argument("--observer-model", help="Common observer model")
         if action in ("expand", "run"):
             p.add_argument("--only", action="append")
             p.add_argument("--seed", action="append", type=int)

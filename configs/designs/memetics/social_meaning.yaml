@@ -1,41 +1,41 @@
-# Complete experiment preset. Edit levels, horizons and seeds for the research question.
-"name": "memetics_social_meaning"
-"description": "Social and pragmatic meaning"
-"base": "configs/memetics.yaml"
-"seeds":
-  - 11
-  - 12
-  - 13
-  - 14
-  - 15
-"replicates": 1
-"observer":
-  "backend": "claude_cli"
-  "model": "sonnet"
-"questions":
-  - "How do expressions and ideas acquire or change social, evaluative and pragmatic functions?"
-"common": {}
-"factors":
-  "reward":
-    "off":
-      "modules":
-        "social_reward": false
-    "on":
-      "modules":
-        "social_reward": true
-  "emotion":
-    "off":
-      "modules":
-        "emotion": false
-    "on":
-      "modules":
-        "emotion": true
-"outcomes":
-  - "memetics.n_threads"
-  - "memetics.n_multi_agent_threads"
-  - "memetics.n_changes"
-  - "memetics.mean_public_users"
-  - "memetics.mean_senses"
-  - "memetics.mean_persistence_days"
-  - "memetics.n_supported_reuses"
-  - "memetics.mean_agent_agreement"
+name: memetics_social_meaning
+description: Social and pragmatic meaning
+base: configs/memetics.yaml
+seeds:
+- 11
+- 12
+- 13
+- 14
+- 15
+replicates: 1
+observer:
+  backend: openai
+  model: $OPENAI_OBSERVER_MODEL
+questions:
+- How do expressions and ideas acquire or change social, evaluative and pragmatic
+  functions?
+common: {}
+factors:
+  reward:
+    'off':
+      modules:
+        social_reward: false
+    'on':
+      modules:
+        social_reward: true
+  emotion:
+    'off':
+      modules:
+        emotion: false
+    'on':
+      modules:
+        emotion: true
+outcomes:
+- memetics.n_threads
+- memetics.n_multi_agent_threads
+- memetics.n_changes
+- memetics.mean_public_users
+- memetics.mean_senses
+- memetics.mean_persistence_days
+- memetics.n_supported_reuses
+- memetics.mean_agent_agreement

@@ -1,54 +1,52 @@
-# Complete experiment preset. Edit levels, horizons and seeds for the research question.
-"name": "memetics_communication"
-"description": "Communication and negotiation"
-"base": "configs/memetics.yaml"
-"seeds":
-  - 11
-  - 12
-  - 13
-  - 14
-  - 15
-"replicates": 1
-"observer":
-  "backend": "claude_cli"
-  "model": "sonnet"
-"questions":
-  - "How do clarification, handovers and meetings affect meaning, negotiation and later reuse?"
-"common": {}
-"factors":
-  "clarify":
-    "off":
-      "comm":
-        "clarify":
-          "enabled": false
-    "on":
-      "comm":
-        "clarify":
-          "enabled": true
-  "handover":
-    "off":
-      "comm":
-        "handover":
-          "enabled": false
-    "on":
-      "comm":
-        "handover":
-          "enabled": true
-  "meeting":
-    "off":
-      "comm":
-        "meeting":
-          "enabled": false
-    "on":
-      "comm":
-        "meeting":
-          "enabled": true
-"outcomes":
-  - "memetics.n_threads"
-  - "memetics.n_multi_agent_threads"
-  - "memetics.n_changes"
-  - "memetics.mean_public_users"
-  - "memetics.mean_senses"
-  - "memetics.mean_persistence_days"
-  - "memetics.n_supported_reuses"
-  - "memetics.mean_agent_agreement"
+name: memetics_communication
+description: Communication and negotiation
+base: configs/memetics.yaml
+seeds:
+- 11
+- 12
+- 13
+- 14
+- 15
+replicates: 1
+observer:
+  backend: openai
+  model: $OPENAI_OBSERVER_MODEL
+questions:
+- How do conversation length, friend catch-ups and group conversations affect interpretation,
+  negotiation and later reuse?
+common: {}
+factors:
+  exchange:
+    brief:
+      conversation:
+        max_utterances: 4
+    extended:
+      conversation:
+        max_utterances: 8
+  catchup:
+    'off':
+      conversation:
+        catchup:
+          enabled: false
+    'on':
+      conversation:
+        catchup:
+          enabled: true
+  group:
+    'off':
+      conversation:
+        group:
+          enabled: false
+    'on':
+      conversation:
+        group:
+          enabled: true
+outcomes:
+- memetics.n_threads
+- memetics.n_multi_agent_threads
+- memetics.n_changes
+- memetics.mean_public_users
+- memetics.mean_senses
+- memetics.mean_persistence_days
+- memetics.n_supported_reuses
+- memetics.mean_agent_agreement

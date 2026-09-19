@@ -1,34 +1,24 @@
-# Shared experiment reference: the existing co-op with stable membership and circumstances.
-# Every condition remains open to unanticipated cultural developments.
-"extends": "configs/v3_base.yaml"
-"run_name": "memetics"
-"simulation_days": 30
-"turnover":
-  "enabled": false
-  "waves": []
-"regimes":
-  "schedule":
-    -
-      "day": 1
-      "regime": "A"
-  "cues": []
-"records":
-  "transitions": []
-"comm":
-  "meeting":
-    "days":
-      - 2
-      - 5
-      - 9
-      - 12
-      - 16
-      - 19
-      - 23
-      - 26
-      - 30
-"analysis":
-  "pipeline": "memetics"
-  "probes": false
-  "observer":
-    "backend": "claude_cli"
-    "model": "sonnet"
+# Campus society reference; change population and population_size for your study.
+extends: configs/baseline.yaml
+run_name: memetics_campus
+population: configs/population/homewood8.yaml
+population_size: 16
+simulation_days: 30
+latent_events:
+  event_rate: 0
+conversation:
+  catchup: {enabled: true}
+  group: {enabled: true}
+reminding: {enabled: true}
+memory:
+  verbatim: {enabled: true}
+retrieval:
+  source_weights: {seed: 0.5, ambient: 0.5}
+analysis:
+  pipeline: memetics
+  probes: false
+  observer: {backend: openai, model: $OPENAI_OBSERVER_MODEL}
+
+llm:
+  backend: openai
+  model: $OPENAI_MODEL

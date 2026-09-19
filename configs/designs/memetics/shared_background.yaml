@@ -1,5 +1,5 @@
-name: memetics_long_horizon
-description: Long-horizon cultural development
+name: memetics_shared_background
+description: Shared background and cultural development
 base: configs/memetics.yaml
 seeds:
 - 11
@@ -12,15 +12,18 @@ observer:
   backend: openai
   model: $OPENAI_OBSERVER_MODEL
 questions:
-- Does the repertoire accumulate, stabilize, cycle, fragment or repeatedly forget
-  over extended histories?
+- How is supplied shared knowledge reused, rejected or reinterpreted, and what additional
+  ideas develop?
 common: {}
 factors:
-  horizon:
-    days30:
-      simulation_days: 30
-    days90:
-      simulation_days: 90
+  introduction:
+    absent:
+      shared_background:
+        file: null
+        markdown: null
+    supplied:
+      shared_background:
+        file: configs/backgrounds/campus.md
 outcomes:
 - memetics.n_threads
 - memetics.n_multi_agent_threads

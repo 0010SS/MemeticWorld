@@ -84,7 +84,7 @@ class Homewood500PopulationTests(unittest.TestCase):
             "validation_kind": "offline population loading, seeding, and schedule inspection",
             "configuration": CONFIG,
             "generation_seed": cls.audit["seed"],
-            "profile_sha256": hashlib.sha256((ROOT / cls.cfg["population"]).read_bytes()).hexdigest(),
+            "profile_sha256": hashlib.sha256((ROOT / cls.cfg["population"]).read_text(encoding="utf-8").encode("utf-8")).hexdigest(),
             "agent_count": len(cls.sim.agents),
             "unique_names": len({a.name for a in cls.sim.agents.values()}),
             "roles": dict(sorted(Counter(a.profile.demographics["category"] for a in cls.sim.agents.values()).items())),

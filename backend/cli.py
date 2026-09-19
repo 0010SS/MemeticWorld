@@ -28,6 +28,10 @@ from backend.config import load_config, observer_spec, parse_overrides
 def cmd_run(args):
     from backend.simulation.engine import Simulation, new_run_dir
     cfg = load_config(args.config, parse_overrides(args.set))
+    if args.background:
+        from backend.config import resolve_background
+        cfg["shared_background"] = {"file": args.background}
+        resolve_background(cfg)
     root = os.environ.get("MEMEWORLD_RUNS_ROOT")
     run_dir = Path(args.out) if args.out else new_run_dir(cfg, Path(root) if root else None)
     print(f"run dir: {run_dir}")
@@ -46,6 +50,10 @@ def cmd_replay(args):
     from backend.simulation.engine import Simulation, trace_digest
     src = Path(args.run_dir)
     cfg = yaml.safe_load(open(src / "config.resolved.yaml"))
+    from backend.config import input_fingerprints
+    manifest = json.loads((src / "manifest.json").read_text(encoding="utf-8"))
+    if manifest.get("input_fingerprints") and manifest["input_fingerprints"] != input_fingerprints(cfg):
+        raise ValueError("Replay requires the original population and initial-memory files")
     out = Path(args.out) if args.out else src.parent / (src.name + "_replay")
     sim = Simulation(cfg, out, replay_from=src / "llm_calls.jsonl")
     sim.run()
@@ -116,7 +124,7 @@ def cmd_design_run(args):
     done = ("analyzed",) if not getattr(args, "no_analyze", False) else ("analyzed", "finished")
     left = [r for r in D.status(d, cells=cells) if r["status"] not in done]
     print(f"{len(res) - len(failed)} ok, {len(failed)} failed; not analyzed: {len(left)}")
-    sys.exit(1 if failed else 0)
+    sys.exit(1 if failed or left else 0)
 
 
 def cmd_design_run_cell(args):
@@ -269,6 +277,7 @@ def main(argv=None):
     r.add_argument("--config", default="configs/baseline.yaml")
     r.add_argument("--set", nargs="*", default=[])
     r.add_argument("--out")
+    r.add_argument("--background", help="Shared UTF-8 Markdown introduction to the world")
     r.add_argument("--analyze", action="store_true")
     r.add_argument("--analysis-backend", default=None, help="default: the config's analysis.observer")
     r.add_argument("--analysis-model", default=None, help="default: the config's analysis.observer")
@@ -315,4 +324,8 @@ def main(argv=None):
 
 
 if __name__ == "__main__":
+    # Redirected output is still UTF-8 on Windows, matching saved reports and API jobs.
+    for stream in (sys.stdout, sys.stderr):
+        if hasattr(stream, "reconfigure"):
+            stream.reconfigure(encoding="utf-8")
     main()

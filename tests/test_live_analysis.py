@@ -68,7 +68,7 @@ def _copy_run(src: Path, dst: Path, files=RUN_FILES) -> Path:
 
 
 def _digest(d: Path) -> dict:
-    return {str(p.relative_to(d)): hashlib.sha256(p.read_bytes()).hexdigest() for p in sorted(d.rglob("*")) if p.is_file()}
+    return {p.relative_to(d).as_posix(): hashlib.sha256(p.read_bytes()).hexdigest() for p in sorted(d.rglob("*")) if p.is_file()}
 
 
 # ------------------------------------------------------------------------------------------------ synthetic run
