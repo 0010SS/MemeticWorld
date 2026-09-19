@@ -18,6 +18,16 @@ from backend.memory.store import MemoryStream
 
 ga = ga_compat.load()
 
+try:
+    from backend.simulation.rngs import seed_rng
+except ImportError:  # the world part owns rngs.py; this is the identical scheme (engine._seed_rng)
+    def seed_rng(*parts) -> np.random.Generator:
+        return np.random.default_rng([zlib.crc32(str(p).encode()) for p in parts])
+
+# named per-agent random substreams (ontology v2 §2.1); "legacy" backs `agent.rng`
+STREAMS = ("perceive", "ambient", "encode", "lens", "assoc", "verbatim", "remind", "react", "reflect", "talk",
+           "remark", "need", "prime", "legacy")
+
 REL_PHRASES = {
     "roommate": "roommates", "friend": "friends", "classmate": "classmates", "labmate": "labmates",
     "clubmate": "in the same club", "acquaintance": "acquaintances", "stranger": "strangers",
@@ -72,7 +82,9 @@ class Agent:
         self.name = profile.name
         self.cfg = cfg
         self.mods = mods
-        self.rng = np.random.default_rng([seed, zlib.crc32(profile.id.encode())])
+        self.seed = seed
+        self._streams: dict[str, np.random.Generator] = {}
+        self.rng = self.stream("legacy")
         self.a_mem = MemoryStream(profile.id)
         sc = ga.Scratch("__memeworld_no_file__")
         sc.name = profile.name
@@ -94,6 +106,15 @@ class Agent:
         self.state = AgentState(location=profile.home["location"], arena=profile.home["arena"],
                                 activity="sleeping")
         self.day_plan: list[dict] = []
+
+    def stream(self, name: str) -> np.random.Generator:
+        """This agent's random substream for one mechanism: seed_rng(seed, agent_id, name), created lazily
+        and cached. Each mechanism draws only from its own stream, so switching one mechanism on never
+        shifts another mechanism's draws (common random numbers across conditions)."""
+        g = self._streams.get(name)
+        if g is None:
+            g = self._streams.setdefault(name, seed_rng(self.seed, self.id, name))
+        return g
 
     # --- Generative-Agents-facing views --------------------------------------
     def set_time(self, t: dt.datetime):

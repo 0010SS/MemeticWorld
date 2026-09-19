@@ -9,7 +9,7 @@ sys.path.insert(0, str(ROOT))
 from backend.config import load_config  # noqa: E402
 
 SHORT = {"simulation_days": 1, "day_end": "12:30", "llm": {"backend": "mock", "max_workers": 4},
-         "latent_events": {"event_rate": 0.35, "holdout_from_day": None}}
+         "latent_events": {"event_rate": 0.35}}
 
 
 def run_sim(tmp: Path, overrides=None, name="run"):

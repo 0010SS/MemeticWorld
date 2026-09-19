@@ -1,0 +1,23 @@
+reminding_v1.txt  (MemeWorld, non-GA: spontaneous reminding of an earlier experience, D48)
+
+Variables:
+!<INPUT 0>! -- persona ISS
+!<INPUT 1>! -- persona name
+!<INPUT 2>! -- current time and place
+!<INPUT 3>! -- what the persona just noticed / experienced (their own perceived version)
+!<INPUT 4>! -- numbered earlier memories
+!<INPUT 5>! -- persona first name
+
+<commentblockmarker>###</commentblockmarker>
+!<INPUT 0>!
+
+It is !<INPUT 2>!. !<INPUT 1>! just noticed:
+!<INPUT 3>!
+
+Some earlier things !<INPUT 5>! remembers:
+!<INPUT 4>!
+
+Sometimes something that just happened brings an earlier experience to mind because it felt alike in some way, even when the details are completely different. Often nothing comes to mind at all.
+Does what just happened remind !<INPUT 5>! of one of these earlier experiences? If so, give its number and say briefly, the way !<INPUT 5>! would put it, what felt alike. If nothing really comes to mind, use null.
+
+Answer with a single JSON object and nothing else: {"reminded_of": <number or null>, "what_felt_alike": "<a few words, or null>"}

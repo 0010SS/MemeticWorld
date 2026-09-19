@@ -9,11 +9,21 @@ MemeWorld: the same normalised components (GA's `extract_importance`,
     GA's rank-based 0.99^i (which, upstream, also assigns the *highest* recency to
     the *oldest* node -- see docs/DECISIONS.md),
   * experimental modules may re-weight the scores (conformity, prestige, ...),
+  * `retrieval.source_weights` scales scores by memory source (seed relationship facts, ambient
+    routine sightings) so they do not crowd out experiences (D50),
   * k memories are *sampled* with P(m) ∝ exp(s(m)/τ) (Gumbel-top-k, seeded).
     τ = 0 reproduces GA's deterministic top-k.
+
+Randomness: every call takes exactly ONE integer from the rng it is given (whatever τ, the pool size or
+the number of focal points), and each node's Gumbel noise is a hash of (that integer, focal point, node
+id). A memory added or forgotten elsewhere in the pool, or an extra focal point, therefore neither
+reshuffles the other nodes' noise nor shifts later draws on the same stream (ontology v2 §2.1). Min-max
+normalisation still couples the scores themselves to the pool, as upstream.
 """
 from __future__ import annotations
 
+import functools
+import hashlib
 import math
 from dataclasses import dataclass
 
@@ -23,6 +33,36 @@ from backend import ga_compat
 from backend.memory.store import recency_score
 
 ga = ga_compat.load()
+
+
+_M64 = (1 << 64) - 1
+
+
+def _mix64(x: int) -> int:
+    """splitmix64 finaliser (a bijection on 64-bit ints with full avalanche)."""
+    x = (x + 0x9E3779B97F4A7C15) & _M64
+    x = ((x ^ (x >> 30)) * 0xBF58476D1CE4E5B9) & _M64
+    x = ((x ^ (x >> 27)) * 0x94D049BB133111EB) & _M64
+    return x ^ (x >> 31)
+
+
+@functools.lru_cache(maxsize=1 << 16)
+def _key64(s: str) -> int:
+    return int.from_bytes(hashlib.blake2b(s.encode(), digest_size=8).digest(), "little")
+
+
+def gumbel_noise(base: int, focal: str, ids) -> np.ndarray:
+    """Standard Gumbel noise for each node id: a pure function of (per-call base, focal point, node id), so
+    a node's noise does not depend on which other nodes are in the pool or on the other focal points."""
+    if not len(ids):
+        return np.zeros(0)
+    x = np.array([_key64(i) for i in ids], dtype=np.uint64) ^ np.uint64(_mix64((int(base) ^ _key64(focal)) & _M64))
+    x = x + np.uint64(0x9E3779B97F4A7C15)                  # splitmix64, vectorised (uint64 wraps)
+    x = (x ^ (x >> np.uint64(30))) * np.uint64(0xBF58476D1CE4E5B9)
+    x = (x ^ (x >> np.uint64(27))) * np.uint64(0x94D049BB133111EB)
+    x = x ^ (x >> np.uint64(31))
+    u = ((x >> np.uint64(11)).astype(np.float64) + 0.5) * (1.0 / (1 << 53))    # uniform on (0, 1)
+    return -np.log(-np.log(u))
 
 
 @dataclass
@@ -39,6 +79,7 @@ def retrieve(agent, focal_points: list[str], k: int | None = None, rng: np.rando
     k = k or int(cfg["top_k"])
     tau = float(cfg["temperature"])
     rng = rng if rng is not None else agent.rng
+    base = int(rng.integers(0, 1 << 63))      # the call's only draw (also at τ = 0, so τ never shifts the stream)
     now = agent.scratch.curr_time
     out: dict[str, RetrievalResult] = {}
     pool = [n for n in agent.a_mem.all_nodes()
@@ -54,6 +95,13 @@ def retrieve(agent, focal_points: list[str], k: int | None = None, rng: np.rando
         rel = ga.retrieve.normalize_dict_floats(ga.retrieve.extract_relevance(agent, pool, focal), 0, 1)
         scores = {nid: cfg["beta"] * rec[nid] + cfg["alpha"] * rel[nid] + cfg["gamma"] * imp[nid]
                   for nid in rec}
+        sw = cfg.get("source_weights") or {}
+        meta = getattr(agent.ctx, "meta", None)      # probe agents (observer) carry no sidecar
+        if sw and meta is not None:   # static relationship facts / routine sightings should not crowd out experiences (D50)
+            for nid in scores:
+                m = meta.get(nid)
+                if m is not None and m.source_type in sw:
+                    scores[nid] *= float(sw[m.source_type])
         scores = agent.mods.modify_retrieval(agent, pool, scores, focal)
         ids = list(scores)
         s = np.array([scores[i] for i in ids], dtype=float)
@@ -61,8 +109,7 @@ def retrieve(agent, focal_points: list[str], k: int | None = None, rng: np.rando
         if tau <= 1e-6:
             order = sorted(range(len(ids)), key=lambda i: (-s[i], ids[i]))[:kk]
         else:
-            g = rng.gumbel(size=len(ids))
-            keys = s / tau + g
+            keys = s / tau + gumbel_noise(base, focal, ids)
             order = list(np.argsort(-keys, kind="stable")[:kk])
         chosen = [agent.a_mem.id_to_node[ids[i]] for i in order]
         if touch:

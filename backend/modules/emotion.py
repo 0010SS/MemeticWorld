@@ -5,6 +5,7 @@ deterministic). Effects when enabled:
   * memory importance += salience_gain * arousal * 10 * |valence|-weighted
   * prompts get a mood line ("Maya is feeling upbeat.")
   * conversations: mild emotional contagion toward the partner's valence
+    (in a group: toward the mean valence of the others)
 """
 from __future__ import annotations
 
@@ -59,8 +60,10 @@ class Emotion(AgentModifier):
             v = lexicon_valence(f["text"])
             if agent.id in f.get("involves", []):
                 self._appraise(agent.id, v, 0.8 * f["salience"])
+                self.count("appraisal.observation")
             elif v != 0:
                 self._appraise(agent.id, 0.5 * v, 0.4 * f["salience"])
+                self.count("appraisal.observation")
 
     def on_conversation(self, conv, agents):
         parts = conv["participants"]
@@ -71,12 +74,15 @@ class Emotion(AgentModifier):
             for listener in u["listeners"]:
                 if listener in parts:
                     self._appraise(listener, v if v else 0.2, 0.3)
+                    self.count("appraisal.conversation")
+        # contagion toward the others' mean valence (for a dyad: toward the partner, as before)
         k = float(self.params.get("contagion", 0.2))
-        if len(parts) == 2:
-            a, b = parts
-            va, vb = self.st(a).valence, self.st(b).valence
-            self.st(a).valence += k * (vb - va)
-            self.st(b).valence += k * (va - vb)
+        if len(parts) >= 2 and k:
+            snap = {a: self.st(a).valence for a in parts}
+            for a in parts:
+                others = [snap[b] for b in parts if b != a]
+                self.st(a).valence += k * (sum(others) / len(others) - snap[a])
+            self.count("contagion")
         conv["module_state"]["valence_after"] = {a: self.st(a).valence for a in parts}
 
     def on_tick(self, tick, agents):
@@ -106,11 +112,12 @@ class Emotion(AgentModifier):
         mine = self.mood_word(agent.id)
         if mine:
             lines = lines + [f"{agent.profile.first_name} is feeling {mine}."]
-        target = kw.get("target")
-        if target is not None:
-            theirs = self.mood_word(target.id)
+        for other in [kw.get("target"), *(kw.get("others") or [])]:
+            if other is None:
+                continue
+            theirs = self.mood_word(other.id)
             if theirs:
-                lines = lines + [f"{target.profile.first_name} seems {theirs}."]
+                lines = lines + [f"{other.profile.first_name} seems {theirs}."]
         return lines
 
     def modify_utility(self, agent, kind, value, **kw):
@@ -121,3 +128,10 @@ class Emotion(AgentModifier):
     def frame_state(self, agent_id):
         s = self.st(agent_id)
         return {"valence": round(s.valence, 3), "arousal": round(s.arousal, 3)}
+
+    def manipulation_check(self):
+        out = super().manipulation_check()
+        moods = [self.mood_word(a) for a in sorted(self.state)]
+        out["final_non_neutral_moods"] = sum(m is not None for m in moods)
+        out["final_valence"] = {a: round(s.valence, 3) for a, s in sorted(self.state.items())}
+        return out

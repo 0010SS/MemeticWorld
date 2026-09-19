@@ -86,11 +86,14 @@ class MemoryStream(ga_compat.load().AssociativeMemory):
                 "description": n.description, "embedding_key": n.embedding_key,
                 "poignancy": n.poignancy, "keywords": sorted(n.keywords), "filling": n.filling,
             }
-        json.dump(out, open(folder / "nodes.json", "w"), indent=1)
-        json.dump({"kw_strength_event": self.kw_strength_event,
-                   "kw_strength_thought": self.kw_strength_thought},
-                  open(folder / "kw_strength.json", "w"))
-        json.dump(self.embeddings, open(folder / "embeddings.json", "w"))
+        # byte-reproducible files: keyword dicts follow set iteration order (PYTHONHASHSEED), so sort keys
+        with open(folder / "nodes.json", "w") as fh:
+            json.dump(out, fh, indent=1)
+        with open(folder / "kw_strength.json", "w") as fh:
+            json.dump({"kw_strength_event": self.kw_strength_event,
+                       "kw_strength_thought": self.kw_strength_thought}, fh, sort_keys=True)
+        with open(folder / "embeddings.json", "w") as fh:
+            json.dump(self.embeddings, fh, sort_keys=True)
 
     @classmethod
     def load_ga(cls, agent_id: str, folder: Path) -> "MemoryStream":
@@ -119,11 +122,14 @@ class MemoryStream(ga_compat.load().AssociativeMemory):
 class MemoryMeta:
     """Simulator-side metadata for one memory node. NEVER shown to agents."""
     agent_id: str
-    source_type: str                     # perception | conversation | overheard | reflection | seed | self
+    source_type: str                     # perception | conversation | overheard | reflection | reminding | seed | ambient | record | self
     salience: float = 0.5
     originating_event_ids: list[str] = field(default_factory=list)
     speakers: list[str] = field(default_factory=list)
     source_ids: list[str] = field(default_factory=list)   # observation / utterance / memory ids
+    links: list[dict] = field(default_factory=list)       # LINK: [{"from", "to", "mechanism", "reason", ...}]
+    wordings: list[dict] = field(default_factory=list)    # WORDING: [{"phrase", "heard_from", "utterance_id", "tick", ...}]
+    record_ids: list[str] = field(default_factory=list)   # v3: binder entry / revision ids read or written (§2.3)
 
 
 class SimMemoryMeta:
@@ -147,6 +153,23 @@ class SimMemoryMeta:
                     if e not in out:
                         out.append(e)
         return out
+
+
+def record_link(agent, frm: str, to: str, mechanism: str, reason: str = "", *, holder: str | None = None,
+                from_event_ids: list | None = None, **extra) -> dict:
+    """LINK (ontology v2 §2.3): the agent connected two of its experiences (reminding, lens association,
+    merge, reflection evidence). Stored on the `holder` node's sidecar meta (default: the `from` node) and
+    traced as `memory_link` with both ends' originating events, so the observer can tell same-event from
+    cross-event links without joining records. Simulator-side only; agents never see it."""
+    ctx = agent.ctx
+    link = {"from": frm, "to": to, "mechanism": mechanism, "reason": reason, **extra}
+    m = ctx.meta.get(holder or frm)
+    if m is not None:
+        m.links.append(link)
+    ctx.tracer.log("memory_link", agent=agent.id, **link,
+                   from_event_ids=list(from_event_ids) if from_event_ids is not None else ctx.meta.events_of([frm]),
+                   to_event_ids=ctx.meta.events_of([to]))
+    return link
 
 
 def recency_score(node, now: dt.datetime, decay_rate: float) -> float:

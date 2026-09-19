@@ -1,0 +1,35 @@
+# G0 engineering smoke tree (mock LLM, full days): trunk D1-D2, a wipe branch at D2, keep/wipe shift and a
+# salted replicate at D3. Seconds per node.
+#   .venv/bin/python -m backend.cli design run configs/designs/smoke_v3_mock.yaml --no-analyze
+name: smoke_v3_mock
+kind: tree
+base: configs/v3_base.yaml
+seeds: [11]
+observer: {backend: mock, model: null}
+common:
+  llm: {backend: mock, max_workers: 2}
+  records: {transitions: [{day: 2, mode: keep}]}
+  turnover: {waves: [{day: 2, depart: {am_crew: 1, pm_crew: 1, stores: 1}}, {day: 3, depart: {am_crew: 1, pm_crew: 1}}]}
+  regimes: {cues: [{day: 2, time: "10:45", arena: Stockroom, text_key: new_supplier}]}
+  comm: {meeting: {days: [2, 3]}}
+freeze: {git_sha: required, prompt_hashes: required}
+tree:
+  trunk:      {days: 2}
+  wipe2:      {parent: trunk, at_day: 2, days: 1,
+               set: {records: {transitions: [{day: 2, mode: wipe}]}}}
+  keep_shift: {parent: trunk, at_day: 3, days: 1,
+               set: {regimes: {schedule: [{day: 1, regime: A}, {day: 3, regime: B}]},
+                     records: {transitions: [{day: 2, mode: keep}, {day: 3, mode: keep}]}}}
+  wipe_shift: {parent: trunk, at_day: 3, days: 1,
+               set: {regimes: {schedule: [{day: 1, regime: A}, {day: 3, regime: B}]},
+                     records: {transitions: [{day: 2, mode: keep}, {day: 3, mode: wipe}]}}}
+  keep_shift_rep: {parent: trunk, at_day: 3, days: 1,
+               set: {regimes: {schedule: [{day: 1, regime: A}, {day: 3, regime: B}]},
+                     records: {transitions: [{day: 2, mode: keep}, {day: 3, mode: keep}]},
+                     branch: {salt: 1}}}
+targets: {select_at: {node: trunk, checkpoint: C1}}
+probes:
+  C1: {nodes: [trunk], battery: [P, N_W]}
+  C2: {nodes: [trunk, wipe2], battery: continuity}
+  C3: {nodes: [keep_shift, wipe_shift, keep_shift_rep], battery: light}
+outcomes: []

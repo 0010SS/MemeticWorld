@@ -3,12 +3,17 @@
 Tick phases (deterministic given seed + recorded LLM outputs):
   0 modules.on_tick
   1 latent event scheduling (world RNG)
-  2 movement (routine / event-forced / invitation / reaction re-plan)
+  2 movement (routine / event-forced / invitation / reaction re-plan); whoever talked last tick and is
+    still with a partner there stays busy with that conversation through perception
   3 partial perception sampling (+ ambient perception of co-located people)
-  4 [parallel per agent] memory encoding + reaction decision
+  4 [parallel per agent] viewpoint rendering + memory encoding + reminding + reaction decision
   5 apply decisions (remarks -> exposures; TALK -> conversations; MOVE -> re-plan)
-  6 conversation gating, GA decide_to_talk [parallel], conversations [parallel],
-    overheard-speech encoding [parallel per listener]
+  6 group talk at venues, evening catch-ups, conversation gating, GA decide_to_talk [parallel],
+    conversations [parallel], overheard-speech encoding [parallel per listener]
+
+Random numbers: routine plans and the world script come from world_seed streams; everything social
+and cognitive from `seed` streams, one per purpose (rngs.seed_rng), keyed by tick, agent, beat or the
+participants of a conversation, never by the position of something in a per-tick list.
   7 [parallel] reflection for agents whose importance trigger fired
   8 frame snapshot; flush trace
 """
@@ -17,8 +22,9 @@ from __future__ import annotations
 import datetime as dt
 import hashlib
 import json
+import subprocess
+from collections import defaultdict
 import time
-import zlib
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import asdict
 from pathlib import Path
@@ -31,14 +37,18 @@ from backend.agents.agent import Agent
 from backend.agents.conversation import decide_to_talk, run_conversation, talk_gate
 from backend.agents.perception import AgentObservation, observe
 from backend.agents.planner import decide_reaction
+from backend.agents.viewpoint import render as render_viewpoint
 from backend.agents.profile import load_population
 from backend.llm.client import LLMClient, llm_scope, make_backend
 from backend.llm.embeddings import make_embedder
 from backend.memory.encoder import add_simple_event, encode
 from backend.memory.reflection import reflect, should_reflect
+from backend.memory.reminding import maybe_remind
+from backend.simulation.lexicon import population_lexicon
 from backend.memory.store import MemoryMeta, SimMemoryMeta
 from backend.modules.base import build_modules
 from backend.simulation import latent_events as LE
+from backend.simulation.rngs import seed_rng, world_seed
 from backend.simulation.scheduler import next_entry, plan_day, routine_position
 from backend.simulation.world import (ARENAS, HOMEWOOD_LABELS, MAP_POS, WORLD_GRAPH, Clock,
                                       default_arena, shortest_path)
@@ -54,8 +64,53 @@ class SimContext:
         self.mods = None
 
 
-def _seed_rng(*parts) -> np.random.Generator:
-    return np.random.default_rng([zlib.crc32(str(p).encode()) for p in parts])
+def _mins(v) -> int:
+    h, m = map(int, str(v).split(":"))
+    return h * 60 + m
+
+
+_seed_rng = seed_rng       # the engine's streams use the one scheme in backend.simulation.rngs
+
+
+def forced_activity(routine: dict, place: dict) -> str:
+    """Activity of a beat mover (agreement c): the world moves people, it does not narrate them. Keep what
+    the agent was going to do there anyway (same building, awake), else a neutral, event-independent
+    'stopping by the <location>'. Never a gloss that tells the agent or onlookers that something happened."""
+    if routine["location"] == place["location"] and routine["activity"] != "sleeping":
+        return routine["activity"]
+    return f"stopping by the {place['location']}"
+
+
+def _manip(mods) -> dict:
+    f = getattr(mods, "manipulation_checks", None)
+    return f() if f else {}
+
+
+# everything a run executes: our code and configs plus the vendored GA code and prompt templates
+CODE_PATHS = ("backend", "configs", "third_party")
+GA_TEMPLATES = ga_compat.GA_ROOT / "persona" / "prompt_template"
+
+
+def _code_version() -> dict:
+    """git sha + dirty flag + prompt-file hashes, so every run records exactly what produced it.
+    `dirty` covers CODE_PATHS (tracked changes and untracked files); `prompt_hashes` covers MemeWorld's
+    prompts (by file name) and every upstream GA template (as `ga/<path under prompt_template>`), which
+    decide_to_talk, chat utterances, poignancy, relationship summaries and reflection load."""
+    root = ga_compat.REPO_ROOT
+    out = {"git_sha": None, "dirty": None, "prompt_hashes": {}}
+    try:
+        out["git_sha"] = subprocess.run(["git", "rev-parse", "HEAD"], cwd=root, capture_output=True, text=True,
+                                        timeout=10).stdout.strip() or None
+        out["dirty"] = bool(subprocess.run(["git", "status", "--porcelain", "--", *CODE_PATHS], cwd=root,
+                                           capture_output=True, text=True, timeout=10).stdout.strip())
+    except Exception:  # noqa: BLE001 - not a git checkout
+        pass
+    for f in sorted((root / "backend" / "prompts").glob("*.txt")):
+        out["prompt_hashes"][f.name] = hashlib.sha256(f.read_bytes()).hexdigest()[:16]
+    for f in sorted(GA_TEMPLATES.rglob("*.txt")):
+        rel = f.relative_to(GA_TEMPLATES).as_posix()
+        out["prompt_hashes"][f"ga/{rel}"] = hashlib.sha256(f.read_bytes()).hexdigest()[:16]
+    return out
 
 
 class Simulation:
@@ -78,7 +133,27 @@ class Simulation:
         self.tracer = TraceLogger(self.run_dir)
         self.ctx = SimContext(cfg, self.llm, self.embed, self.meta, self.tracer, self.clock)
         profiles, self.groups = load_population(cfg["population"], cfg.get("population_size"))
-        self.rng = np.random.default_rng(cfg["seed"])
+        self.world_seed = world_seed(cfg)
+        self.topology = None
+        if (cfg.get("topology") or {}).get("mode") == "generated":
+            from backend.agents import topology as TOPO
+            topo = TOPO.generate(profiles, cfg, _seed_rng(self.world_seed, "topology"))
+            TOPO.apply(profiles, topo)
+            self.circles = topo["circles"]
+            self.topology = topo.get("metrics")
+        else:
+            from backend.simulation.circles import load_circles
+            self.circles = load_circles(cfg["population"], list(profiles))
+        if self.topology is None:
+            from backend.agents import topology as TOPO
+            self.topology = TOPO.metrics(profiles, self.circles, mode="file") if hasattr(TOPO, "metrics") else None
+        else:
+            self.groups = dict(self.circles)              # generated ties replace the file's groups
+        # campus vocabulary BEFORE the planted habit, so the planted wording never counts as ordinary vocabulary
+        self.lexicon = population_lexicon(profiles)
+        from backend.agents.profile import apply_planted
+        apply_planted(profiles, cfg)                      # positive-control cell only (controls.planted_phrase)
+        self.rng = np.random.default_rng(cfg["seed"])     # legacy; per-purpose streams are used below
         for pid, prof in profiles.items():
             a = Agent(prof, cfg, None, cfg["seed"])
             a.ctx = self.ctx
@@ -87,6 +162,21 @@ class Simulation:
         for a in self.ctx.agents.values():
             a.mods = self.ctx.mods
         self.agents = self.ctx.agents
+        self.ctx.lexicon = self.lexicon
+        self.ctx.circles = self.circles
+        # WORLD SCRIPT (v2 §1.1): every event is generated before the run from world_seed streams only,
+        # so all conditions sharing world_seed see identical events (common random numbers).
+        from backend.simulation import world_script as WS
+        lc = cfg["latent_events"]
+        self.world = WS.load(lc["script_from"]) if lc.get("script_from") else WS.generate(cfg, profiles, self.circles, self.clock)
+        self.world_sha = WS.save(self.world, self.run_dir / "world_script.jsonl")
+        self.world_by_tick: dict[int, list] = defaultdict(list)
+        for inst in self.world:
+            self.world_by_tick[inst.start_tick].append(inst)
+        self.catchups: set = set()   # (day, pair) already caught up (D47)
+        # (day, window, venue) -> agents whose presence already had its one group-talk draw in that window
+        self.group_seen: dict[tuple, set] = {}
+        self.code_version = _code_version()
         self.events: list[LE.EventInstance] = []
         self.pending_obs: dict[str, list[AgentObservation]] = {}
         self.overrides: dict[str, dict] = {}      # agent -> {"until": tick, pos...}
@@ -135,6 +225,14 @@ class Simulation:
             "agents": {aid: a.profile.to_public_dict() for aid, a in self.agents.items()},
             "groups": self.groups,
             "latent_types": LE.LATENT_TYPES,
+            "circles": self.circles,
+            "assignment": self.cfg["latent_events"].get("assignment"),
+            "condition": self.cfg.get("_condition"),
+            "code_version": self.code_version,
+            "world_script_sha256": self.world_sha,
+            "population_lexicon": self.lexicon,
+            "topology": self.topology,
+            "manipulation": _manip(self.ctx.mods),
             "modules": [m.name for m in self.ctx.mods.modules],
             "ga_upstream": "joonspk-research/generative_agents@fe05a71",
             "stats": {**self.stats, "llm": self.llm.stats},
@@ -144,37 +242,16 @@ class Simulation:
         json.dump(man, open(self.run_dir / "manifest.json", "w"), indent=1, default=str)
 
     # ------------------------------------------------------------------ world
-    def _maybe_start_event(self, tick: int):
-        lc = self.cfg["latent_events"]
-        if self.rng.random() >= float(lc["event_rate"]):
-            return
-        fams = [f for f in lc["families"]]
-        w = np.array([float(lc["family_weights"].get(f, 1.0)) for f in fams])
-        fam = fams[int(self.rng.choice(len(fams), p=w / w.sum()))]
-        hf = lc.get("holdout_from_day")
-        holdout = hf is not None and self.clock.day_of(tick) >= int(hf)
-        scn = None
-        if lc.get("generator") == "llm" and not holdout:
-            with llm_scope(f"t{tick:04d}:00worldgen"):
-                scn = LE.llm_scenario(fam, self.rng, self.llm)
-        if scn is None:
-            pool = LE.scenarios_for(fam, holdout)
-            scn = pool[int(self.rng.integers(len(pool)))]
-        busy = {a for e in self.events if e.beats[-1]["tick"] >= tick for a in
-                [r["agent"] for r in e.roles.values() if r["agent"]]}
-        busy |= {a for a, ag in self.agents.items() if ag.state.in_conversation}
-        eid = f"ev{self.ev_counter:03d}"
-        inst = LE.instantiate(scn, eid, tick, self.rng, self.agents, busy, self.clock.ticks_per_day)
-        if inst is None:
-            return
-        self.ev_counter += 1
-        self.events.append(inst)
-        self.stats["events"] += 1
-        gt = inst.ground_truth()
-        self.events_fh.write(json.dumps(gt) + "\n")
-        self.events_fh.flush()
-        self.tracer.log("world_event_start", event_id=inst.id, latent_type=inst.latent_type,
-                        scenario=inst.scenario, holdout=inst.holdout, roles=inst.roles, narrative=gt["narrative"])
+    def _release_events(self, tick: int):
+        """Release pre-generated world-script instances that start at this tick."""
+        for inst in self.world_by_tick.get(tick, []):
+            self.events.append(inst)
+            self.stats["events"] += 1
+            gt = inst.ground_truth()
+            self.events_fh.write(json.dumps(gt) + "\n")
+            self.events_fh.flush()
+            from backend.simulation import world_script as WS
+            self.tracer.log("world_event_start", event_id=inst.id, **WS.trace_fields(inst))
 
     def _beats_now(self, tick):
         out = []
@@ -188,30 +265,16 @@ class Simulation:
         k = tick % self.clock.ticks_per_day
         forced = {}
         for e, b in beats:
-            p = e.roles["P"]["agent"]
-            if b["location"] == "current":
-                pos = routine_position(self.agents[p], k)
-                if p in self.overrides:
-                    pos = self.overrides[p]
-                b["location"], b["arena"] = pos["location"], b.get("arena") or pos["arena"]
-                b["forced"] = False
-            elif b["location"] == "current:Q":
-                q = e.roles["Q"]["agent"]
-                src = self.agents[q] if q else self.agents[p]
-                pos = routine_position(src, k)
-                b["location"], b["arena"] = pos["location"], pos["arena"]
-                b["forced"] = False
-            else:
-                if not b.get("arena"):
-                    rp = routine_position(self.agents[p], k)
-                    b["arena"] = rp["arena"] if rp["location"] == b["location"] else default_arena(b["location"])
-                b["forced"] = True
             for a in b["movers"]:
-                if b["forced"] or a == p:
-                    forced[a] = {"location": b["location"], "arena": b["arena"], "event": e.id,
-                                 "activity": None}
+                if a in self.agents:
+                    forced[a] = {"location": b["location"], "arena": b["arena"], "event": e.id, "activity": None}
+        was = {aid: ((a.state.location, a.state.arena), a.state.in_conversation) for aid, a in self.agents.items()}
         for aid, a in self.agents.items():
-            prev = (a.state.location, a.state.arena)
+            if not getattr(a.state, "active", True):     # v3 turnover: departed / not yet arrived
+                a.state.location, a.state.arena, a.state.activity = "Away", "Away", "sleeping"
+                a.state.in_conversation, a.state.path, a.state.forced_by = None, [], None
+                continue
+            prev = was[aid][0]
             pos = routine_position(a, k)
             activity = pos["activity"]
             forced_by = None
@@ -230,19 +293,26 @@ class Simulation:
                 self.follow.pop(aid)
             if aid in forced:
                 f = forced[aid]
-                if (f["location"], f["arena"]) != (pos["location"], pos["arena"]):
-                    activity = "dealing with something unexpected"
+                activity = forced_activity({**pos, "activity": activity}, f)
                 pos = f
                 forced_by = f["event"]
             a.state.location, a.state.arena, a.state.activity = pos["location"], pos["arena"], activity
             a.state.forced_by = forced_by
             a.state.path = shortest_path(prev[0], a.state.location)
-            a.state.in_conversation = None
             a.state.pre_chat_activity = None
             if prev != (a.state.location, a.state.arena):
                 self.tracer.log("move", agent=aid, frm=list(prev), to=[a.state.location, a.state.arena],
                                 path=a.state.path, activity=activity, forced_by_event=forced_by)
             a.sync_scratch()
+        # A conversation fills the rest of its tick, so whoever talked last tick and is still where they
+        # talked, with a partner from that conversation, is still busy with it while perceiving this tick
+        # (busy_factor, 'distracted' vantage). The conversation phase clears it (_conversations).
+        for aid, a in self.agents.items():
+            (here, cid) = was[aid]
+            here_now = (a.state.location, a.state.arena)
+            a.state.in_conversation = cid if cid and here_now == here and any(
+                o != aid and was[o][1] == cid and (x.state.location, x.state.arena) == here_now
+                for o, x in self.agents.items()) else None
 
     # ----------------------------------------------------------- main phases
     def _perceive(self, tick, beats):
@@ -255,30 +325,36 @@ class Simulation:
                 if a.state.location != b["location"]:
                     continue
                 oid = f"t{tick:04d}:obs:{e.id}.b{b['idx']}:{aid}"
-                o = observe(a, b, e.id, self.cfg, a.rng, oid)
+                # one attention stream per (agent, beat): what an agent notices of this beat never depends
+                # on which earlier beats it happened to be near, or on another fact's visibility
+                prng = seed_rng(a.seed, aid, "perceive", e.id, b["idx"])
+                o = observe(a, b, e.id, self.cfg, prng, oid)
                 if o is None:
                     continue
                 obs_by_agent.setdefault(aid, []).append(o)
                 self.tracer.log("observation", agent=aid, observation_id=oid, source_type="perception",
                                 event_id=e.id, facts=[{k: f[k] for k in ("id", "text", "salience", "p_attend")}
                                                       for f in o.facts], originating_event_ids=[e.id])
-        # ambient perception of co-located people's routine activities (no LLM)
+        # ambient perception of co-located people's routine activities (no LLM); one stream per agent and
+        # tick, so a different position earlier in the day does not shift later ambient draws
         with llm_scope(f"t{tick:04d}:01ambient"):
             for aid in sorted(self.agents):
                 a = self.agents[aid]
                 if a.state.activity == "sleeping":
                     continue
+                arng = seed_rng(a.seed, aid, "ambient", tick)
                 for oid in sorted(self.agents):
                     o = self.agents[oid]
                     if oid == aid or (o.state.location, o.state.arena) != (a.state.location, a.state.arena):
                         continue
                     if o.state.activity == "sleeping":
                         continue
-                    text = f"{o.name} is {o.state.activity} at the {o.state.location}."
+                    act, loc = o.state.activity, o.state.location
+                    text = f"{o.name} is {act}." if act.endswith(f"the {loc}") else f"{o.name} is {act} at the {loc}."
                     recent = [n.description for n in a.a_mem.seq_event[:6]]
                     if text in recent:
                         continue
-                    if a.rng.random() < 0.5:
+                    if arng.random() < 0.5:
                         add_simple_event(a, text, 2 if a.profile.rel(oid).familiarity > 0.3 else 1, [oid])
         return obs_by_agent
 
@@ -289,12 +365,24 @@ class Simulation:
             a = self.agents[aid]
             out = {"decisions": []}
             for o in obs_by_agent[aid]:
+                if getattr(o, "coop_episode", False):  # v3 job episode: render only its unrendered facts
+                    from backend.agents import work as WK
+                    WK.render_pending(a, o)
+                elif o.source_type != "record":        # binder text is read as written
+                    render_viewpoint(a, o)             # the agent's own version of what it noticed (D42)
+                if not o.facts:
+                    continue
                 a.mods.on_observation(a, o.facts)
-                encode(a, o, a.rng)
-                if rc["enabled"] and max(f["salience"] for f in o.facts) >= rc["min_salience"]:
+                node = encode(a, o, a.stream("encode"))
+                maybe_remind(a, o, node, a.stream("remind"))  # may link this to an earlier experience (D48)
+                if self.cfg.get("need", {}).get("enabled"):
+                    from backend.memory import need as NEED
+                    NEED.note(a, o, node)
+                if rc["enabled"] and not getattr(o, "no_react", False) and \
+                        max(f["salience"] for f in o.facts) >= rc["min_salience"]:
                     present = [x for x in self.agents.values() if x.id != aid and
                                (x.state.location, x.state.arena) == (a.state.location, a.state.arena)]
-                    d = decide_reaction(a, o, present, a.rng)
+                    d = decide_reaction(a, o, present, a.stream("react"))
                     d["observation"] = o
                     out["decisions"].append(d)
             return out
@@ -318,7 +406,7 @@ class Simulation:
                             if x.id == aid or x.state.location != a.state.location:
                                 continue
                             p = 0.9 if x.state.arena == a.state.arena else 0.2
-                            if a.rng.random() < p:
+                            if a.stream("remark").random() < p:
                                 listeners.append(x.id)
                         ev = self.meta.events_of(d["retrieved"])
                         for e in obs.event_ids:
@@ -353,6 +441,15 @@ class Simulation:
 
     def _conversations(self, tick, forced_talks, extra_obs):
         now = self.clock.time_of(tick)
+        seed, day = self.cfg["seed"], self.clock.day_of(tick)
+        for a in self.agents.values():
+            a.state.in_conversation = None      # last tick's conversation (busy while perceiving) is over
+        # One stream per social purpose and tick (D57): switching catch-ups or group talk on never shifts
+        # the dyadic gate's draws. Conversations and invitations are seeded by who takes part, never by
+        # their position in this tick's list, so one extra conversation does not reseed the others.
+        crng = seed_rng(seed, "catchup", tick)
+        grng = seed_rng(seed, "group", tick)
+        trng = seed_rng(seed, "talk", tick)
         busy = set()
         pairs = []
         for init_id, tgt_id, opening, trig in forced_talks:
@@ -361,10 +458,56 @@ class Simulation:
                 continue
             busy |= {init_id, tgt_id}
             pairs.append((init_id, tgt_id, opening, trig))
+        # multi-party talk at shared venues (v2 §3), before catch-ups: people sharing a table talk together,
+        # and close friends who are not at one catch up. `prob` is per window, not per tick: the first time
+        # at least min_participants free, awake agents are at the venue who have not had a draw in this
+        # (day, window, venue), they get ONE draw together, whatever its outcome. Agents who arrive later
+        # (e.g. another circle's staggered dinner, D62) form a new eligible set with its own draw.
+        groups_now = []
+        gc = self.cfg["conversation"].get("group") or {}
+        if gc.get("enabled"):
+            mins = now.hour * 60 + now.minute
+            for wi, w in enumerate(gc.get("windows", [])):
+                lo, hi = (_mins(x) for x in w.split("-"))
+                if not lo <= mins <= hi:
+                    continue
+                for loc, arena in gc.get("venues", []):
+                    seen = self.group_seen.setdefault((day, wi, loc, arena), set())
+                    here = [aid for aid in sorted(self.agents) if aid not in busy and aid not in seen
+                            and self.agents[aid].state.activity != "sleeping"
+                            and (self.agents[aid].state.location, self.agents[aid].state.arena) == (loc, arena)]
+                    if len(here) < int(gc.get("min_participants", 3)):
+                        continue
+                    seen |= set(here)
+                    if grng.random() >= float(gc.get("prob", 0.5)):
+                        continue
+                    here = [here[i] for i in grng.permutation(len(here))][: int(gc.get("max_participants", 5))]
+                    busy |= set(here)
+                    groups_now.append(sorted(here))
+        # daily catch-up between close friends in the evening (D47): a recurring shared context in which
+        # what happened lately naturally comes up again. No topic is imposed beyond "catching up".
+        cu = self.cfg["conversation"].get("catchup") or {}
+        if cu.get("enabled") and (now.hour * 60 + now.minute) >= _mins(cu.get("after", "17:00")):
+            for aid in sorted(self.agents):
+                a = self.agents[aid]
+                if aid in busy or a.state.activity == "sleeping":
+                    continue
+                for oid in sorted(self.agents):
+                    b = self.agents[oid]
+                    key = (day, tuple(sorted((aid, oid))))
+                    if (oid == aid or oid in busy or key in self.catchups or b.state.activity == "sleeping"
+                            or (a.state.location, a.state.arena) != (b.state.location, b.state.arena)
+                            or a.profile.rel(oid).familiarity < float(cu.get("min_familiarity", 0.6))):
+                        continue
+                    if crng.random() < float(cu.get("prob", 0.8)):
+                        self.catchups.add(key)
+                        busy |= {aid, oid}
+                        pairs.append((aid, oid, None, {"agent": None, "text": None, "topic": "catchup"}))
+                        break
         # stochastic gate -> GA decide_to_talk
         cands = []
         order = sorted(self.agents)
-        order = [order[i] for i in self.rng.permutation(len(order))]
+        order = [order[i] for i in trng.permutation(len(order))]
         claimed = set(busy)
         for aid in order:
             a = self.agents[aid]
@@ -374,25 +517,25 @@ class Simulation:
                       (self.agents[o].state.location, self.agents[o].state.arena) == (a.state.location, a.state.arena)]
             if not others:
                 continue
-            probs = [talk_gate(a, self.agents[o], now, self.rng) for o in others]
+            probs = [talk_gate(a, self.agents[o], now, trng) for o in others]
             for o, p in zip(others, probs):
-                if p > 0 and self.rng.random() < p:
+                if p > 0 and trng.random() < p:
                     cands.append((aid, o))
                     claimed |= {aid, o}
                     break
         if cands:
-            res = self._parallel([(f"t{tick:04d}:04dtt:{i}:{p}",
-                                   (lambda p=p, q=q: decide_to_talk(self.agents[p], self.agents[q], self.agents[p].rng)[0]))
-                                  for i, (p, q) in enumerate(cands)])
+            res = self._parallel([(f"t{tick:04d}:04dtt:{p}:{q}",
+                                   (lambda p=p, q=q: decide_to_talk(self.agents[p], self.agents[q], self.agents[p].stream("talk"))[0]))
+                                  for p, q in cands])
             for (p, q), yes in zip(cands, res):
                 if yes and p not in busy and q not in busy:
                     busy |= {p, q}
                     pairs.append((p, q, None, None))
-        if not pairs:
+        if not pairs and not groups_now:
             return extra_obs
         convs = []
         for i, (p, q, opening, trig) in enumerate(pairs):
-            cid = f"d{self.clock.day_of(tick)}t{tick:04d}c{i}"
+            cid = f"d{day}t{tick:04d}c{i}"       # display id only; nothing is seeded from it
             self.agents[p].state.in_conversation = cid
             self.agents[q].state.in_conversation = cid
             self.agents[p].state.pre_chat_activity = self.agents[p].state.activity
@@ -402,28 +545,73 @@ class Simulation:
             self.agents[p].sync_scratch()
             self.agents[q].sync_scratch()
             convs.append((cid, p, q, opening, trig))
-        in_conv = {x for _, p, q, _, _ in convs for x in (p, q)}
+        gconvs = []
+        for j, parts in enumerate(groups_now):
+            cid = f"d{day}t{tick:04d}g{j}"
+            for x in parts:
+                ag = self.agents[x]
+                ag.state.in_conversation = cid
+                ag.state.pre_chat_activity = ag.state.activity
+                ag.state.activity = "chatting with " + ", ".join(self.agents[y].profile.first_name for y in parts if y != x)
+                ag.sync_scratch()
+            gconvs.append((cid, parts))
+
+        def bystanders(parts, where):
+            # everyone else in the room, including people busy in another conversation there: they overhear
+            # at overhear_prob x busy_factor (conversation.py, group_conversation.py)
+            return [x for x in sorted(self.agents.values(), key=lambda z: z.id)
+                    if x.id not in parts and (x.state.location, x.state.arena) == where]
 
         def conv_job(cid, p, q, opening, trig):
             a, b = self.agents[p], self.agents[q]
-            by = [x for x in self.agents.values() if x.id not in in_conv and
-                  (x.state.location, x.state.arena) == (a.state.location, a.state.arena)]
-            return run_conversation(cid, a, b, sorted(by, key=lambda z: z.id), _seed_rng(self.cfg["seed"], cid),
-                                    opening=opening, trigger=trig)
-        results = self._parallel([(f"t{tick:04d}:05conv:{c[0]}", (lambda c=c: conv_job(*c))) for c in convs])
+            return run_conversation(cid, a, b, bystanders({p, q}, (a.state.location, a.state.arena)),
+                                    seed_rng(seed, "conv", tick, *sorted((p, q))), opening=opening, trigger=trig)
+
+        def group_job(cid, parts):
+            from backend.agents.group_conversation import run_group_conversation
+            a = self.agents[parts[0]]
+            return run_group_conversation(cid, [self.agents[x] for x in parts],
+                                          bystanders(set(parts), (a.state.location, a.state.arena)),
+                                          seed_rng(seed, "gconv", tick, *parts), topic="meal")
+        results = self._parallel([(f"t{tick:04d}:05conv:{c[0]}", (lambda c=c: conv_job(*c))) for c in convs]
+                                 + [(f"t{tick:04d}:05conv:{g[0]}", (lambda g=g: group_job(*g))) for g in gconvs])
         for conv in results:
             self.stats["conversations"] += 1
             self.stats["utterances"] += len(conv["utterances"])
             self.tick_utts.extend(conv["utterances"])
             for o in conv.pop("overheard"):
                 extra_obs.setdefault(o.agent_id, []).append(o)
-            # invitations (reactive re-planning)
+            # invitations (reactive re-planning); dyads only
+            if len(conv["participants"]) != 2:
+                continue
             p, q = conv["participants"]
             a, b = self.agents[p], self.agents[q]
-            if conv["utterances"] and a.profile.rel(q).affinity >= 0.6 and self.rng.random() < self.cfg["conversation"]["invite_prob"]:
+            if conv["utterances"] and a.profile.rel(q).affinity >= 0.6 and \
+                    seed_rng(seed, "invite", tick, p, q).random() < self.cfg["conversation"]["invite_prob"]:
                 self.follow[q] = (p, tick + 3)
                 self.tracer.log("invitation", agent=p, target=q, until=tick + 3, conversation_id=conv["id"])
         return extra_obs
+
+    def _coop_groups(self, tick, groups, extra_obs):
+        """v3 scheduled multi-party talk (meeting): seated after dyads; participants already talking skip it."""
+        from backend.agents.group_conversation import run_group_conversation
+        for j, (parts, topic, _mu) in enumerate(groups):
+            parts = [p for p in parts if not self.agents[p].state.in_conversation
+                     and getattr(self.agents[p].state, "active", True)]
+            if len(parts) < 2:
+                continue
+            cid = f"d{self.clock.day_of(tick)}t{tick:04d}m{j}"
+            a = self.agents[parts[0]]
+            by = [x for x in sorted(self.agents.values(), key=lambda z: z.id) if x.id not in parts and
+                  x.state.activity != "sleeping" and (x.state.location, x.state.arena) == (a.state.location, a.state.arena)]
+            with llm_scope(f"t{tick:04d}:05conv:{cid}"):
+                conv = run_group_conversation(cid, [self.agents[x] for x in parts], by,
+                                              seed_rng(self.cfg["seed"], "gconv", tick, *parts), topic=topic)
+            self.stats["conversations"] += 1
+            self.stats["utterances"] += len(conv["utterances"])
+            self.tick_utts.extend(conv["utterances"])
+            for o in conv.pop("overheard", []):
+                extra_obs.setdefault(o.agent_id, []).append(o)
 
     def _encode_extra(self, tick, extra_obs):
         if not extra_obs:
@@ -435,7 +623,11 @@ class Simulation:
                 self.tracer.log("observation", agent=aid, observation_id=o.id, source_type=o.source_type,
                                 facts=o.facts, originating_event_ids=o.event_ids)
                 a.mods.on_observation(a, o.facts)
-                encode(a, o, a.rng)
+                node = encode(a, o, a.stream("encode"))
+                maybe_remind(a, o, node, a.stream("remind"))
+                if self.cfg.get("need", {}).get("enabled"):
+                    from backend.memory import need as NEED
+                    NEED.note(a, o, node)
         ids = sorted(extra_obs)
         self._parallel([(f"t{tick:04d}:06heard:{aid}", (lambda aid=aid: job(aid))) for aid in ids])
 
@@ -443,7 +635,7 @@ class Simulation:
         ids = [aid for aid in sorted(self.agents) if should_reflect(self.agents[aid])]
         if not ids:
             return
-        res = self._parallel([(f"t{tick:04d}:07reflect:{aid}", (lambda aid=aid: reflect(self.agents[aid], self.agents[aid].rng)))
+        res = self._parallel([(f"t{tick:04d}:07reflect:{aid}", (lambda aid=aid: reflect(self.agents[aid], self.agents[aid].stream("reflect"))))
                               for aid in ids])
         self.stats["reflections"] += sum(len(r) for r in res)
 
@@ -456,12 +648,21 @@ class Simulation:
                               "conversation_id": u["conversation_id"]} for u in self.tick_utts],
               "beats": [{"event_id": e.id, "latent_type": e.latent_type, "location": b["location"],
                          "arena": b["arena"], "facts": [f["text"] for f in b["facts"]]} for e, b in beats]}
+        if getattr(self, "coop", None):
+            fr["coop"] = self.coop.frame_state()
         self.frames_fh.write(json.dumps(fr) + "\n")
         self.frames_fh.flush()
 
     # ------------------------------------------------------------------- run
     def run(self):
         t_start = time.time()
+        self.coop = None
+        if any((self.cfg.get(k) or {}).get("enabled") for k in ("workshop", "records", "roster", "turnover")):
+            from backend.simulation.coop_world import CoopWorld   # v3 co-op (docs/ONTOLOGY_V3.md §4.7)
+            self.coop = CoopWorld(self)
+            with open(self.run_dir / "world_script.jsonl", "a") as fh:
+                fh.write(self.coop.script_jsonl())
+            self.world_sha = hashlib.sha256((self.run_dir / "world_script.jsonl").read_bytes()).hexdigest()
         self.write_manifest("running")
         self._seed_memories()
         tpd = self.clock.ticks_per_day
@@ -471,27 +672,41 @@ class Simulation:
             self.tick_utts = []
             if tick % tpd == 0:
                 day = self.clock.day_of(tick)
+                if self.coop:
+                    self.coop.day_start(tick)                                        # 0a
                 for aid in sorted(self.agents):
                     a = self.agents[aid]
-                    a.day_plan = plan_day(a, self.clock, _seed_rng(self.cfg["seed"], "plan", aid, day))
+                    # routine plans are part of the WORLD (agreement a): seeded by world_seed, exactly as
+                    # world_script plans them, so holding world_seed fixed holds every beat's place fixed
+                    a.day_plan = plan_day(a, self.clock, seed_rng(self.world_seed, "plan", aid, day))
                     a.state.talks_today = 0
                     self.tracer.log("day_plan", agent=aid, day=day, plan=a.day_plan)
             for a in self.agents.values():
                 a.set_time(now)
             self.ctx.mods.on_tick(tick, self.agents)
             with llm_scope(f"t{tick:04d}:00world"):
-                self._maybe_start_event(tick)
-                beats = self._beats_now(tick)
+                self._release_events(tick)
+                beats = self._beats_now(tick) + (self.coop.world(tick) if self.coop else [])   # 1
                 self._move(tick, beats)
                 obs = self._perceive(tick, beats)
-            results = self._cognition(tick, obs)
-            talks, remark_obs = self._apply_decisions(tick, results)
-            extra = self._conversations(tick, talks, remark_obs)
+            if self.coop:
+                obs = self.coop.perception_hook(tick, obs)                          # 3+
+            results = self._cognition(tick, obs)                                    # 4
+            req = None
+            if self.coop:
+                self.coop.after_cognition(tick, obs)                                # 4b
+                req = self.coop.apply(tick, results)                                # 4c
+            talks, remark_obs = self._apply_decisions(tick, results)                # 5
+            extra = self._conversations(tick, (req.dyads if req else []) + talks, remark_obs)   # 6
+            if req and req.groups:
+                self._coop_groups(tick, req.groups, extra)
             self._encode_extra(tick, extra)
             self._reflect(tick)
             with llm_scope(f"t{tick:04d}:99frame"):
                 self._frame(tick, beats)
             self.tracer.flush()
+            if self.coop:
+                self.coop.day_end(tick)                                             # 8b
             if self.progress and (tick % 4 == 0 or tick == self.clock.total_ticks - 1):
                 s = self.llm.stats
                 print(f"[{self.clock.label(tick)}] tick {tick + 1}/{self.clock.total_ticks} "
@@ -506,14 +721,19 @@ class Simulation:
         out = self.run_dir / "agents_final"
         for aid, a in self.agents.items():
             a.a_mem.save_ga(out / aid / "associative_memory")
-        json.dump({nid: asdict(m) for nid, m in self.meta.meta.items()},
-                  open(self.run_dir / "memory_meta.json", "w"))
+        # sorted keys: the sidecar is filled from parallel jobs, so insertion order follows thread timing
+        with open(self.run_dir / "memory_meta.json", "w") as fh:
+            json.dump({nid: asdict(m) for nid, m in self.meta.meta.items()}, fh, sort_keys=True)
         self.tracer.close()
         self.frames_fh.close()
         self.events_fh.close()
         self.llm.close()
         self.pool.shutdown()
+        man = _manip(self.ctx.mods)
+        if getattr(self, "coop", None):
+            man = {**man, "coop": self.coop.manipulation_checks()}
         self.write_manifest("finished", {"wall_seconds": round(seconds, 1),
+                                         "manipulation": man,
                                          "trace_sha256": trace_digest(self.run_dir)})
 
 

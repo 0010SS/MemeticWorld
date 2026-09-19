@@ -1,0 +1,38 @@
+# v3 first study "Records at the boundaries" (docs/ONTOLOGY_V3.md §6.3, §7). One trunk per seed and
+# history-matched branches that replay the trunk's prefix and run live from T(at_day).
+#   .venv/bin/python -m backend.cli design run configs/designs/records_boundaries_v3.yaml
+#   .venv/bin/python -m backend.cli design probe configs/designs/records_boundaries_v3.yaml --checkpoint C4
+name: records_boundaries_v3
+kind: tree
+base: configs/v3_base.yaml
+seeds: [11, 12, 13, 14, 15, 16, 17, 18]          # seed = world_seed; M1 if odd, M2 if even
+observer: {backend: claude_cli, model: sonnet}
+common: {llm: {backend: claude_cli, model: haiku, max_workers: 6}}
+freeze: {git_sha: required, prompt_hashes: required}
+tree:
+  trunk:        {days: 4}                          # D1-D4; keep@D4 and wave 1 come from v3_base
+  wipe4:        {parent: trunk, at_day: 4, days: 1,
+                 set: {records: {transitions: [{day: 4, mode: wipe}]}}}
+  keep_shift:   {parent: trunk, at_day: 5, days: 2,
+                 set: {regimes: {schedule: [{day: 1, regime: A}, {day: 5, regime: B}]},
+                       records: {transitions: [{day: 4, mode: keep}, {day: 5, mode: keep}]}}}
+  wipe_shift:   {parent: trunk, at_day: 5, days: 2,
+                 set: {regimes: {schedule: [{day: 1, regime: A}, {day: 5, regime: B}]},
+                       records: {transitions: [{day: 4, mode: keep}, {day: 5, mode: wipe}]}}}
+  keep_noshift: {parent: trunk, at_day: 5, days: 2,
+                 set: {records: {transitions: [{day: 4, mode: keep}, {day: 5, mode: keep}]}}}
+  keep_shift_rep: {parent: trunk, at_day: 5, days: 2, seeds: [11, 12],
+                 set: {regimes: {schedule: [{day: 1, regime: A}, {day: 5, regime: B}]},
+                       records: {transitions: [{day: 4, mode: keep}, {day: 5, mode: keep}]},
+                       branch: {salt: 1}}}
+targets: {select_at: {node: trunk, checkpoint: C3}}          # run automatically after each trunk
+probes:
+  C3: {nodes: [trunk], battery: [P, N_W]}
+  C4: {nodes: [trunk], battery: full, ablated: newcomers}
+  C4_wipe: {nodes: [wipe4], checkpoint: C4, battery: continuity}
+  C5: {nodes: [keep_shift, wipe_shift, keep_noshift, keep_shift_rep], battery: light}
+  C6: {nodes: [keep_shift, wipe_shift, keep_noshift, keep_shift_rep], battery: full, ablated: newcomers}
+  retest: {seeds: [11, 12], checkpoint: C4, node: trunk}
+prereg: configs/designs/records_boundaries_v3.prereg.yaml   # hypotheses, estimands, gates (section 7)
+outcomes: [v3.continuity.acc_mem_w1_c4, v3.inertia.orr_mem_all_c5, v3.inertia.orr_jobs_d5d6,
+           v3.inherited.orr_mem_w2_c6, v3.expressions.lag, v3.records.staleness_hours]

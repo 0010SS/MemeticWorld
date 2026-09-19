@@ -46,6 +46,14 @@ class AgentProfile:
     sprite: str = "Abigail_Chen"
     relationships: dict[str, Relationship] = field(default_factory=dict)
     known_locations: list[str] = field(default_factory=list)
+    # v3 roster (ontology v3 §3): the co-op role (am_crew | pm_crew | stores; None = not a member, or a reserve
+    # before arrival: the roster sets it on arrival) and whether the persona is a reserve newcomer.
+    role: str | None = None
+    reserve: bool = False
+
+    @property
+    def coop_role(self) -> str | None:
+        return self.role
 
     @property
     def first_name(self) -> str:
@@ -86,12 +94,40 @@ class AgentProfile:
         return d
 
 
-def load_population(path: str | Path, n: int | None = None):
+def apply_planted(profiles: dict[str, AgentProfile], cfg: dict) -> dict | None:
+    """Planted-convention positive control (ontology v2 §5): `controls.planted_phrase` gives one agent a
+    verbal habit, appended to its habits (GA `lifestyle`). No-op when null. Must run before the agents
+    are built. Returns what was applied (for the manifest), or None.
+
+    The habit is written as a full sentence ("Maya has a habit of ..."); a leading first name and the final
+    period are dropped so it reads naturally inside `ga_lifestyle()` ("Maya grabs coffee ...; has a habit of ...")."""
+    pp = (cfg.get("controls") or {}).get("planted_phrase")
+    if not pp:
+        return None
+    aid, habit = pp.get("agent"), " ".join(str(pp.get("habit") or "").split())
+    if aid not in profiles:
+        raise ValueError(f"controls.planted_phrase.agent {aid!r} is not in the loaded population")
+    if not habit:
+        raise ValueError("controls.planted_phrase.habit is empty")
+    prof = profiles[aid]
+    habit = habit.rstrip(".").strip()
+    if habit.startswith(prof.first_name + " "):
+        habit = habit[len(prof.first_name) + 1:]
+    prof.habits = list(prof.habits) + [habit]
+    return {"agent": aid, "habit": habit}
+
+
+def load_population(path: str | Path, n: int | None = None, include_reserves: bool = False):
+    """-> (profiles, groups). `n` takes the first n of `agents:` (the founders). `include_reserves` also loads
+    the file's `reserves:` personas (v3 §3.1: the full persona universe; `reserve=True`, no role until they
+    arrive). Without reserves the result is exactly the v2 one (plus `role` from `coop_role`)."""
     p = Path(path)
     if not p.is_absolute():
         p = REPO_ROOT / p
     data = yaml.safe_load(open(p))
-    raw = data["agents"][: n or None]
+    raw = [dict(a, _reserve=False) for a in data["agents"][: n or None]]
+    if include_reserves:
+        raw += [dict(a, _reserve=True) for a in (data.get("reserves") or [])]
     ids = {a["id"] for a in raw}
     from backend.simulation.world import WORLD_GRAPH
     profiles = {}
@@ -103,7 +139,9 @@ def load_population(path: str | Path, n: int | None = None):
                             background=a["background"], personality=a["personality"],
                             interests=a["interests"], habits=a["habits"], routine=routine,
                             home=a["home"], sprite=a.get("sprite", "Abigail_Chen"),
-                            known_locations=known)
+                            known_locations=known,
+                            role=None if a["_reserve"] else a.get("coop_role", a.get("role")),
+                            reserve=bool(a["_reserve"]))
         profiles[prof.id] = prof
     for r in data.get("relationships", []):
         if r["a"] in ids and r["b"] in ids:

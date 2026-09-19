@@ -1,0 +1,39 @@
+# Pre-registration for records_boundaries_v3 (docs/ONTOLOGY_V3.md §7.4-§7.6). Frozen before stage B.
+design: records_boundaries_v3
+unit: seed
+test: exact sign-flip permutation of seed-level paired differences (2^8 = 256 patterns)
+hypotheses:
+  - id: H1
+    name: continuity
+    estimand: "delta1 = ACC_mem(W1 newcomers, C4 | trunk keep@D4) - ACC_mem(W1 newcomers, C4 | wipe4)"
+    contrast: continuity
+    sided: one            # E[delta1] > 0
+    alpha: 0.05
+  - id: H2
+    name: inertia
+    estimand: "delta2 = ORR_mem(all, C5 | keep_shift) - ORR_mem(all, C5 | wipe_shift)"
+    contrast: inertia
+    sided: two            # > 0 inertia, < 0 acceleration
+    alpha: 0.05
+    gated_by: H1          # fixed-sequence gatekeeping: tested only if H1 is rejected
+contrasts:                # seed-paired a - b, computed by `design table`
+  - {name: continuity, a: trunk, b: wipe4, outcome: v3.continuity.acc_mem_w1_c4}
+  - {name: inertia, a: keep_shift, b: wipe_shift, outcome: v3.inertia.orr_mem_all_c5}
+  - {name: inertia_jobs, a: keep_shift, b: wipe_shift, outcome: v3.inertia.orr_jobs_d5d6}
+  - {name: shift_bites, a: keep_noshift, b: keep_shift, outcome: v3.inertia.orr_mem_all_c5}
+  - {name: inherited, a: keep_shift, b: wipe_shift, outcome: v3.inherited.orr_mem_w2_c6}
+  - {name: replicate_floor, a: keep_shift, b: keep_shift_rep, outcome: v3.inertia.orr_mem_all_c5}
+reporting:
+  ci: seed-bootstrap 95%
+  divergence_floor: "|delta| between keep_shift and keep_shift_rep (seeds 11-12); effects below it are not claimed"
+  supporting_model: "logit(correct or old) ~ node * phase + mapping + cohort + (1|seed) + (1|seed:node:agent) + (1|item)"
+  stratifier: mapping
+precision_rule: "at G3, from keep_shift alone and replicate divergence: if projected 95% CI half-width for delta2 at 8 seeds > .12 and budget remains, add seeds 19-20"
+exclusion: "a node failing a pre-registered manipulation check (G2 list) is excluded; its seed is replaced by 19, then 20; nothing is excluded on outcomes"
+gates:
+  G0: engineering, mock backend, whole tree for 1 seed (configs/designs/smoke_v3_mock.yaml)
+  G1: calibration (configs/designs/v3_calibration.yaml)
+  G2: learnability and engagement on the seed-11 trunk
+  G3: interim after seeds 11-14 (positive control keep_shift vs keep_noshift K1c OLD at C5 >= .15)
+  G4: after the core (all 8 seeds)
+lean_fallback: {seeds: [11, 12, 13, 14, 15, 16], declared_before: stage C}

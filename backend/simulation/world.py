@@ -27,7 +27,7 @@ ARENAS = {
     "Dining Hall": ["Main Floor"],
     "Classroom": ["Lecture Hall", "Seminar Room"],
     "Library": ["Study Tables", "Quiet Floor"],
-    "Research Lab": ["Dry Lab", "Wet Lab", "Makerspace"],
+    "Research Lab": ["Dry Lab", "Wet Lab", "Makerspace", "Stockroom"],   # Stockroom: v3 (appended)
     "Gym": ["Main Floor"],
     "Cafe": ["Counter"],
     "Quad": ["Lawn"],
@@ -60,6 +60,8 @@ def default_arena(location: str) -> str:
 def shortest_path(a: str, b: str) -> list[str]:
     if a == b:
         return [a]
+    if a not in WORLD_GRAPH or b not in WORLD_GRAPH:   # v3 "Away" sentinel for members not on the roster
+        return [b]
     prev = {a: None}
     q = deque([a])
     while q:

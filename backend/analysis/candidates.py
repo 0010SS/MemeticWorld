@@ -71,6 +71,8 @@ class CandidateExtractor:
                 locs |= set(tokens(ar))
         self.locs = locs
         self.emb = HashEmbedder(256)
+        # world wording as a token stream, so factual repetition respects word boundaries ("tray" is not in "portrayed")
+        self.world_tokens = " " + " ".join(tokens(rd.world_text)) + " "
 
     def ngrams(self):
         stats = defaultdict(lambda: {"uses": [], "speakers": set(), "surface": defaultdict(int)})
@@ -105,7 +107,7 @@ class CandidateExtractor:
         uses, spk = len(st["uses"]), len(st["speakers"])
         novel = any(t not in self.dict and t not in self.names and not t.isdigit() and len(t) > 3 for t in g) if self.dict else False
         nickname = any(t in self.names for t in g) and any(t not in self.names and t not in STOP for t in g) and len(g) >= 2
-        factual = phrase in self.rd.world_text
+        factual = f" {phrase} " in self.world_tokens
         quoted = sum(1 for uid in st["uses"] if re.search(r"[\"'“‘][^\"'”’]*" + re.escape(phrase), self.rd.utt_by_id[uid]["text"].lower()))
         s = math.log1p(uses) * (1 + math.log(spk)) * (1 + 0.8 * novel + 0.6 * nickname + 0.3 * (quoted > 0))
         s *= (0.35 if factual else 1.0) * (1 + 0.15 * (len(g) - 1))

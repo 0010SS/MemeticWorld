@@ -1,0 +1,26 @@
+probe_note_v1.txt  (v3 OBSERVER probe, format N: comprehension; answers never enter agent memory)
+
+Variables:
+!<INPUT 0>! -- persona ISS (or the persona-free responder's description)
+!<INPUT 1>! -- weekday of the checkpoint
+!<INPUT 2>! -- who: e.g. Maya, or "the student"
+!<INPUT 3>! -- retrieved memories, one "- " line each
+!<INPUT 4>! -- the framing sentence with the message
+!<INPUT 5>! -- lettered action menu (order drawn per call)
+!<INPUT 6>! -- situated block: the current binder view, or empty
+
+<commentblockmarker>###</commentblockmarker>
+!<INPUT 0>!
+It is !<INPUT 1>! evening; !<INPUT 2>! is thinking about the co-op's laser cutter.
+What !<INPUT 2>! remembers:
+!<INPUT 3>!
+!<INPUT 6>!
+!<INPUT 4>!
+
+1) In one sentence, what is it telling !<INPUT 2>!?
+2) If the laser acted up on !<INPUT 2>!'s next job, what would !<INPUT 2>! do first?
+!<INPUT 5>!
+3) Has !<INPUT 2>! heard these words before? yes / no / not sure
+
+Answer as !<INPUT 2>! would, with JSON only:
+{"meaning": "...", "choice": "<letter>", "heard_before": "yes|no|not sure"}

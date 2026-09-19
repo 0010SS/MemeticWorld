@@ -6,7 +6,7 @@ import re
 from pathlib import Path
 
 from backend.agents.profile import FORBIDDEN_FIELDS, AgentProfile
-from backend.simulation.latent_events import LATENT_TYPES, SCENARIOS
+from backend.simulation.latent_events import LATENT_TYPES
 
 ROOT = Path(__file__).resolve().parents[1]
 AGENT_SIDE = ["backend/agents", "backend/memory", "backend/simulation", "backend/modules", "backend/prompts"]
@@ -25,8 +25,10 @@ def test_agent_objects_have_no_cultural_state(mock_run):
 
 
 def test_prompts_never_contain_hidden_labels(mock_run):
-    bad = [r"\bE[1-4]\b", r"latent", r"\bmeme", r"slang", r"\binvent", r"\bev\d{3}\b"]
-    bad += [re.escape(s["key"]) for s in SCENARIOS] + [re.escape(v["name"]) for v in LATENT_TYPES.values()]
+    from backend.simulation.skins import SKINS
+    bad = [r"\bE[0-4]\b", r"latent", r"\bmeme", r"slang", r"\binvent", r"\bev\d{3}\b", r"\bc_(lab|dorm)\b",
+           r"\bregime\b", r"scrambled"]
+    bad += [re.escape(s["key"]) for s in SKINS] + [re.escape(v["name"]) for v in LATENT_TYPES.values()]
     n = 0
     for line in open(mock_run.run_dir / "llm_calls.jsonl"):
         r = json.loads(line)

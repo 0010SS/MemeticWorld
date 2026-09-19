@@ -18,9 +18,25 @@ from backend.agents import ga_prompts
 from backend.agents.agent import CampusMaze
 from backend.agents.perception import AgentObservation
 from backend.memory.encoder import encode
+from backend.memory.reminding import maybe_remind
 from backend.memory.retrieval import merged_nodes, retrieve
+from backend.simulation.rngs import seed_rng
 
 MAZE = CampusMaze()
+
+
+def overhear_streams(participants: list, bystanders: list) -> dict:
+    """One stream per bystander, seeded by (seed, "overhear", tick, participants, bystander): whether someone
+    overhears a line never depends on the conversation's retrieval draws, on who else stands nearby, or on
+    the order in which this tick's conversations were formed. One draw per utterance."""
+    first = participants[0]
+    who = sorted(a.id for a in participants)
+    return {b.id: seed_rng(first.seed, "overhear", first.ctx.tracer.tick, *who, b.id) for b in bystanders}
+
+
+def overhear_prob(bystander, pc: dict) -> float:
+    """overhear_prob, x busy_factor for a bystander who is in another conversation in the same room."""
+    return pc["overhear_prob"] * (pc["busy_factor"] if bystander.state.in_conversation else 1.0)
 
 
 def talk_gate(agent, target, now, rng) -> float:
@@ -51,7 +67,43 @@ def decide_to_talk(agent, target, rng) -> tuple[bool, dict]:
     return yes, {"retrieved": [n.node_id for n in nodes]}
 
 
-def _context(speaker, other, started_by_speaker: bool, trigger_text: str | None) -> str:
+CATCHUP_FOCAL = "what has happened lately that stood out"
+
+
+def _mind(speaker, conv_id: str | None) -> dict:
+    """v2 WORDING/NEED hooks (off by default), computed ONCE per speaker per conversation from the speaker's
+    OWN memory only: recently heard wordings (priming) and open matters (need). A speaker is in one
+    conversation at a time, so a per-agent cache keyed by conversation id is thread-safe."""
+    cached = getattr(speaker, "_mind_cache", None)
+    if conv_id is not None and cached and cached[0] == conv_id:
+        return cached[1]
+    cfg = speaker.cfg
+    out = {"lines": [], "focal": []}
+    if (cfg.get("need") or {}).get("enabled"):
+        from backend.memory import need as NEED
+        om = NEED.focal(speaker, speaker.scratch.curr_time, conversation_id=conv_id)
+        out["focal"] = list(om)
+        if om:
+            out["lines"].append(f"{speaker.profile.first_name} still has on their mind: {om[0]}")
+    if (cfg.get("priming") or {}).get("enabled"):
+        from backend.memory import wording as WORDING
+        line = WORDING.priming_line(speaker, speaker.stream("prime"), conversation_id=conv_id)
+        if line:
+            out["lines"].append(line)
+    speaker._mind_cache = (conv_id, out)
+    return out
+
+
+def _mind_lines(speaker, conv_id: str | None = None) -> list[str]:
+    return _mind(speaker, conv_id)["lines"]
+
+
+def _need_focal(speaker, conv_id: str | None = None) -> list[str]:
+    return _mind(speaker, conv_id)["focal"]
+
+
+def _context(speaker, other, started_by_speaker: bool, trigger_text: str | None, topic: str | None = None,
+             conv_id: str | None = None) -> str:
     s, o = speaker.scratch, other.scratch
     s_act = speaker.state.pre_chat_activity or s.act_description
     o_act = other.state.pre_chat_activity or o.act_description
@@ -62,6 +114,14 @@ def _context(speaker, other, started_by_speaker: bool, trigger_text: str | None)
         ctx = (f"{s.name} was {s_act} when {o.name}, who was {o_act}, "
                f"started a conversation with {s.name}.")
     lines = [speaker.relationship_line(other)]
+    if topic == "catchup":
+        lines.append(f"{s.name} and {o.name} are catching up on how things have been going lately.")
+    elif topic in ("clarify", "handover"):
+        from backend.agents import coop_talk
+        tl = coop_talk.speaker_topic_line(topic, speaker, other, started_by_speaker)
+        if tl:
+            lines.append(tl)
+    lines += _mind_lines(speaker, conv_id)
     if trigger_text:
         lines.append(f"{s.name} just noticed: {trigger_text}")
     lines = speaker.mods.modify_prompt(speaker, "chat", lines, target=other)
@@ -88,8 +148,14 @@ def run_conversation(conv_id: str, init, target, bystanders: list, rng, *, openi
     chat: list[list[str]] = []
     utterances = []
     heard_by: dict[str, list[int]] = {b.id: [] for b in bystanders}
+    orng = overhear_streams(parts, bystanders)
     k = int(init.cfg["retrieval"]["top_k"])
-    for i in range(int(cc["max_utterances"])):
+    topic = (trigger or {}).get("topic")
+    n_max = int(cc.get("catchup_max_utterances", cc["max_utterances"])) if topic == "catchup" else int(cc["max_utterances"])
+    if topic in ("clarify", "handover"):                  # v3 co-op talk budgets (§4.5)
+        from backend.agents import coop_talk
+        n_max = int(coop_talk.max_utterances(init.cfg, topic) or n_max)
+    for i in range(n_max):
         speaker, other = parts[i % 2], parts[(i + 1) % 2]
         trig = trigger["text"] if trigger and trigger["agent"] == speaker.id and i < 2 else None
         last = "".join(": ".join(x) + "\n" for x in chat[-4:])
@@ -98,11 +164,14 @@ def run_conversation(conv_id: str, init, target, bystanders: list, rng, *, openi
             focal.append(last)
         if trig:
             focal.append(trig)
+        if topic == "catchup":
+            focal.append(CATCHUP_FOCAL)
+        focal += _need_focal(speaker, conv_id)
         per = max(1, math.ceil(k / len(focal)))
         res = retrieve(speaker, focal, k=per, rng=rng)
         nodes = merged_nodes(res, limit=k + 1)
         retrieved = {"memories": nodes}
-        curr_context = _context(speaker, other, speaker is init, trig)
+        curr_context = _context(speaker, other, speaker is init, trig, topic, conv_id)
         if i == 0 and opening:
             text, end = opening, False
             source = "reaction_opening"
@@ -114,11 +183,13 @@ def run_conversation(conv_id: str, init, target, bystanders: list, rng, *, openi
         uid = f"{conv_id}.u{i}"
         listeners = [other.id]
         for b in bystanders:
-            p = pc["overhear_prob"] * (pc["busy_factor"] if b.state.in_conversation else 1.0)
-            if rng.random() < p:
+            if orng[b.id].random() < overhear_prob(b, pc):
                 listeners.append(b.id)
                 heard_by[b.id].append(i)
         ev_ids = ctx.meta.events_of([n.node_id for n in nodes])
+        if (speaker.cfg.get("need") or {}).get("enabled"):
+            from backend.memory import need as NEED
+            NEED.discussed(speaker, [n.node_id for n in nodes])
         u = {"id": uid, "conversation_id": conv_id, "idx": i, "speaker": speaker.id, "text": text,
              "listeners": listeners, "location": speaker.state.location, "arena": speaker.state.arena,
              "retrieved": [n.node_id for n in nodes], "retrieved_event_ids": ev_ids, "source": source}
@@ -152,7 +223,7 @@ def run_conversation(conv_id: str, init, target, bystanders: list, rng, *, openi
         if not utterances:
             break
         facts = [{"id": u["id"], "text": f'{ctx.agents[u["speaker"]].profile.first_name}: "{u["text"]}"',
-                  "salience": 0.6, "involves": [u["speaker"]] if u["speaker"] != a.id else []}
+                  "salience": 0.6, "involves": [u["speaker"]] if u["speaker"] != a.id else [], "speaker": u["speaker"]}
                  for u in utterances]
         obs = AgentObservation(id=f"{conv_id}.obs.{a.id}", agent_id=a.id, tick=tracer.tick,
                                location=a.state.location, arena=a.state.arena, source_type="conversation",
@@ -160,7 +231,11 @@ def run_conversation(conv_id: str, init, target, bystanders: list, rng, *, openi
                                utterance_ids=[u["id"] for u in utterances], partner=b.name)
         tracer.log("observation", agent=a.id, observation_id=obs.id, source_type="conversation",
                    facts=facts, originating_event_ids=ev_all)
-        encode(a, obs, rng)
+        node = encode(a, obs, a.stream("encode"))
+        maybe_remind(a, obs, node, a.stream("remind"))   # LINK after conversations too (v2 §2.3; config-gated)
+        if (a.cfg.get("need") or {}).get("enabled"):
+            from backend.memory import need as NEED
+            NEED.note(a, obs, node)
         a.state.last_talk[b.id] = a.scratch.curr_time
         a.state.talks_today += 1
     overheard = []
@@ -170,7 +245,7 @@ def run_conversation(conv_id: str, init, target, bystanders: list, rng, *, openi
             continue
         us = [utterances[j] for j in idx if j < len(utterances)]
         facts = [{"id": u["id"], "text": f'{ctx.agents[u["speaker"]].profile.first_name}: "{u["text"]}"',
-                  "salience": 0.4, "involves": [u["speaker"]]} for u in us]
+                  "salience": 0.4, "involves": [u["speaker"]], "speaker": u["speaker"]} for u in us]
         overheard.append(AgentObservation(
             id=f"{conv_id}.obs.{b.id}", agent_id=b.id, tick=tracer.tick, location=b.state.location,
             arena=b.state.arena, source_type="overheard", facts=facts, event_ids=ev_all,

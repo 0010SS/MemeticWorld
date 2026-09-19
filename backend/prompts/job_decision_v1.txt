@@ -1,0 +1,29 @@
+job_decision_v1.txt  (v3, non-GA: one decision at the co-op's laser cutter; ontology v3 §4.3)
+
+Variables:
+!<INPUT 0>! -- persona ISS
+!<INPUT 1>! -- day of the week and time
+!<INPUT 2>! -- the deciding member's first given word (e.g. Dev)
+!<INPUT 3>! -- shift (morning | afternoon)
+!<INPUT 4>! -- the job's project line
+!<INPUT 5>! -- own perceived job facts, oldest first (from attempt 2 on: what was tried and what happened)
+!<INPUT 6>! -- the binder view block (ontology v3 §2.2) followed by a newline, or empty
+!<INPUT 7>! -- retrieved memories
+!<INPUT 8>! -- people present, or "nobody"
+!<INPUT 9>! -- relationship lines
+!<INPUT 10>! -- lettered options, in the job's pre-drawn order for this attempt
+!<INPUT 11>! -- the "question" field hint (only mentions the ask option when it is offered)
+
+<commentblockmarker>###</commentblockmarker>
+!<INPUT 0>!
+It is !<INPUT 1>!. !<INPUT 2>! is on the !<INPUT 3>! shift at the co-op's laser cutter in the Makerspace, running a job: !<INPUT 4>!.
+What !<INPUT 2>! has noticed so far:
+!<INPUT 5>!
+!<INPUT 6>!What !<INPUT 2>! remembers that might matter:
+!<INPUT 7>!
+People here: !<INPUT 8>!
+!<INPUT 9>!
+What does !<INPUT 2>! do next?
+!<INPUT 10>!
+Answer with one JSON object and nothing else:
+{"choice": "<letter>", "question": !<INPUT 11>!, "says_aloud": "<exact words !<INPUT 2>! says to whoever is around, or null>", "reason": "<a few words>"}

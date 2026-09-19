@@ -11,7 +11,7 @@ from __future__ import annotations
 
 from backend.agents import ga_prompts
 from backend.memory.retrieval import retrieve
-from backend.memory.store import MemoryMeta
+from backend.memory.store import MemoryMeta, record_link
 
 PATTERN_QUESTIONS = [
     "What patterns has {name} noticed recently?",
@@ -54,6 +54,8 @@ def reflect(agent, rng) -> list:
             ctx.tracer.log("reflection", agent=agent.id, node_id=node.node_id, text=thought, focal_point=fp,
                            evidence=evidence, retrieved=[n.node_id for n in res.nodes],
                            retrieval_scores=res.scores, importance=imp, originating_event_ids=ev_ids)
+            for eid in dict.fromkeys(evidence or []):     # a reflection citing evidence links it (v2 §2.3)
+                record_link(agent, node.node_id, eid, "reflection", fp[:80])
             created.append(node)
     agent.scratch.importance_trigger_curr = agent.scratch.importance_trigger_max
     agent.scratch.importance_ele_n = 0
