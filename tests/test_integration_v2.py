@@ -70,7 +70,7 @@ def test_replay_with_all_mechanisms_is_bit_identical_across_processes(all_on):
     for f in BYTE_FILES:
         assert (rec / f).read_bytes() == (rep / f).read_bytes(), f
     agents = sorted(p.name for p in (rec / "agents_final").iterdir())
-    assert len(agents) == 8
+    assert len(agents) == yaml.safe_load((rec / "config.resolved.yaml").read_text())["population_size"]
     for a in agents:
         for f in ("nodes.json", "kw_strength.json", "embeddings.json"):
             sub = Path("agents_final") / a / "associative_memory" / f

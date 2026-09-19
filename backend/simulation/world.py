@@ -23,7 +23,8 @@ WORLD_GRAPH = {
 }
 
 ARENAS = {
-    "Dorm": ["Room 214", "Room 310", "Room 118", "Room 105", "Room 402", "Grad Apartment", "Lounge"],
+    "Dorm": ["Room 214", "Room 310", "Room 118", "Room 105", "Room 402", "Grad Apartment", "Lounge",
+             "Room 216", "Room 120", "Room 107", "Room 312", "Room 404"],
     "Dining Hall": ["Main Floor"],
     "Classroom": ["Lecture Hall", "Seminar Room"],
     "Library": ["Study Tables", "Quiet Floor"],

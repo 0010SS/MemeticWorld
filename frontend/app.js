@@ -284,6 +284,14 @@ async function renderAgent(aid) {
     .map(([o, r]) => `${esc(name(o))} <span class="muted">(${r.relation_type}, fam ${r.familiarity}, aff ${r.affinity})</span>`).join("<br>");
   const mem = (m) => `<div class="mem ${m.kind}"><div>${esc(m.text)}</div><div class="meta">${esc(m.time?.slice(11, 16))} · ${m.kind} · ${m.source_type} · importance ${m.importance}${m.score ? ` · score ${m.score.s} (rel ${m.score.rel}, rec ${m.score.rec}, imp ${m.score.imp})` : ""}${S.debug && m.originating_event_ids?.length ? ` <span class="tag gt">events ${m.originating_event_ids.join(",")}</span>` : ""}</div></div>`;
   const mods = st.modules && Object.keys(st.modules).length ? `<dt>Modules</dt><dd>${esc(JSON.stringify(st.modules))}</dd>` : "";
+  const personalLabels = { goal: "Personal goal", values: "Values", strengths: "Strengths", blind_spots: "Blind spots",
+    stress_response: "Response to stress", coping_strategy: "Coping strategy", social_energy: "Social energy",
+    trust_style: "How trust develops", conflict_style: "Approach to conflict", humor_style: "Sense of humor",
+    pet_peeves: "Pet peeves", small_joys: "Small joys" };
+  const personal = Object.entries(p.personal || {}).map(([key, value]) =>
+    `<dt>${esc(personalLabels[key] || key.replaceAll("_", " "))}</dt><dd>${esc(Array.isArray(value) ? value.join(", ") : value)}</dd>`).join("");
+  const friends = (p.friend_groups || []).map((g) =>
+    `<div class="small"><b>${esc(g.name)}</b><br>${g.members.map(esc).join(", ")}</div>`).join("");
   $("#agentPanel").innerHTML = `
     <div class="agent-head"><div class="avatar" style="background-image:url(/ga_assets/characters/${p.sprite}.png)"></div>
       <div><div style="font-weight:700">${esc(p.name)}</div><div class="muted small">${esc(p.demographics.year)} · ${esc(p.demographics.major)} · ${esc(p.demographics.role)}</div></div></div>
@@ -296,6 +304,8 @@ async function renderAgent(aid) {
       <dt>Background</dt><dd>${esc(p.background)}</dd>
       <dt>Memories</dt><dd>${d.n_memories} in stream</dd>${mods}
     </dl>
+    ${personal ? `<details open><summary>Personal traits and motivations</summary><dl class="kv">${personal}</dl></details>` : ""}
+    ${friends ? `<details open><summary>Friend groups</summary>${friends}</details>` : ""}
     <details><summary>Relationships</summary><div class="small">${rel}</div></details>
     <details><summary>Routine</summary><div class="small">${p.routine.map((r) => `${r.time} ${esc(r.activity)} <span class="muted">@ ${esc(r.location)}</span>`).join("<br>")}</div></details>
     <details open><summary>Last retrieved memories ${d.retrieved.tick != null ? `<span class="muted small">(tick ${d.retrieved.tick})</span>` : ""}</summary>${d.retrieved.memories.map(mem).join("") || '<div class="muted small">none yet</div>'}</details>
