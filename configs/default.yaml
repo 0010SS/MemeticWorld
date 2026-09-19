@@ -1,7 +1,17 @@
-# Default experiment configuration. Every run stores the fully resolved copy
-# of this file (merged with the run's own config) as runs/<run_id>/config.resolved.yaml.
+# Default experiment configuration (ontology v2, see docs/ONTOLOGY_V2.md).
+# Every run stores the fully resolved copy as runs/<run_id>/config.resolved.yaml.
+#
+# BASELINE = the plain cognitive model: GA-style perception/memory/retrieval/reflection/conversation,
+# plus partial perception with viewpoints (D42) and lossy reconstructive memory (D44).
+# Every meme-formation MECHANISM is OFF here and is switched on by exactly one key:
+#   NEED    : latent_events.referents.enabled, latent_events.assignment.mode, conversation.catchup.enabled,
+#             conversation.group.enabled, need.enabled
+#   LINK    : reminding.enabled, latent_events.link_visibility
+#   WORDING : memory.verbatim.enabled, priming.enabled, retrieval.source_weights
 run_name: default
 seed: 42
+world_seed: null            # null -> seed. The world script (events, casting, referents) uses only this seed,
+                            # so conditions sharing world_seed see identical events (common random numbers).
 population: configs/population/homewood8.yaml
 population_size: 8          # first N agents of the population file
 simulation_days: 3
@@ -20,12 +30,39 @@ embedding:
   backend: hash             # hash | sentence_transformers
   dim: 512
 
+topology:
+  mode: file                # file (population file circles/relationships) | generated
+  generated:
+    n_circles: 2
+    familiarity_within: 0.75
+    affinity_within: 0.7
+    p_between: 0.15
+    familiarity_between: 0.15
+    n_bridges: 2
+    shared_meals: true      # each circle gets a shared dinner slot, so co-location agrees with ties
+
 memory:
   encoding_noise: 0.3       # 0 = perfect verbatim memory ... 1 = gist only
   decay_rate: 0.1           # per simulated hour, used in recency = exp(-decay_rate * hours)
   memory_capacity: 300      # max nodes per agent before forgetting the weakest
   merge_threshold: 0.92     # embedding cosine above which a new memory merges into an old one (only if noise > 0)
   entity_generalization: 0.5  # prob. multiplier for replacing unfamiliar names with a role ("a student")
+  encoding_variability: 1.0  # sampled memory lens per encoding (D44); 0 = fixed encoding prompt
+  verbatim:                  # WORDING: distinctive heard wording that sticks word for word (D49, fixed in v2)
+    enabled: false
+    base: 0.3                # p(stick) for a new distinctive phrase
+    familiarity_gain: 0.2    # + per existing memory already containing the phrase
+    max: 0.9
+    max_phrases: 2
+    zipf_max: 3.6            # a distinctive phrase needs a word at most this frequent (wordfreq Zipf)
+    distinctiveness: lexicon # lexicon (rare AND not campus/routine vocabulary) | zipf (rare only)
+    exclude_self: true       # the agent's own utterances never "stick" as heard wording
+    render_in_text: true     # also quote stuck wording in the memory description
+
+priming:                    # WORDING: recently heard wordings are in mind when speaking
+  enabled: false
+  window_hours: 24
+  max_phrases: 3
 
 retrieval:
   alpha: 3.0                # relevance weight   (GA gw[1])
@@ -33,6 +70,7 @@ retrieval:
   gamma: 2.0                # importance weight  (GA gw[2])
   temperature: 0.7          # softmax temperature; 0 = deterministic GA top-k
   top_k: 5
+  source_weights: {}        # WORDING/NEED: e.g. {seed: 0.5, ambient: 0.5} (D50); {} = GA behaviour
 
 reflection:
   enabled: true
@@ -40,11 +78,29 @@ reflection:
   n_focal_points: 2
   n_insights: 3
 
+reminding:                  # LINK: a new experience may bring an earlier one to mind (D48, extended in v2)
+  enabled: false
+  on_sources: [perception, conversation, overheard]
+  min_salience: 0.45
+  n_related: 4              # most related earlier experiences (stochastic retrieval)
+  n_salient: 3              # plus salient older experiences, sampled by importance
+  min_age_minutes: 90
+  reflection_weight: 0.0    # share of a reminding thought's importance counted toward GA's reflection trigger
+
+need:                       # NEED: unresolved matters stay on an agent's mind and cue conversation
+  enabled: false
+  min_importance: 6
+  half_life_hours: 24
+  max_open: 3
+  discuss_decay: 0.5
+
 perception:
-  base_attention: 0.75
+  base_attention: 0.45
   other_arena_factor: 0.35  # attention multiplier for events in the same building but a different room
   busy_factor: 0.6          # attention multiplier while in a conversation
-  familiarity_weight: 0.35  # extra attention for facts involving familiar people
+  familiarity_weight: 0.25  # extra attention for facts involving familiar people
+  crowd_factor: 0.92        # attention x this per other agent in the building beyond 2 (D45)
+  viewpoints: true          # render each observer's own version of perceived facts (D42)
   overhear_prob: 0.3        # prob. a bystander in the same room hears a given utterance
 
 conversation:
@@ -53,17 +109,48 @@ conversation:
   pair_cooldown_minutes: 150
   max_per_agent_per_day: 6
   invite_prob: 0.15
+  catchup:                  # NEED: evening catch-up between close friends (D47)
+    enabled: false
+    after: "17:00"
+    min_familiarity: 0.6
+    prob: 0.8
+  catchup_max_utterances: 6
+  group:                    # NEED: multi-party talk at shared venues (meal tables)
+    enabled: false
+    venues: [["Dining Hall", "Main Floor"]]
+    windows: ["12:00-13:30", "18:00-19:30"]
+    min_participants: 3
+    max_participants: 5
+    max_utterances: 8
+    prob: 0.5
 
 routine:
   jitter_minutes: 20
   deviation_prob: 0.08
 
 latent_events:
-  event_rate: 0.12          # probability that a new latent-event instance starts in a tick
+  event_rate: 0.12          # instances per usable tick. A start in a day's last 4 ticks would cross the day end,
+                            # so usable ticks per day = ticks_per_day - 4 (56 of 60 by default)
+  schedule: balanced        # balanced: exactly round(event_rate x usable ticks) instances every day (7 by default),
+                            #   starts spread over the day with jitter, families in blocks that contain every
+                            #   family once, holdout a steady share of each family's instances
+                            # bernoulli: the v2.0 schedule, an instance starts at each usable tick with prob.
+                            #   event_rate; family and holdout drawn independently per instance
   families: [E1, E2, E3, E4]
   family_weights: {E1: 1.0, E2: 1.0, E3: 1.0, E4: 1.0}
-  holdout_from_day: 3       # generalization test: from this day on, only held-out surface templates are used (null = never)
-  generator: template       # template | llm
+  structure: real           # real | scrambled (random labels, composed nodes) | none (E0 plain mishaps)
+  holdout_frac: 0.25        # share of instances that use a held-out skin (interleaved from day 1)
+  link_visibility: 0.0      # LINK: prob. an instance's private "inner" fact is visible to everyone present
+  assignment:               # NEED: who instances happen to
+    mode: none              # none | balanced (circles round-robin) | home (family -> circle, rotated by world_seed)
+    strength: 0.7           # prob. P (and S) are cast from the assigned circle
+  referents:                # NEED: persistent, family-neutral things instances can recur around
+    enabled: false
+    reuse: 0.6              # prob. an instance reuses a referent its circle has already met (any domain; the
+                            # instance then uses its family's skin for that referent's domain)
+  script_from: null         # path to a world_script.jsonl to reuse verbatim; raises unless it fits this run
+                            # (population, clock, circles, world_seed; checked against its .meta.json or the
+                            # manifest.json of the run it came from)
 
 reaction:
   enabled: true
@@ -78,11 +165,17 @@ modules:
 module_params:
   emotion: {decay_per_hour: 0.15, salience_gain: 0.5, contagion: 0.2}
   social_reward: {lam: 1.0, importance_gain: 2.0}
-  prestige_bias: {attention_gain: 0.3, importance_gain: 1.5, scores: {}}
+  prestige_bias: {attention_gain: 0.3, importance_gain: 1.5, scores: {}, scores_source: degree}
   conformity: {strength: 0.6, sim_threshold: 0.35}
+
+controls:
+  planted_phrase: null      # positive control: {agent: maya, habit: "Maya has a habit of calling any mess \"a full pickle\"."}
 
 analysis:
   llm_classifier: true
   probes: true
   min_speakers: 2
   min_uses: 3
+  observer: {backend: null, model: null}   # fixed observer LLM; null -> the agents' llm settings
+  permutations: 1000
+  fdr_q: 0.1

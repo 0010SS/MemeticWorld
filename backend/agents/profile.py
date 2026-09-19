@@ -86,6 +86,29 @@ class AgentProfile:
         return d
 
 
+def apply_planted(profiles: dict[str, AgentProfile], cfg: dict) -> dict | None:
+    """Planted-convention positive control (ontology v2 §5): `controls.planted_phrase` gives one agent a
+    verbal habit, appended to its habits (GA `lifestyle`). No-op when null. Must run before the agents
+    are built. Returns what was applied (for the manifest), or None.
+
+    The habit is written as a full sentence ("Maya has a habit of ..."); a leading first name and the final
+    period are dropped so it reads naturally inside `ga_lifestyle()` ("Maya grabs coffee ...; has a habit of ...")."""
+    pp = (cfg.get("controls") or {}).get("planted_phrase")
+    if not pp:
+        return None
+    aid, habit = pp.get("agent"), " ".join(str(pp.get("habit") or "").split())
+    if aid not in profiles:
+        raise ValueError(f"controls.planted_phrase.agent {aid!r} is not in the loaded population")
+    if not habit:
+        raise ValueError("controls.planted_phrase.habit is empty")
+    prof = profiles[aid]
+    habit = habit.rstrip(".").strip()
+    if habit.startswith(prof.first_name + " "):
+        habit = habit[len(prof.first_name) + 1:]
+    prof.habits = list(prof.habits) + [habit]
+    return {"agent": aid, "habit": habit}
+
+
 def load_population(path: str | Path, n: int | None = None):
     p = Path(path)
     if not p.is_absolute():

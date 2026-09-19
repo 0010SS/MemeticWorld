@@ -1,2 +1,5 @@
-# Baseline: Generative-Agents-style cognition, lossy memory, no optional social modules.
+# Baseline: the plain cognitive model (ontology v2) = configs/default.yaml. GA-style perception, memory,
+# retrieval, reflection and conversation, with partial perception, viewpoints (D42) and lossy reconstructive
+# memory (D44). Every NEED / LINK / WORDING mechanism and every social module is off; the factorial designs in
+# configs/designs/ switch them on as overlays of this file.
 run_name: baseline

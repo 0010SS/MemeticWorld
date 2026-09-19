@@ -1,0 +1,45 @@
+group_chat_v1.txt  (MemeWorld; adapted from GA v3_ChatGPT/iterative_convo_v1.txt for three or more people)
+
+Changes from upstream: the speaker talks to the whole table instead of one target person, every
+participant is named, and the output keys are fixed ("utterance", "end") instead of being keyed by
+the persona's name.
+
+Variables:
+!<INPUT 0>! -- persona ISS
+!<INPUT 1>! -- persona name
+!<INPUT 2>! -- retrieved memory
+!<INPUT 3>! -- past context
+!<INPUT 4>! -- current location
+!<INPUT 5>! -- current context
+!<INPUT 6>! -- names of everyone in the conversation
+!<INPUT 7>! -- curr convo
+!<INPUT 8>! -- persona name
+<commentblockmarker>###</commentblockmarker>
+Context for the task:
+
+PART 1.
+!<INPUT 0>!
+
+Here is the memory that is in !<INPUT 1>!'s head:
+!<INPUT 2>!
+
+PART 2.
+Past Context:
+!<INPUT 3>!
+
+Current Location: !<INPUT 4>!
+
+Current Context:
+!<INPUT 5>!
+
+!<INPUT 6>! are chatting together. Here is their conversation so far:
+!<INPUT 7>!
+
+---
+Task: Given the above, what should !<INPUT 8>! say next in the conversation? And did the conversation end with !<INPUT 8>!'s utterance?
+
+Output format: Output a json of the following format:
+{
+"utterance": "<!<INPUT 8>!'s utterance>",
+"end": "<json Boolean: did the conversation end with !<INPUT 8>!'s utterance?>"
+}

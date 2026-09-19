@@ -166,6 +166,12 @@ agents:
       - {time: "19:30", location: Library, arena: Study Tables, activity: writing her thesis}
       - {time: "21:30", location: Dorm, arena: Room 402, activity: winding down}
 
+# Circles: DISJOINT friend circles (>= 3 members) used by latent_events.assignment (ontology v2, §1.5).
+# Agents in no circle (priya, sofia) form the free pool.
+circles:
+  c_lab: [maya, dev, hana]
+  c_dorm: [ethan, leo, jordan]
+
 # Social topology (stored explicitly so it can become an experimental variable).
 groups:
   dorm_a: [maya, priya]

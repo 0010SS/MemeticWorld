@@ -50,6 +50,22 @@ class MockBackend(Backend):
             if re.search(r"missed|wrong|failed|spilled|locked|late|lost|prize|praised|offered", prompt.split("Rate")[0][-400:]):
                 base += 3
             return json.dumps({"output": str(min(9, base))})
+        if p == "reminding":
+            n = len(re.findall(r"^\d+\. ", prompt.split("earlier things")[-1], re.M))
+            if n and h % 3 == 0:
+                return json.dumps({"reminded_of": 1 + h % n, "what_felt_alike": "it went sideways the same way"})
+            return json.dumps({"reminded_of": None, "what_felt_alike": None})
+        if p == "viewpoint":
+            items = re.findall(r"^(f\d+) \[([^\]]+)\] (.+)$", prompt, re.M)
+            out = {}
+            for k, tag, text in items:
+                if tag.startswith("different room") and h % 3 == 0:
+                    out[k] = ""
+                elif tag.startswith("different room"):
+                    out[k] = "From the next room, it looked like " + text[0].lower() + text[1:]
+                else:
+                    out[k] = text
+            return json.dumps(out)
         if p == "decide_to_talk":
             return f" They are nearby and know each other.\nAnswer in yes or no: {'yes' if h % 10 < 6 else 'no'}"
         if p == "reflection_focal_points":
@@ -82,6 +98,15 @@ class MockBackend(Backend):
                 utt = "Hey, how's your day going?"
             end = n_lines >= 2 and h % 3 == 0
             return json.dumps({me: utt, f"Did the conversation end with {me}'s utterance?": end})
+        if p == "group_chat_utterance":   # multi-party talk (agents/group_conversation.py, group_chat_v1.txt)
+            mem = [l[2:].strip() for l in _section(prompt, "head:", "PART 2").splitlines() if l.startswith("- ")]
+            convo = _section(prompt, "conversation so far:", "---").strip()
+            n_lines = 0 if convo.startswith("[The conversation") else len(convo.splitlines())
+            m = re.sub(r"^[A-Z][a-z]+ [A-Z][a-z]+ (saw|heard in a conversation|overheard|remembers that)[: ]*", "",
+                       mem[h % len(mem)]) if mem else ""
+            frag = " ".join(m.split()[:12]).rstrip(".,")
+            utt = f"So, {frag[0].lower() + frag[1:]}." if frag else "How's everyone's day going?"
+            return json.dumps({"utterance": utt, "end": n_lines >= 3 and h % 3 == 0})
         if p == "encode_memory":
             name = re.search(r"brief description of ([A-Z][a-z]+ [A-Z][a-z]+)", prompt)
             name = name.group(1) if name else "Someone"

@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import copy
+import warnings
 from pathlib import Path
 
 import yaml
@@ -9,6 +10,16 @@ import yaml
 from backend.ga_compat import REPO_ROOT
 
 DEFAULT = REPO_ROOT / "configs" / "default.yaml"
+
+# keys dropped in ontology v2 -> what to use instead (shown in the unknown-key warning)
+REMOVED = {
+    "latent_events.holdout_from_day": "use latent_events.holdout_frac (held-out skins interleaved from day 1)",
+    "latent_events.generator": "the LLM surface generator was dropped in v2; events come from the world script",
+}
+
+
+class ConfigKeyWarning(UserWarning):
+    """An overlay sets a key that configs/default.yaml does not define (usually a typo or a v1 key)."""
 
 
 def deep_merge(base: dict, over: dict) -> dict:
@@ -21,20 +32,54 @@ def deep_merge(base: dict, over: dict) -> dict:
     return out
 
 
+def unknown_keys(over: dict, ref: dict, prefix: str = "") -> list[str]:
+    """Dotted keys in `over` that `ref` does not define. Open maps (an empty dict or null in `ref`, e.g.
+    retrieval.source_weights) accept anything; keys starting with '_' are private (e.g. `_condition`)."""
+    out = []
+    for k, v in (over or {}).items():
+        key = f"{prefix}{k}"
+        if str(k).startswith("_") or (not prefix and k == "extends"):
+            continue
+        if k not in ref:
+            out.append(key)
+        elif isinstance(v, dict) and isinstance(ref[k], dict) and ref[k]:
+            out += unknown_keys(v, ref[k], key + ".")
+    return out
+
+
+def check_keys(over: dict, source: str) -> list[str]:
+    """Warn (never fail) about overlay keys that default.yaml does not know: a silently ignored typo
+    would make two conditions identical while their labels say they differ."""
+    bad = unknown_keys(over, yaml.safe_load(DEFAULT.read_text()))
+    for key in bad:
+        hint = REMOVED.get(key, "not in configs/default.yaml; the engine will ignore it")
+        warnings.warn(f"{source}: unknown config key '{key}' ({hint})", ConfigKeyWarning, stacklevel=3)
+    return bad
+
+
 def load_config(path: str | Path | None = None, overrides: dict | None = None) -> dict:
-    cfg = yaml.safe_load(open(DEFAULT))
+    cfg = yaml.safe_load(DEFAULT.read_text())
     if path:
         p = Path(path)
         if not p.is_absolute():
             p = REPO_ROOT / p
-        user = yaml.safe_load(open(p)) or {}
+        user = yaml.safe_load(p.read_text()) or {}
         base_name = user.pop("extends", None)
         if base_name:
             cfg = load_config(base_name)
+        check_keys(user, str(path))
         cfg = deep_merge(cfg, user)
     if overrides:
+        check_keys(overrides, "overrides")
         cfg = deep_merge(cfg, overrides)
     return cfg
+
+
+def observer_spec(cfg: dict, backend: str | None = None, model: str | None = None) -> tuple[str | None, str | None]:
+    """Observer LLM for `analyze`: explicit arguments, else `analysis.observer`, else None (= the run's
+    own llm settings). One fixed observer across conditions keeps observer differences out of effects (D41)."""
+    obs = (cfg.get("analysis") or {}).get("observer") or {}
+    return backend or obs.get("backend"), model or obs.get("model")
 
 
 def parse_overrides(pairs: list[str]) -> dict:

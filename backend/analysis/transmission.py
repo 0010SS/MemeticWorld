@@ -4,19 +4,24 @@ When B first uses expression m after having heard A use it, A -> B is a
 candidate transmission path. We keep *all* plausible prior exposures, each with
 a confidence (recency-weighted, boosted if B's own encoded memory of that
 exposure retained the wording), normalised against an "independent invention"
-alternative. The most recent speaker is not assumed to be causal.
+alternative. The most recent speaker is not assumed to be causal. An exposure counts only when it
+causally precedes the use (`rundata.precedes`): same-tick remarks, conversation openings and parallel
+conversations cannot have heard each other.
 """
 from __future__ import annotations
 
 import math
 from collections import defaultdict
 
+from backend.analysis.rundata import chron_key, precedes
+
 INDEPENDENT_PRIOR = 0.15
 
 
 def analyze_transmission(cand: dict, rd, retained: dict) -> dict:
     """retained: (agent, utterance_id) -> memory text containing the utterance (from memory_encoded)."""
-    usages = cand["usages"]
+    idx = {uid: u.get("idx") for uid, u in (getattr(rd, "utt_by_id", None) or {}).items()}
+    usages = sorted((dict(u, idx=idx.get(u["utterance_id"], u.get("idx"))) for u in cand["usages"]), key=chron_key)
     variants = cand["variants"]
     by_speaker_first = {}
     for u in usages:
@@ -29,8 +34,8 @@ def analyze_transmission(cand: dict, rd, retained: dict) -> dict:
     edges, inventors = [], []
     tpd = rd.manifest["ticks_per_day"]
     tm = rd.manifest["tick_minutes"]
-    for spk, first in sorted(by_speaker_first.items(), key=lambda kv: (kv[1]["tick"], kv[1]["utterance_id"])):
-        prior = [e for e in exposures.get(spk, []) if (e["tick"], e["utterance_id"]) < (first["tick"], first["utterance_id"])]
+    for spk, first in sorted(by_speaker_first.items(), key=lambda kv: chron_key(kv[1])):
+        prior = [e for e in exposures.get(spk, []) if precedes(e, first)]
         if not prior:
             inventors.append({"agent": spk, "tick": first["tick"], "utterance_id": first["utterance_id"]})
             continue

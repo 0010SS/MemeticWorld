@@ -1,0 +1,58 @@
+# First v2 experiment (docs/ONTOLOGY_V2.md): the three meme-formation bottlenecks crossed 2x2x2, each
+# switched as one block of mechanisms, x real vs scrambled hidden structure (the grounding calibration),
+# plus a negative (no events) and a positive (planted convention) control.
+# 16 + 2 cells x 3 seeds = 54 runs. Every run uses seed = world_seed = s (common random numbers).
+#
+#   .venv/bin/python -m backend.cli design run configs/designs/bottleneck_factorial.yaml --parallel 4
+#   .venv/bin/python -m backend.cli design status configs/designs/bottleneck_factorial.yaml
+#   .venv/bin/python -m backend.cli design table configs/designs/bottleneck_factorial.yaml --csv runs/bottleneck_factorial.csv
+name: bottleneck_factorial
+base: configs/baseline.yaml
+seeds: [1, 2, 3]
+days: 2
+observer: {backend: claude_cli, model: sonnet}   # one fixed observer for every cell (D41)
+common:
+  # the agents' model, pinned so a change of default.yaml cannot shift the design; 4 LLM workers per run
+  # because several runs share the claude CLI under --parallel
+  llm: {backend: claude_cli, model: haiku, max_workers: 4}
+
+factors:
+  need:        # the same people repeatedly need to refer to the same thing
+    off: {}
+    on:
+      latent_events:
+        referents: {enabled: true}
+        assignment: {mode: balanced}
+      conversation:
+        catchup: {enabled: true}
+        group: {enabled: true}
+      need: {enabled: true}
+  link:        # someone connects separate instances as the same kind of thing
+    off: {}
+    on:
+      reminding: {enabled: true}
+      latent_events: {link_visibility: 0.3}
+  wording:     # a specific wording survives lossy memory and gets reused
+    off: {}
+    on:
+      memory: {verbatim: {enabled: true}}
+      priming: {enabled: true}
+      retrieval: {source_weights: {seed: 0.5, ambient: 0.5}}
+  structure:   # scrambled = same shapes and roles, nodes composed across families, labels random
+    real: {}
+    scrambled: {latent_events: {structure: scrambled}}
+
+controls:
+  no_events:   # negative control: all mechanisms on, no world events -> false-positive rate
+    levels: {need: on, link: on, wording: on, structure: real}
+    set: {latent_events: {event_rate: 0}}
+  planted:     # positive control: one agent really has a verbal habit -> can the observer see it spread?
+    levels: {need: on, link: on, wording: on, structure: real}
+    set:
+      controls:
+        planted_phrase:
+          agent: maya
+          habit: "Maya has a habit of calling any mess \"a full pickle\"."
+
+# pre-registered outcome columns (outcomes.json, docs/ONTOLOGY_V2.md §4)
+outcomes: [n_candidates, n_emerged, max_emerged_adoption, n_grounded]

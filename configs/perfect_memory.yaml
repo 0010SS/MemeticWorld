@@ -1,4 +1,5 @@
-# Perfect memory: no encoding loss, minimal forgetting, deterministic retrieval.
+# Perfect memory: no encoding loss (verbatim storage, so no memory lens or merging), minimal forgetting,
+# deterministic GA top-k retrieval.
 run_name: perfect_memory
 memory:
   encoding_noise: 0.0

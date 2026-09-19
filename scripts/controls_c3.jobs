@@ -1,0 +1,6 @@
+# config seed model
+baseline 1 sonnet
+baseline 2 sonnet
+no_events 1 sonnet
+event_rich 1 sonnet
+baseline 1 haiku

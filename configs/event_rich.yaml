@@ -1,4 +1,4 @@
-# Event rich: more recurring latent events.
+# Event rich: latent-event instances start about twice as often (same families, skins and holdout split).
 run_name: event_rich
 latent_events:
   event_rate: 0.25

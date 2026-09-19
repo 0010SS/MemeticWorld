@@ -1,0 +1,29 @@
+# Tiny offline design for tests and pipeline checks: 2 factors x 2 levels + 1 control, 1 seed, mock LLM.
+# Each run is a few simulated hours and takes seconds.
+#   .venv/bin/python -m backend.cli design run configs/designs/smoke_mock.yaml --parallel 2
+name: smoke_mock
+base: configs/smoke.yaml
+seeds: [1]
+days: 1
+observer: {backend: mock, model: null}
+common:
+  day_end: "11:00"
+  llm: {backend: mock, max_workers: 2}
+
+factors:
+  link:
+    off: {}
+    on:
+      reminding: {enabled: true}
+      latent_events: {link_visibility: 0.3}
+  wording:
+    off: {}
+    on:
+      memory: {verbatim: {enabled: true}}
+      priming: {enabled: true}
+      retrieval: {source_weights: {seed: 0.5, ambient: 0.5}}
+
+controls:
+  no_events: {latent_events: {event_rate: 0}}    # plain overlay: base + common + overlay, no factor levels
+
+outcomes: [n_candidates, n_emerged, max_emerged_adoption, n_grounded]
