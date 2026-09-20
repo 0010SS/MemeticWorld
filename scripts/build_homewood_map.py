@@ -780,6 +780,10 @@ def campus_rooms(geo):
     inn = inner_of("Admin Building"); ix0, _, ix1, _ = bbox(inn)
     a, b = cut(inn, lambda c: c[0], ix0 + (ix1 - ix0 + 1) * 11 // 20)
     out["Admin Building"] = (5613, "beige", {"Front Desk": a, "Mailroom": b}, {"Front Desk": "frontdesk", "Mailroom": "mailroom"})
+    # Nolan's (Scott-Bates Commons west wing): one serving room, drawn with the OTHER hall's wall cap, floor
+    # and furniture kind. The two dining venues differ in where they are, not in what they look like, so a
+    # difference between them in the run is exposure and not decor.
+    out["Nolans"] = (6668, "peach", {"Servery": largest_component(inner_of("Nolans"))}, {"Servery": "dining"})
     return out
 
 

@@ -3,6 +3,20 @@
 # plus the catch-up recurrence, so a heard name has a route into memory and back out into speech.
 # Everything else is inherited from configs/homewood100_naming.yaml, so the two cells differ in exactly
 # these keys.
+#
+# Deliberately NOT repeated here, because repeating them is how two cells drift apart: `world.reference_mode:
+# situated`, `conversation.mealtalk.enabled: true` and `initial_memories_importance: 7` are set once in cell 1
+# and inherited unchanged, so both cells get them and the only difference below is WORDING.
+# Known asymmetry, measured on 1-day mock runs and worth reading before interpreting this cell:
+# `retrieval.source_weights.seed: 0.5` (a WORDING key, D50) halves the naming seed too, because a seeded
+# naming memory carries the same `source_type: seed` as the relationship facts D50 was aimed at. It costs
+# this cell more than the importance above buys it -- 11.4 against cell 1's 32.6 seed retrievals per 100
+# utterances, 74 against 97 of 100 agents recalling their seed in a day -- and it cancels the meal cue here
+# (cued 13.4 vs uncued 11.2 per 100, where cell 1 gets 62.0 vs 30.1). Lifting only the seed penalty, at the
+# DEFAULT importance of 5, restores it: 23.3 per 100, 92 of 100 agents, cued 51.2 vs uncued 20.6. So the fix
+# is a source type of its own for initial memories -- D50's 0.5 is aimed at static relationship facts, not
+# at the one memory this experiment is about -- and not a different weight here, which would stop the two
+# cells being a single-mechanism comparison. Until then, read cell 2's name shares as a floor.
 extends: configs/homewood100_naming.yaml
 run_name: homewood100_naming_wording
 memory:

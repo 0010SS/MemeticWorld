@@ -51,6 +51,38 @@ ERRANDS = {
     "Library": [("Study Tables", "returning a library book"), ("Quiet Floor", "looking for a book")],
     "Quad": [("Lawn", "cutting across the quad")],
 }
+# What the world says someone is DOING, when the everyday wording above happens to name the room as well
+# (`world.reference_mode: situated`). An activity is agent-facing text that everybody in the room reads, and
+# the place it happens in is already rendered separately by backend/simulation/reference.py, so naming it
+# here would hand the agent the world's label a second time. Only these entries name a room; every other
+# errand and detour describes the doing and is used unchanged in both modes.
+SITUATED_ACTIVITIES = {
+    "hanging out in the common room": "hanging out",
+    "grabbing a snack in the common room": "grabbing a snack",
+    "dropping by the club room": "dropping by",
+    "printing something in the computer lab": "printing something",
+    "dropping off a form at the front desk": "dropping off a form",
+    "picking up a package at the mailroom": "picking up a package",
+    "checking the mailbox": "checking for post",
+    "shooting hoops in the field house": "shooting hoops",
+    "running on the track": "running laps",
+    "returning a library book": "returning a borrowed book",
+    "picking up a book": "picking up a borrowed book",
+    "cutting across the quad": "cutting across the green",
+    "looking around the gallery": "looking around the exhibits",
+    "walking through the museum garden": "walking through the grounds",
+    "checking the teaching lab schedule": "checking the schedule on the door",
+}
+
+
+def activity_text(activity: str, cfg: dict | None = None) -> str:
+    """One planned activity, in the run's reference mode. Canonical mode returns it unchanged."""
+    from backend.simulation import reference
+    if reference.mode(cfg) == reference.CANONICAL:
+        return activity
+    return SITUATED_ACTIVITIES.get(activity, activity)
+
+
 ERRAND_DEFAULTS = {"errands_per_day": 2, "errand_minutes": [30, 45], "errand_window": ["08:00", "21:00"]}
 # routine entries an errand never interrupts: classes, meals, rehearsals / practice, shifts, tutoring, planned
 # meet-ups ("... with Sam", "meeting up with ..."; they co-locate people on purpose), waking up and winding down
@@ -79,7 +111,7 @@ def plan_day(agent, clock, rng) -> list[dict]:
             arena, act = default_arena(loc), DETOURS.get(loc, "taking a break")
         if arena not in ARENAS[loc]:
             arena = default_arena(loc)
-        plan.append({"k": k, "location": loc, "arena": arena, "activity": act})
+        plan.append({"k": k, "location": loc, "arena": arena, "activity": activity_text(act, agent.cfg)})
     plan.sort(key=lambda e: e["k"])
     plan = add_errands(agent, clock, plan, rng)
     return shift_hook(agent, clock, plan)
@@ -161,7 +193,7 @@ def add_errands(agent, clock, plan: list[dict], rng) -> list[dict]:
         arena, act = opts[min(int(u[3] * len(opts)), len(opts) - 1)]
         if arena not in ARENAS[place]:
             arena = default_arena(place)
-        out.append({"k": s, "location": place, "arena": arena, "activity": act})
+        out.append({"k": s, "location": place, "arena": arena, "activity": activity_text(act, agent.cfg)})
         out.append({"k": s + d, "location": e["location"], "arena": e["arena"], "activity": e["activity"]})
         taken.append((s, s + d))
         used.append(place)

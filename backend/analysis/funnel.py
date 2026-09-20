@@ -5,13 +5,17 @@ spread break? (the old scripts/diagnose_funnel.py metrics, now on the provenance
 `referent_event_ids` definition of "an utterance is about an event").
 
 manipulation: one check per mechanism, counted from the trace types each mechanism writes, so a
-condition can be shown to have actually switched its mechanism on.
+condition can be shown to have actually switched its mechanism on. `memes` (meme_checks) is the same
+check for the injected cohort, PER MEME: did its committed minority actually say it, how often, to how
+many distinct hearers -- plus crowding, because four memes share one campus's conversational airtime.
 
 validity: per mechanism "off" (config disables it), "active" (it fired at least once) or "inactive"
-(enabled but never fired -- the condition did not manipulate what it claims to).
+(enabled but never fired -- the condition did not manipulate what it claims to). Each declared meme is
+its own mechanism (`meme:<id>`), so a cell whose minority never spoke reads "inactive" immediately.
 """
 from __future__ import annotations
 
+import math
 import re
 from collections import Counter, defaultdict
 from statistics import mean, median
@@ -272,6 +276,124 @@ def planted_phrase(cfg: dict) -> dict | None:
     return {"agent": pp.get("agent"), "habit": habit, "phrase": (q[0] if q else habit).strip().lower()}
 
 
+# ------------------------------------------------------------------------------------------------
+# injected-cohort manipulation checks (the 2x2 registry)
+
+def norm_phrase(text: str) -> str:
+    """An injected phrase or an utterance reduced to a comparable form: tokens, lower case, hyphens read
+    as spaces -- "blue-tray" and "blue tray" are one coinage said two ways (memo §2.1, formal variation),
+    and a meme that is only ever written the other way has still been said."""
+    return " ".join(" ".join(tokens(text)).replace("-", " ").split())
+
+
+def says(text: str, norm: str) -> bool:
+    return bool(norm) and f" {norm} " in f" {norm_phrase(text)} "
+
+
+def meme_checks(rd) -> dict:
+    """Did each injected meme actually get INJECTED, and is one minority crowding out the others?
+
+    A meme its own seeds never utter has not been injected at all, and no amount of analysis three hours
+    later will rescue the cell -- so this is a manipulation check, reported per meme and immediately:
+    who said it, how often, in how many conversations, in front of how many distinct hearers, and how
+    many of its seeds never said it once.
+
+    With four memes sharing one campus's conversational airtime, crowding is the likeliest way the design
+    fails: `crowding` gives each meme's share of all injected-phrase uses, the evenness of that split
+    (normalised entropy: 1.0 = perfectly even, low = one minority dominating), and the airtime the whole
+    cohort takes of the run's utterances.
+
+    `contamination` is the R1/R2 check from the observer's side: the phrase, or one of its distinctive
+    words, occurring in text the WORLD produced means any agent could have coined it independently and
+    transmission is no longer distinguishable from rediscovery.
+    """
+    memes = list(getattr(rd, "memes", []) or [])
+    if not memes:
+        return {}
+    utts = rd.utterances
+    tpd = rd.ticks_per_day
+    # the wording agents were actually given: event fact texts, viewpoint renderings and referent names
+    # (emergence.world_segments), plus profile, routine and background text minus the injected habits
+    # themselves (rd.world_text). This is the corpus R1 and R2 are about.
+    from backend.analysis.emergence import world_segments
+    given = [" ".join(seg) for seg in world_segments(rd)] + [rd.world_text]
+    world = {t for seg in given for t in tokens(seg)}
+    world_norm = [f" {n} " for n in (norm_phrase(seg) for seg in given) if n]
+    rows, totals = {}, {}
+    for m in memes:
+        norm = norm_phrase(m["phrase"])
+        seeds = set(m.get("seeds") or [])
+        uses = [u for u in utts if says(u["text"], norm)]
+        seed_uses = [u for u in uses if u["speaker"] in seeds]
+        other = [u for u in uses if u["speaker"] not in seeds]
+        hearers = {l for u in seed_uses for l in (u.get("listeners") or []) if l != u["speaker"]}
+        said_by = Counter(u["speaker"] for u in seed_uses)
+        content = [t for t in tokens(m["phrase"]) if t not in STOP]
+        rows[m["id"]] = {
+            "phrase": m["phrase"], "cell": f"{m['grounding']}x{m['breadth']}",
+            "grounding": m["grounding"], "breadth": m["breadth"], "site": m.get("site"),
+            "n_seeds": len(seeds), "seeds": sorted(seeds), "seeds_source": m.get("seeds_source"),
+            "injected": bool(seed_uses),
+            "seed_uses": len(seed_uses), "seed_speakers": len(said_by), "silent_seeds": len(seeds) - len(said_by),
+            "uses_per_speaking_seed_med": round(median(said_by.values()), 1) if said_by else None,
+            "seed_conversations": len({u.get("conversation_id") for u in seed_uses if u.get("conversation_id")}),
+            "distinct_hearers": len(hearers), "distinct_non_seed_hearers": len(hearers - seeds),
+            "uses": len(uses), "other_uses": len(other), "other_speakers": len({u["speaker"] for u in other}),
+            "first_use_tick": uses[0]["tick"] if uses else None,
+            "first_use_day": (uses[0]["tick"] // tpd + 1) if uses else None,
+            "first_other_use_day": (other[0]["tick"] // tpd + 1) if other else None,
+            "last_use_day": (uses[-1]["tick"] // tpd + 1) if uses else None,
+            "uses_by_day": {d: sum(1 for u in uses if u["tick"] // tpd + 1 == d)
+                            for d in sorted({u["tick"] // tpd + 1 for u in uses})},
+            "contamination": {"phrase_in_world_text": any(f" {norm} " in seg for seg in world_norm),
+                              "distinctive_words_in_world_text": sorted(t for t in content if t in world)},
+        }
+        totals[m["id"]] = len(uses)
+    tot = sum(totals.values())
+    ent = -sum((c / tot) * math.log(c / tot) for c in totals.values() if c) if tot else 0.0
+    return {"memes": rows,
+            "crowding": {"total_uses": tot, "utterances": len(utts),
+                         "uses_per_100_utterances": round(100 * tot / len(utts), 2) if utts else None,
+                         "share": {k: round(v / tot, 3) for k, v in totals.items()} if tot else
+                                  {k: None for k in totals},
+                         "max_share": round(max(totals.values()) / tot, 3) if tot else None,
+                         "evenness": round(ent / math.log(len(totals)), 3) if tot and len(totals) > 1 else None},
+            "injected": sorted(k for k, r in rows.items() if r["injected"]),
+            "not_injected": sorted(k for k, r in rows.items() if not r["injected"]),
+            "contaminated": sorted(k for k, r in rows.items()
+                                   if r["contamination"]["phrase_in_world_text"]
+                                   or r["contamination"]["distinctive_words_in_world_text"])}
+
+
+def meme_table(checks: dict) -> str:
+    """The cohort's manipulation check as plain text: one column per meme."""
+    rows = checks.get("memes") or {}
+    ids = list(rows)
+    if not ids:
+        return "(no memes)"
+    w = max(18, *(len(i) + 2 for i in ids))
+    out = [f"{'':26}" + "".join(f"{i:>{w}}" for i in ids)]
+    for label, key in (("cell", "cell"), ("seeds", "n_seeds"), ("injected", "injected"),
+                       ("seed uses", "seed_uses"), ("seeds who said it", "seed_speakers"),
+                       ("silent seeds", "silent_seeds"), ("seed conversations", "seed_conversations"),
+                       ("distinct hearers", "distinct_hearers"), ("non-seed uses", "other_uses"),
+                       ("non-seed speakers", "other_speakers"), ("first non-seed day", "first_other_use_day"),
+                       ("uses total", "uses")):
+        out.append(f"{label:26}" + "".join(f"{str(rows[i][key]):>{w}}" for i in ids))
+    c = checks.get("crowding") or {}
+    out.append(f"{'share of cohort airtime':26}" + "".join(f"{str((c.get('share') or {}).get(i)):>{w}}" for i in ids))
+    out.append("")
+    out.append(f"cohort uses {c.get('total_uses')} in {c.get('utterances')} utterances "
+               f"({c.get('uses_per_100_utterances')} per 100); evenness {c.get('evenness')}, "
+               f"max share {c.get('max_share')}")
+    if checks.get("not_injected"):
+        out.append(f"NOT INJECTED (no seed ever said it): {', '.join(checks['not_injected'])}")
+    if checks.get("contaminated"):
+        out.append(f"CONTAMINATED (world text carries the phrase or its distinctive words): "
+                   f"{', '.join(checks['contaminated'])}")
+    return "\n".join(out)
+
+
 def manipulation(rd) -> dict:
     ev = rd.events
     enc = rd.of("memory_encoded")
@@ -325,6 +447,9 @@ def manipulation(rd) -> dict:
                           "uses_by_agent": sum(1 for u in uses if u["speaker"] == pp["agent"]),
                           "uses_by_others": sum(1 for u in uses if u["speaker"] != pp["agent"]),
                           "other_speakers": len({u["speaker"] for u in uses} - {pp["agent"]})}
+    mc = meme_checks(rd)
+    if mc:
+        out["memes"] = mc
     return out
 
 
@@ -363,6 +488,10 @@ def mechanisms_enabled(cfg: dict) -> dict:
         "viewpoints": bool(_get(cfg, "perception.viewpoints", False)),
         "lens": float(_get(cfg, "memory.encoding_variability", 0) or 0) > 0 and float(_get(cfg, "memory.encoding_noise", 0) or 0) > 0,
         "planted_phrase": bool(_get(cfg, "controls.planted_phrase")),
+        # one entry per declared meme, so a cell whose minority never spoke is visible in `validity`
+        # rather than inferred from a null result hours later
+        **{f"meme:{m.get('id')}": True for m in (_get(cfg, "memes.registry") or [])
+           if _get(cfg, "memes.enabled") and isinstance(m, dict) and m.get("id")},
         **{f"module:{m}": bool(v) for m, v in mods.items()},
     }
 
@@ -385,13 +514,21 @@ def validity(cfg: dict, manip: dict) -> dict:
         "lens": manip["lens"]["encodings"] > 0,
         "planted_phrase": (manip.get("planted") or {}).get("uses_by_agent", 0) > 0,
     }
+    memes = ((manip.get("memes") or {}).get("memes") or {})
     mods = manip.get("modules") or {}
     out = {}
     for mech, on in mechanisms_enabled(cfg).items():
         if not on:
             out[mech] = "off"
             continue
-        if mech.startswith("module:"):
+        if mech.startswith("meme:"):
+            # "inactive" here means the committed minority never uttered its phrase: the cell was not
+            # injected, and anything measured about it afterwards is measuring nothing
+            mid = mech.split(":", 1)[1]
+            if mid not in memes:
+                continue
+            f = memes[mid]["injected"]
+        elif mech.startswith("module:"):
             name = mech.split(":", 1)[1]
             if name not in mods:
                 continue

@@ -28,6 +28,15 @@ Expression statuses (ontology v2 §4 emergence semantics, per expression, at tic
 `status` is the first applicable of planted > system_wording > world_wording > emerged > spreading > echo > new;
 `flags` lists every applicable chip (a planted phrase can also be "emerged").
 
+Injected expressions come in two roles and are never conflated. `controls.planted_phrase` is the positive
+CONTROL: one agent, status "planted", left out of convention counts. `memes.registry` is the injected
+COHORT (the 2x2), each meme seeded into its own committed minority: those are the DEPENDENT VARIABLE, so
+they keep the dynamic status, count in `tier_counts`, carry a `meme` chip and their registry `meme_id`,
+and are always shown even when they fall out of the top N or were said only twice. Both roles share one
+thing: their habit line is not campus vocabulary and not world wording, so neither is discounted as
+routine wording. The `memes` block reports the whole cohort per registry id (including a meme nobody has
+said), with the manipulation check and the crowding split.
+
 - "ordinary" is a FLAG, not a status: the actor model's own register (register.Background -- several
   speakers use it in other, independent runs too). It blocks "emerged" and the convention tier.
 
@@ -466,6 +475,21 @@ class _Snap:
         return None
 
     @cached_property
+    def memes(self) -> list[dict]:
+        """The injected STUDY memes (memes.registry), each with its normalised surface form. Unlike the
+        positive control these are the dependent variable: they are tracked as first-class expressions,
+        never excluded, and each keeps its registry id so four memes never blur into one another."""
+        try:
+            out = []
+            for m in self.rd.memes:
+                norm = " ".join(tokens(m["phrase"]))
+                if norm:
+                    out.append(dict(m, norm=norm))
+            return out
+        except Exception:   # noqa: BLE001 - a malformed registry never breaks the live view
+            return []
+
+    @cached_property
     def world_segments(self) -> list[tuple[int, list[str], list[str]]]:
         """(release tick, tokens, folded tokens) of every world-provided wording released by t."""
         rd, parts = self.rd, []
@@ -506,15 +530,20 @@ class _Snap:
                 return tk, "lemmas"
         return None, None
 
+    @staticmethod
+    def _matches(c: dict, norm: str) -> bool:
+        p = f" {norm} "
+        return any(f and (f" {f} " in p or p in f" {f} ")
+                   for f in {c.get("canonical_form"), *(c.get("variants") or [])})
+
     def is_planted(self, c: dict) -> bool:
+        """The positive CONTROL only. A study meme is not a control and must not be marked as one."""
         pl = self.planted
-        if not pl or not pl["norm"]:
-            return False
-        p = f" {pl['norm']} "
-        for f in {c.get("canonical_form"), *(c.get("variants") or [])}:
-            if f and (f" {f} " in p or p in f" {f} "):
-                return True
-        return False
+        return bool(pl and pl["norm"] and self._matches(c, pl["norm"]))
+
+    def meme_of(self, c: dict) -> str | None:
+        """The registry id of the study meme this expression is, or None."""
+        return next((m["id"] for m in self.memes if self._matches(c, m["norm"])), None)
 
     # ---------------------------------------------------------------- expressions
     @cached_property
@@ -528,13 +557,18 @@ class _Snap:
             return []
         ex = self.extractor
         cands = ex.extract(int(self.p["pool"]))
-        if self.planted and not any(self.is_planted(c) for c in cands):
-            e = self.planted["norm"]
+        # an injected phrase is in the pool whenever it was said at all, even below min_uses: the
+        # control has to be visible to prove detection works, and a study meme IS the measurement --
+        # "said twice and died" is a result, not a reason to drop it off the list
+        for inj in ([self.planted] if self.planted else []) + self.memes:
+            if any(self._matches(c, inj["norm"]) for c in cands):
+                continue
+            e = inj["norm"]
             hits = [u for u in self.rd.utterances if e and f" {e} " in f" {' '.join(tokens(u['text']))} "]
             if hits:
                 g = tuple(e.split())
                 st = {"uses": [u["id"] for u in hits], "speakers": {u["speaker"] for u in hits},
-                      "surface": {self.planted["phrase"]: len(hits)}}
+                      "surface": {inj["phrase"]: len(hits)}}
                 cands += ex.group([(g, st, ex.score(g, st))])
         recs = [self.record(c) for c in cands]
         self.mark_incident_talk(recs)
@@ -590,7 +624,12 @@ class _Snap:
         wt, wm = self.world_tick(toks)
         in_lex = lexicon_flag(" ".join(toks), self.vocab, rd.name_tokens)
         factual = bool((c.get("features") or {}).get("factual_repetition"))
-        planted = self.is_planted(c)
+        control = self.is_planted(c)
+        meme_id = None if control else self.meme_of(c)
+        # `planted` means INJECTED (either role) wherever the pipeline has to know the wording did not
+        # arise on its own: it keeps the expression out of the incident-talk collapse and in the
+        # ranked pool. `control` alone means the positive control, which convention counts exclude.
+        planted = control or bool(meme_id)
         wsys = c.get("wording") or self.extractor.infra.wording(toks)
         smatch = wsys.get("system_match", wsys.get("match"))
         system = bool(wsys.get("system")) or in_lex
@@ -599,12 +638,16 @@ class _Snap:
         if not reg:
             loc = self.extractor.bg.localness([c["canonical_form"], *(c.get("variants") or [])])
             reg = {"ordinary": loc["ordinary"], "background_runs": loc["background_runs"], "stock": loc["stock"]}
-        ordinary = bool(reg.get("ordinary")) and not planted
+        # the control is exempt from the model-register stop; a study meme is NOT. If the actor model
+        # says the phrase in other, independent runs too, the cohort is measuring the model's own
+        # register rather than this campus's transmission, and that has to show.
+        ordinary = bool(reg.get("ordinary")) and not control
         em = emergence_for(usages, self.population, in_lexicon=in_lex, in_world_text=wt is not None,
                            in_system_text=system, in_register=ordinary)
-        status, flags = classify_status(em, world=world, planted=planted, system=system, ordinary=ordinary)
+        status, flags = classify_status(em, world=world, planted=control, system=system, ordinary=ordinary,
+                                        meme=bool(meme_id))
         real, mock = self.verdict(c)
-        tier, why = tier_of(em, system=system, world=world, planted=planted, verdict=(real or {}).get("verdict"),
+        tier, why = tier_of(em, system=system, world=world, planted=control, verdict=(real or {}).get("verdict"),
                             placeholder=(mock or {}).get("verdict"), ordinary=ordinary)
         n_convs = len({u.get("conversation_id") for u in usages if u.get("conversation_id")})
         # one speaker, or one exchange -- unless the speakers themselves marked the wording (quoted it, or
@@ -634,7 +677,7 @@ class _Snap:
             "trend": {"window_ticks": W, "recent_uses": recent, "previous_uses": prev,
                       "direction": "new" if prev == 0 and recent == len(usages) else
                       "up" if recent > prev else "down" if recent < prev else "flat"},
-            "status": status, "flags": flags, "planted": planted, "control": planted,
+            "status": status, "flags": flags, "planted": planted, "control": control, "meme_id": meme_id,
             "tier": tier, "tier_reasons": why, "verdict": verdict_summary(real or mock),
             "bucket": bucket, "bucket_reasons": breasons,
             "quality": {"bucket": bucket, "reasons": breasons, "n_conversations": n_convs,
@@ -658,6 +701,43 @@ class _Snap:
             "base_score": c.get("score", 0.0),
             "_usages": usages, "_adopters": detail,
         }
+
+    def meme_rows(self, pool: list[dict]) -> dict | None:
+        """The injected cohort at tick t: one row per REGISTRY entry -- including a meme nobody has said
+        yet, which no expression pool can contain and which is exactly the row worth seeing early.
+
+        Each row joins the manipulation check (did its own minority say it, to how many hearers) to where
+        the phrase has got to (status, tier, exposure-driven adopters), keyed by the registry id so the
+        four cells of the 2x2 never blur together. `crowding` says whether one minority is taking the
+        airtime of the others."""
+        if not self.memes:
+            return None
+        from backend.analysis.funnel import meme_checks
+        try:
+            checks = meme_checks(self.rd)
+        except Exception:   # noqa: BLE001 - the cohort view never breaks the live view
+            return None
+        rows = {}
+        for m in self.memes:
+            chk = dict((checks.get("memes") or {}).get(m["id"]) or {})
+            rec = next((r for r in pool if r["meme_id"] == m["id"]), None)
+            rows[m["id"]] = {
+                "id": m["id"], "phrase": m["phrase"], "cell": f"{m['grounding']}x{m['breadth']}",
+                "grounding": m["grounding"], "breadth": m["breadth"], "site": m.get("site"),
+                **{k: chk.get(k) for k in ("n_seeds", "seeds", "injected", "seed_uses", "seed_speakers",
+                                           "silent_seeds", "seed_conversations", "distinct_hearers",
+                                           "distinct_non_seed_hearers", "uses", "other_uses", "other_speakers",
+                                           "first_use_day", "first_other_use_day", "last_use_day",
+                                           "uses_by_day", "contamination")},
+                "expression_id": (rec or {}).get("id"), "status": (rec or {}).get("status"),
+                "tier": (rec or {}).get("tier"), "tier_reasons": (rec or {}).get("tier_reasons"),
+                "flags": (rec or {}).get("flags"), "n_speakers": (rec or {}).get("n_speakers", 0),
+                "trend": (rec or {}).get("trend"),
+                "emergence": (rec or {}).get("emergence"),
+                "world_wording": (rec or {}).get("world_wording"),
+            }
+        return {"memes": rows, "crowding": checks.get("crowding"),
+                "not_injected": checks.get("not_injected"), "contaminated": checks.get("contaminated")}
 
     def usable(self, row: dict) -> bool:
         """A verdict judged on data up to tick <= t (analysis.json verdicts: on the whole run, i.e. the latest tick)."""
@@ -844,8 +924,9 @@ class _Snap:
         rd, top = self.rd, int(top)
         pool = self.pool
         shown = pool[:top]
-        planted = [r for r in pool[top:] if r["planted"]]
-        shown = shown + planted[:1]
+        # the control (one row, the proof detection works) and EVERY study meme are always shown: a
+        # meme that fell out of the top N is the most informative row in the table, not the least
+        shown = shown + [r for r in pool[top:] if r["control"]][:1] + [r for r in pool[top:] if r["meme_id"]]
         counts = {s: 0 for s in STATUSES}
         for r in pool:
             counts[r["status"]] += 1
@@ -866,8 +947,9 @@ class _Snap:
                              "edges": self.edges(shown[: int(self.p["transmission_top"])])},
             "funnel": self.funnel(),
             "planted": ({"agent": pl["agent"], "phrase": pl["phrase"],
-                         "uses": sum(r["uses"] for r in pool if r["planted"]),
-                         "status": next((r["status"] for r in pool if r["planted"]), None)} if pl else None),
+                         "uses": sum(r["uses"] for r in pool if r["control"]),
+                         "status": next((r["status"] for r in pool if r["control"]), None)} if pl else None),
+            "memes": self.meme_rows(pool),
             "params": {"top": top, **{k: self.p[k] for k in ("pool", "min_speakers", "min_uses", "trend_window", "transmission_top")}},
             "hidden_fields": list(HIDDEN_FIELDS),
         }
@@ -901,8 +983,8 @@ def live_snapshot(run_dir, tick: int | None = None, top: int = 20, *, trend_wind
     ticks_per_day, run_status, tick_complete, n_utterances, n_conversations, n_events, n_agents_active,
     expressions (top N records: status, flags, tier, tier_reasons, verdict, world_wording{world, system, ...}),
     n_expressions, status_counts, tier_counts, n_conventions, judge {status: real|mock_only|none, note},
-    transmission {expressions, edges}, funnel {cumulative, by_day, definitions}, planted, params,
-    hidden_fields, and v3 (co-op runs only)."""
+    transmission {expressions, edges}, funnel {cumulative, by_day, definitions}, planted, memes (the
+    injected cohort per registry id, or None), params, hidden_fields, and v3 (co-op runs only)."""
     rc = _cache(run_dir)
     with rc.lock:
         sig = rc.refresh()
@@ -976,9 +1058,15 @@ def _timeline(rc: _RunCache, latest: int, step: int, p: dict) -> dict:
     for b in ticks:
         counts = {s: 0 for s in STATUSES}
         tiers = {t: 0 for t in TIERS}
+        memes: dict[str, dict] = {}
         reuse = 0
         n_expr = 0
         for r in pool:
+            if r["meme_id"]:      # the cohort's own curve: who is still saying each meme at tick b
+                us = [u for u in r["_usages"] if u["tick"] <= b]
+                em = emergence_for(us, sn.population)
+                memes[r["meme_id"]] = {"uses": len(us), "speakers": len({u["speaker"] for u in us}),
+                                       "carried_adopters": em.get("n_adopters_carried") or 0}
             us = [u for u in r["_usages"] if u["tick"] <= b]
             if len(us) < int(p["min_uses"]) or len({u["speaker"] for u in us}) < int(p["min_speakers"]):
                 continue
@@ -989,19 +1077,21 @@ def _timeline(rc: _RunCache, latest: int, step: int, p: dict) -> dict:
             world = in_world or (ww["factual_repetition"] and not system)
             em = emergence_for(us, sn.population, in_lexicon=ww["in_lexicon"], in_world_text=in_world,
                                in_system_text=system)
-            st, _ = classify_status(em, world=world, planted=r["planted"], system=system)
+            st, _ = classify_status(em, world=world, planted=r["control"], system=system, meme=bool(r["meme_id"]))
             counts[st] += 1
             real, mock = rc.vindex.lookup(forms(r), lambda row, b=b: (row.get("tick") is None and b >= latest) or
                                           (row.get("tick") is not None and int(row["tick"]) <= b))
-            tr, _ = tier_of(em, system=system, world=world, planted=r["planted"], verdict=(real or {}).get("verdict"),
+            tr, _ = tier_of(em, system=system, world=world, planted=r["control"], verdict=(real or {}).get("verdict"),
                             placeholder=(mock or {}).get("verdict"))
-            if not r["planted"]:
+            if not r["control"]:      # the control is not evidence for the thing it tests for; a meme is
                 tiers[tr] += 1
             reuse += em.get("n_adopters_carried") or 0
         row = {"tick": b, "day": b // sn.tpd + 1, "n_utterances": bisect_right(ut, b), "n_conversations": bisect_right(ct, b),
                "n_events": bisect_right(et, b), "n_agents_active": len(roster_at(rd, b)["active"]),
                "n_expressions": n_expr, "status_counts": counts, "tier_counts": tiers,
                "funnel": {**{k: bisect_right(v, b) for k, v in med.items()}, "reuse_after_exposure": reuse}}
+        if memes:
+            row["memes"] = memes
         if v3:
             row["v3"] = {"jobs_started": bisect_right(started, b), "jobs_delivered": bisect_right(delivered, b),
                          "binder_writes": bisect_right(writes, b), "binder_reads": bisect_right(reads, b)}

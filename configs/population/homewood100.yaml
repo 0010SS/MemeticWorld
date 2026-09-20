@@ -50,11 +50,11 @@ agents:
     location: Library
     arena: Study Tables
     activity: reading and preparing work
-  - time: '11:00'
-    location: Quad
-    arena: Lawn
+  - time: '13:00'
+    location: Dining Hall
+    arena: Main Floor
     activity: having lunch and making plans for the afternoon
-  - time: '11:30'
+  - time: '13:30'
     location: Library
     arena: Study Tables
     activity: returning to coursework
@@ -70,6 +70,14 @@ agents:
     location: Quad
     arena: Lawn
     activity: meeting people from the student newspaper
+  - time: '17:45'
+    location: Dining Hall
+    arena: Main Floor
+    activity: having dinner with whoever else is around
+  - time: '18:15'
+    location: Dorm
+    arena: Room 214
+    activity: winding down at the end of the day
 - id: p0006
   name: Charlie Smith
   sprite: Carmen_Ortiz
@@ -121,11 +129,11 @@ agents:
     location: Research Lab
     arena: Wet Lab
     activity: reading and preparing work
-  - time: '12:00'
+  - time: '11:30'
     location: Dining Hall
     arena: Main Floor
     activity: having lunch and making plans for the afternoon
-  - time: '12:30'
+  - time: '12:00'
     location: Research Lab
     arena: Wet Lab
     activity: returning to coursework
@@ -141,6 +149,14 @@ agents:
     location: Dorm
     arena: Lounge
     activity: meeting people from the board-game club
+  - time: '18:15'
+    location: Dining Hall
+    arena: Main Floor
+    activity: having dinner with whoever else is around
+  - time: '18:45'
+    location: Dorm
+    arena: Room 214
+    activity: winding down at the end of the day
 - id: p0009
   name: Parker Martin
   sprite: Giorgio_Rossi
@@ -192,11 +208,11 @@ agents:
     location: Research Lab
     arena: Wet Lab
     activity: reading and preparing work
-  - time: '11:00'
+  - time: '12:45'
     location: Dining Hall
     arena: Main Floor
     activity: having lunch and making plans for the afternoon
-  - time: '11:30'
+  - time: '13:15'
     location: Research Lab
     arena: Wet Lab
     activity: returning to coursework
@@ -212,6 +228,14 @@ agents:
     location: Classroom
     arena: Seminar Room
     activity: meeting people from the film discussion club
+  - time: '17:45'
+    location: Dining Hall
+    arena: Main Floor
+    activity: having dinner with whoever else is around
+  - time: '18:15'
+    location: Dorm
+    arena: Room 105
+    activity: winding down at the end of the day
 - id: p0015
   name: Amara Wright
   sprite: Klaus_Mueller
@@ -263,11 +287,11 @@ agents:
     location: Library
     arena: Study Tables
     activity: reading and preparing work
-  - time: '12:30'
-    location: Cafe
-    arena: Counter
+  - time: '11:45'
+    location: Dining Hall
+    arena: Main Floor
     activity: having lunch and making plans for the afternoon
-  - time: '13:00'
+  - time: '12:15'
     location: Library
     arena: Study Tables
     activity: returning to coursework
@@ -283,6 +307,14 @@ agents:
     location: Quad
     arena: Lawn
     activity: meeting people from the outdoor recreation group
+  - time: '18:15'
+    location: Dining Hall
+    arena: Main Floor
+    activity: having dinner with whoever else is around
+  - time: '18:45'
+    location: Dorm
+    arena: Room 402
+    activity: winding down at the end of the day
 - id: p0022
   name: Leila Hayes
   sprite: Tamara_Taylor
@@ -334,11 +366,11 @@ agents:
     location: Research Lab
     arena: Dry Lab
     activity: reading and preparing work
-  - time: '13:00'
-    location: Dining Hall
-    arena: Main Floor
+  - time: '12:15'
+    location: Nolans
+    arena: Servery
     activity: having lunch and making plans for the afternoon
-  - time: '13:30'
+  - time: '12:45'
     location: Research Lab
     arena: Dry Lab
     activity: returning to coursework
@@ -354,6 +386,14 @@ agents:
     location: Gym
     arena: Main Floor
     activity: meeting people from the student newspaper
+  - time: '18:30'
+    location: Nolans
+    arena: Servery
+    activity: having dinner with whoever else is around
+  - time: '19:00'
+    location: Library
+    arena: Study Tables
+    activity: winding down at the end of the day
 - id: p0023
   name: Toby Singh
   sprite: Tom_Moreno
@@ -405,11 +445,11 @@ agents:
     location: Research Lab
     arena: Wet Lab
     activity: reading and preparing work
-  - time: '11:30'
+  - time: '13:00'
     location: Dining Hall
     arena: Main Floor
     activity: having lunch and making plans for the afternoon
-  - time: '12:00'
+  - time: '13:30'
     location: Research Lab
     arena: Wet Lab
     activity: returning to coursework
@@ -425,6 +465,14 @@ agents:
     location: Gym
     arena: Main Floor
     activity: meeting people from the music ensemble
+  - time: '17:45'
+    location: Dining Hall
+    arena: Main Floor
+    activity: having dinner with whoever else is around
+  - time: '18:15'
+    location: Dorm
+    arena: Room 118
+    activity: winding down at the end of the day
 - id: p0027
   name: Avery Quinn
   sprite: Adam_Smith
@@ -496,6 +544,14 @@ agents:
     location: Quad
     arena: Lawn
     activity: meeting people from the outdoor recreation group
+  - time: '17:30'
+    location: Dining Hall
+    arena: Main Floor
+    activity: having dinner with whoever else is around
+  - time: '18:00'
+    location: Dorm
+    arena: Room 310
+    activity: winding down at the end of the day
 - id: p0028
   name: Val Walker
   sprite: Arthur_Burton
@@ -538,11 +594,11 @@ agents:
     location: Dining Hall
     arena: Main Floor
     activity: working as a dishroom worker and assisting people as needed
-  - time: '14:00'
-    location: Quad
-    arena: Lawn
+  - time: '12:45'
+    location: Dining Hall
+    arena: Main Floor
     activity: taking a meal break
-  - time: '14:30'
+  - time: '13:15'
     location: Dining Hall
     arena: Main Floor
     activity: returning to duties as a dishroom worker
@@ -550,6 +606,14 @@ agents:
     location: Dining Hall
     arena: Main Floor
     activity: finishing tasks and preparing a work handover
+  - time: '18:00'
+    location: Nolans
+    arena: Servery
+    activity: having dinner at the end of the shift
+  - time: '18:30'
+    location: Dining Hall
+    arena: Main Floor
+    activity: winding down at the end of the day
 - id: p0031
   name: Leila Chen
   sprite: Carmen_Ortiz
@@ -598,8 +662,8 @@ agents:
     arena: Wet Lab
     activity: doing scholarly work
   - time: '12:30'
-    location: Dining Hall
-    arena: Main Floor
+    location: Nolans
+    arena: Servery
     activity: taking a lunch break
   - time: '13:00'
     location: Research Lab
@@ -613,6 +677,14 @@ agents:
     location: Research Lab
     arena: Wet Lab
     activity: meeting colleagues and preparing the next class
+  - time: '17:45'
+    location: Nolans
+    arena: Servery
+    activity: having dinner before heading home
+  - time: '18:15'
+    location: Research Lab
+    arena: Wet Lab
+    activity: winding down at the end of the day
 - id: p0033
   name: Devon Gupta
   sprite: Francisco_Lopez
@@ -664,11 +736,11 @@ agents:
     location: Research Lab
     arena: Wet Lab
     activity: reading and preparing work
-  - time: '11:00'
+  - time: '12:15'
     location: Dining Hall
     arena: Main Floor
     activity: having lunch and making plans for the afternoon
-  - time: '11:30'
+  - time: '12:45'
     location: Research Lab
     arena: Wet Lab
     activity: returning to coursework
@@ -684,6 +756,14 @@ agents:
     location: Classroom
     arena: Seminar Room
     activity: meeting people from the dance group
+  - time: '17:30'
+    location: Dining Hall
+    arena: Main Floor
+    activity: having dinner with whoever else is around
+  - time: '18:00'
+    location: Dorm
+    arena: Room 118
+    activity: winding down at the end of the day
 - id: p0042
   name: Sasha Campbell
   sprite: Maria_Lopez
@@ -735,11 +815,11 @@ agents:
     location: Library
     arena: Study Tables
     activity: reading and preparing work
-  - time: '13:00'
-    location: Cafe
-    arena: Counter
+  - time: '12:30'
+    location: Dining Hall
+    arena: Main Floor
     activity: having lunch and making plans for the afternoon
-  - time: '13:30'
+  - time: '13:00'
     location: Library
     arena: Study Tables
     activity: returning to coursework
@@ -755,6 +835,14 @@ agents:
     location: Dorm
     arena: Lounge
     activity: meeting people from the outdoor recreation group
+  - time: '18:15'
+    location: Dining Hall
+    arena: Main Floor
+    activity: having dinner with whoever else is around
+  - time: '18:45'
+    location: Dorm
+    arena: Room 310
+    activity: winding down at the end of the day
 - id: p0047
   name: Ezra Perez
   sprite: Tamara_Taylor
@@ -806,11 +894,11 @@ agents:
     location: Research Lab
     arena: Wet Lab
     activity: reading and preparing work
-  - time: '12:00'
+  - time: '12:30'
     location: Dining Hall
     arena: Main Floor
     activity: having lunch and making plans for the afternoon
-  - time: '12:30'
+  - time: '13:00'
     location: Research Lab
     arena: Wet Lab
     activity: returning to coursework
@@ -826,6 +914,14 @@ agents:
     location: Gym
     arena: Main Floor
     activity: meeting people from the arts group
+  - time: '17:30'
+    location: Dining Hall
+    arena: Main Floor
+    activity: having dinner with whoever else is around
+  - time: '18:00'
+    location: Dorm
+    arena: Room 310
+    activity: winding down at the end of the day
 - id: p0051
   name: Emery Flores
   sprite: Abigail_Chen
@@ -877,11 +973,11 @@ agents:
     location: Library
     arena: Study Tables
     activity: reading and preparing work
-  - time: '12:30'
-    location: Cafe
-    arena: Counter
+  - time: '12:45'
+    location: Nolans
+    arena: Servery
     activity: having lunch and making plans for the afternoon
-  - time: '13:00'
+  - time: '13:15'
     location: Library
     arena: Study Tables
     activity: returning to coursework
@@ -897,6 +993,14 @@ agents:
     location: Quad
     arena: Lawn
     activity: meeting people from the board-game club
+  - time: '17:45'
+    location: Nolans
+    arena: Servery
+    activity: having dinner with whoever else is around
+  - time: '18:15'
+    location: Library
+    arena: Study Tables
+    activity: winding down at the end of the day
 - id: p0054
   name: Riley Davis
   sprite: Ayesha_Khan
@@ -938,11 +1042,11 @@ agents:
     location: Dining Hall
     arena: Main Floor
     activity: working as a cook and assisting people as needed
-  - time: '14:30'
-    location: Quad
-    arena: Lawn
+  - time: '13:00'
+    location: Dining Hall
+    arena: Main Floor
     activity: taking a meal break
-  - time: '15:00'
+  - time: '13:30'
     location: Dining Hall
     arena: Main Floor
     activity: returning to duties as a cook
@@ -950,6 +1054,14 @@ agents:
     location: Dining Hall
     arena: Main Floor
     activity: finishing tasks and preparing a work handover
+  - time: '18:15'
+    location: Nolans
+    arena: Servery
+    activity: having dinner at the end of the shift
+  - time: '18:45'
+    location: Dining Hall
+    arena: Main Floor
+    activity: winding down at the end of the day
 - id: p0057
   name: Liam Hughes
   sprite: Eddy_Lin
@@ -1001,11 +1113,11 @@ agents:
     location: Research Lab
     arena: Dry Lab
     activity: reading and preparing work
-  - time: '12:00'
+  - time: '13:00'
     location: Dining Hall
     arena: Main Floor
     activity: having lunch and making plans for the afternoon
-  - time: '12:30'
+  - time: '13:30'
     location: Research Lab
     arena: Dry Lab
     activity: returning to coursework
@@ -1021,6 +1133,14 @@ agents:
     location: Classroom
     arena: Seminar Room
     activity: meeting people from the cooking group
+  - time: '18:30'
+    location: Dining Hall
+    arena: Main Floor
+    activity: having dinner with whoever else is around
+  - time: '19:00'
+    location: Dorm
+    arena: Room 310
+    activity: winding down at the end of the day
 - id: p0058
   name: Jordan Walker
   sprite: Francisco_Lopez
@@ -1072,11 +1192,11 @@ agents:
     location: Research Lab
     arena: Dry Lab
     activity: reading and preparing work
-  - time: '11:30'
-    location: Quad
-    arena: Lawn
+  - time: '13:00'
+    location: Nolans
+    arena: Servery
     activity: having lunch and making plans for the afternoon
-  - time: '12:00'
+  - time: '13:30'
     location: Research Lab
     arena: Dry Lab
     activity: returning to coursework
@@ -1092,6 +1212,14 @@ agents:
     location: Gym
     arena: Main Floor
     activity: meeting people from the cooking group
+  - time: '17:30'
+    location: Nolans
+    arena: Servery
+    activity: having dinner with whoever else is around
+  - time: '18:00'
+    location: Library
+    arena: Study Tables
+    activity: winding down at the end of the day
 - id: p0067
   name: Sasha James
   sprite: Maria_Lopez
@@ -1143,11 +1271,11 @@ agents:
     location: Research Lab
     arena: Dry Lab
     activity: reading and preparing work
-  - time: '11:30'
-    location: Quad
-    arena: Lawn
+  - time: '12:45'
+    location: Dining Hall
+    arena: Main Floor
     activity: having lunch and making plans for the afternoon
-  - time: '12:00'
+  - time: '13:15'
     location: Research Lab
     arena: Dry Lab
     activity: returning to coursework
@@ -1163,6 +1291,14 @@ agents:
     location: Classroom
     arena: Seminar Room
     activity: meeting people from the outdoor recreation group
+  - time: '17:30'
+    location: Dining Hall
+    arena: Main Floor
+    activity: having dinner with whoever else is around
+  - time: '18:00'
+    location: Dorm
+    arena: Room 310
+    activity: winding down at the end of the day
 - id: p0085
   name: River Wang
   sprite: Hailey_Johnson
@@ -1214,11 +1350,11 @@ agents:
     location: Research Lab
     arena: Wet Lab
     activity: reading and preparing work
-  - time: '13:30'
-    location: Quad
-    arena: Lawn
+  - time: '12:00'
+    location: Dining Hall
+    arena: Main Floor
     activity: having lunch and making plans for the afternoon
-  - time: '14:00'
+  - time: '12:30'
     location: Classroom
     arena: Seminar Room
     activity: attending a class in Biomedical Engineering
@@ -1230,6 +1366,14 @@ agents:
     location: Quad
     arena: Lawn
     activity: meeting people from the dance group
+  - time: '17:30'
+    location: Dining Hall
+    arena: Main Floor
+    activity: having dinner with whoever else is around
+  - time: '18:00'
+    location: Dorm
+    arena: Room 402
+    activity: winding down at the end of the day
 - id: p0086
   name: Jamie Zhao
   sprite: Isabella_Rodriguez
@@ -1282,8 +1426,8 @@ agents:
     arena: Wet Lab
     activity: reading and preparing work
   - time: '12:30'
-    location: Dining Hall
-    arena: Main Floor
+    location: Nolans
+    arena: Servery
     activity: having lunch and making plans for the afternoon
   - time: '13:00'
     location: Research Lab
@@ -1301,6 +1445,14 @@ agents:
     location: Quad
     arena: Lawn
     activity: meeting people from the board-game club
+  - time: '17:45'
+    location: Nolans
+    arena: Servery
+    activity: having dinner with whoever else is around
+  - time: '18:15'
+    location: Library
+    arena: Study Tables
+    activity: winding down at the end of the day
 - id: p0088
   name: Finley Flores
   sprite: Jennifer_Moore
@@ -1372,6 +1524,14 @@ agents:
     location: Dorm
     arena: Lounge
     activity: meeting people from the music ensemble
+  - time: '18:30'
+    location: Dining Hall
+    arena: Main Floor
+    activity: having dinner with whoever else is around
+  - time: '19:00'
+    location: Dorm
+    arena: Room 118
+    activity: winding down at the end of the day
 - id: p0098
   name: Finley Choi
   sprite: Tom_Moreno
@@ -1419,11 +1579,11 @@ agents:
     location: Library
     arena: Study Tables
     activity: doing scholarly work
-  - time: '12:00'
-    location: Cafe
-    arena: Counter
+  - time: '12:45'
+    location: Nolans
+    arena: Servery
     activity: taking a lunch break
-  - time: '12:30'
+  - time: '13:15'
     location: Library
     arena: Study Tables
     activity: returning to scholarly work
@@ -1435,6 +1595,14 @@ agents:
     location: Library
     arena: Study Tables
     activity: meeting colleagues and preparing the next class
+  - time: '17:30'
+    location: Nolans
+    arena: Servery
+    activity: having dinner before heading home
+  - time: '18:00'
+    location: Library
+    arena: Study Tables
+    activity: winding down at the end of the day
 - id: p0105
   name: Nico Hayes
   sprite: Carlos_Gomez
@@ -1487,8 +1655,8 @@ agents:
     arena: Wet Lab
     activity: reading and preparing work
   - time: '13:00'
-    location: Quad
-    arena: Lawn
+    location: Nolans
+    arena: Servery
     activity: having lunch and making plans for the afternoon
   - time: '13:30'
     location: Research Lab
@@ -1506,6 +1674,14 @@ agents:
     location: Classroom
     arena: Seminar Room
     activity: meeting people from the dance group
+  - time: '18:00'
+    location: Nolans
+    arena: Servery
+    activity: having dinner with whoever else is around
+  - time: '18:30'
+    location: Library
+    arena: Study Tables
+    activity: winding down at the end of the day
 - id: p0108
   name: Micah Cooper
   sprite: Francisco_Lopez
@@ -1557,11 +1733,11 @@ agents:
     location: Research Lab
     arena: Wet Lab
     activity: reading and preparing work
-  - time: '12:30'
+  - time: '12:00'
     location: Dining Hall
     arena: Main Floor
     activity: having lunch and making plans for the afternoon
-  - time: '13:00'
+  - time: '12:30'
     location: Research Lab
     arena: Wet Lab
     activity: returning to coursework
@@ -1577,6 +1753,14 @@ agents:
     location: Gym
     arena: Main Floor
     activity: meeting people from the debate club
+  - time: '18:00'
+    location: Dining Hall
+    arena: Main Floor
+    activity: having dinner with whoever else is around
+  - time: '18:30'
+    location: Dorm
+    arena: Room 118
+    activity: winding down at the end of the day
 - id: p0112
   name: Remy Murphy
   sprite: Jane_Moreno
@@ -1628,11 +1812,11 @@ agents:
     location: Research Lab
     arena: Dry Lab
     activity: reading and preparing work
-  - time: '12:30'
-    location: Dining Hall
-    arena: Main Floor
+  - time: '12:45'
+    location: Nolans
+    arena: Servery
     activity: having lunch and making plans for the afternoon
-  - time: '13:00'
+  - time: '13:15'
     location: Research Lab
     arena: Dry Lab
     activity: returning to coursework
@@ -1648,6 +1832,14 @@ agents:
     location: Dorm
     arena: Lounge
     activity: meeting people from the student newspaper
+  - time: '18:00'
+    location: Nolans
+    arena: Servery
+    activity: having dinner with whoever else is around
+  - time: '18:30'
+    location: Library
+    arena: Study Tables
+    activity: winding down at the end of the day
 - id: p0121
   name: Micah Zhang
   sprite: Sam_Moore
@@ -1699,11 +1891,11 @@ agents:
     location: Research Lab
     arena: Dry Lab
     activity: reading and preparing work
-  - time: '12:00'
+  - time: '12:45'
     location: Dining Hall
     arena: Main Floor
     activity: having lunch and making plans for the afternoon
-  - time: '12:30'
+  - time: '13:15'
     location: Research Lab
     arena: Dry Lab
     activity: returning to coursework
@@ -1719,6 +1911,14 @@ agents:
     location: Quad
     arena: Lawn
     activity: meeting people from the outdoor recreation group
+  - time: '18:15'
+    location: Dining Hall
+    arena: Main Floor
+    activity: having dinner with whoever else is around
+  - time: '18:45'
+    location: Dorm
+    arena: Room 214
+    activity: winding down at the end of the day
 - id: p0124
   name: Noel Anderson
   sprite: Wolfgang_Schulz
@@ -1770,11 +1970,11 @@ agents:
     location: Research Lab
     arena: Makerspace
     activity: reading and preparing work
-  - time: '11:30'
+  - time: '12:30'
     location: Dining Hall
     arena: Main Floor
     activity: having lunch and making plans for the afternoon
-  - time: '12:00'
+  - time: '13:00'
     location: Research Lab
     arena: Makerspace
     activity: returning to coursework
@@ -1790,6 +1990,14 @@ agents:
     location: Dorm
     arena: Lounge
     activity: meeting people from the sustainability group
+  - time: '17:30'
+    location: Dining Hall
+    arena: Main Floor
+    activity: having dinner with whoever else is around
+  - time: '18:00'
+    location: Dorm
+    arena: Room 105
+    activity: winding down at the end of the day
 - id: p0135
   name: Jamie Perry
   sprite: Hailey_Johnson
@@ -1841,11 +2049,11 @@ agents:
     location: Library
     arena: Study Tables
     activity: reading and preparing work
-  - time: '11:00'
+  - time: '12:15'
     location: Dining Hall
     arena: Main Floor
     activity: having lunch and making plans for the afternoon
-  - time: '11:30'
+  - time: '12:45'
     location: Library
     arena: Study Tables
     activity: returning to coursework
@@ -1861,6 +2069,14 @@ agents:
     location: Quad
     arena: Lawn
     activity: meeting people from the outdoor recreation group
+  - time: '18:30'
+    location: Dining Hall
+    arena: Main Floor
+    activity: having dinner with whoever else is around
+  - time: '19:00'
+    location: Dorm
+    arena: Room 402
+    activity: winding down at the end of the day
 - id: p0139
   name: Jia Patel
   sprite: John_Lin
@@ -1913,8 +2129,8 @@ agents:
     arena: Wet Lab
     activity: reading and preparing work
   - time: '11:30'
-    location: Quad
-    arena: Lawn
+    location: Nolans
+    arena: Servery
     activity: having lunch and making plans for the afternoon
   - time: '12:00'
     location: Research Lab
@@ -1932,6 +2148,14 @@ agents:
     location: Classroom
     arena: Seminar Room
     activity: meeting people from the sustainability group
+  - time: '17:30'
+    location: Nolans
+    arena: Servery
+    activity: having dinner with whoever else is around
+  - time: '18:00'
+    location: Library
+    arena: Study Tables
+    activity: winding down at the end of the day
 - id: p0146
   name: Anika Perez
   sprite: Sam_Moore
@@ -1974,11 +2198,11 @@ agents:
     location: Dining Hall
     arena: Main Floor
     activity: working as a dining utility worker and assisting people as needed
-  - time: '14:15'
-    location: Quad
-    arena: Lawn
+  - time: '12:45'
+    location: Dining Hall
+    arena: Main Floor
     activity: taking a meal break
-  - time: '14:45'
+  - time: '13:15'
     location: Dining Hall
     arena: Main Floor
     activity: returning to duties as a dining utility worker
@@ -1986,6 +2210,14 @@ agents:
     location: Dining Hall
     arena: Main Floor
     activity: finishing tasks and preparing a work handover
+  - time: '17:30'
+    location: Nolans
+    arena: Servery
+    activity: having dinner at the end of the shift
+  - time: '18:00'
+    location: Dining Hall
+    arena: Main Floor
+    activity: winding down at the end of the day
 - id: p0150
   name: Phoenix Torres
   sprite: Yuriko_Yamamoto
@@ -2028,11 +2260,11 @@ agents:
     location: Dining Hall
     arena: Main Floor
     activity: working as a dining shift supervisor and assisting people as needed
-  - time: '14:30'
-    location: Quad
-    arena: Lawn
+  - time: '12:45'
+    location: Dining Hall
+    arena: Main Floor
     activity: taking a meal break
-  - time: '15:00'
+  - time: '13:15'
     location: Dining Hall
     arena: Main Floor
     activity: returning to duties as a dining shift supervisor
@@ -2040,6 +2272,14 @@ agents:
     location: Dining Hall
     arena: Main Floor
     activity: finishing tasks and preparing a work handover
+  - time: '18:15'
+    location: Nolans
+    arena: Servery
+    activity: having dinner at the end of the shift
+  - time: '18:45'
+    location: Dining Hall
+    arena: Main Floor
+    activity: winding down at the end of the day
 - id: p0159
   name: Luca Zhang
   sprite: Giorgio_Rossi
@@ -2091,11 +2331,11 @@ agents:
     location: Research Lab
     arena: Wet Lab
     activity: reading and preparing work
-  - time: '13:30'
+  - time: '11:30'
     location: Dining Hall
     arena: Main Floor
     activity: having lunch and making plans for the afternoon
-  - time: '14:00'
+  - time: '12:00'
     location: Classroom
     arena: Seminar Room
     activity: attending a class in Neuroscience
@@ -2107,6 +2347,14 @@ agents:
     location: Quad
     arena: Lawn
     activity: meeting people from the cooking group
+  - time: '18:00'
+    location: Dining Hall
+    arena: Main Floor
+    activity: having dinner with whoever else is around
+  - time: '18:30'
+    location: Dorm
+    arena: Room 105
+    activity: winding down at the end of the day
 - id: p0165
   name: Adrian Howard
   sprite: Klaus_Mueller
@@ -2150,11 +2398,11 @@ agents:
     location: Classroom
     arena: Seminar Room
     activity: teaching Neuroscience
-  - time: '11:00'
-    location: Quad
-    arena: Lawn
+  - time: '11:45'
+    location: Nolans
+    arena: Servery
     activity: taking a lunch break
-  - time: '11:30'
+  - time: '12:15'
     location: Research Lab
     arena: Wet Lab
     activity: returning to scholarly work
@@ -2166,6 +2414,14 @@ agents:
     location: Research Lab
     arena: Wet Lab
     activity: meeting colleagues and preparing the next class
+  - time: '18:00'
+    location: Nolans
+    arena: Servery
+    activity: having dinner before heading home
+  - time: '18:30'
+    location: Research Lab
+    arena: Wet Lab
+    activity: winding down at the end of the day
 - id: p0168
   name: Mae Ross
   sprite: Mei_Lin
@@ -2217,11 +2473,11 @@ agents:
     location: Research Lab
     arena: Wet Lab
     activity: reading and preparing work
-  - time: '11:30'
-    location: Cafe
-    arena: Counter
-    activity: having lunch and making plans for the afternoon
   - time: '12:00'
+    location: Nolans
+    arena: Servery
+    activity: having lunch and making plans for the afternoon
+  - time: '12:30'
     location: Research Lab
     arena: Wet Lab
     activity: returning to coursework
@@ -2237,6 +2493,14 @@ agents:
     location: Gym
     arena: Main Floor
     activity: meeting people from the board-game club
+  - time: '17:45'
+    location: Nolans
+    arena: Servery
+    activity: having dinner with whoever else is around
+  - time: '18:15'
+    location: Library
+    arena: Study Tables
+    activity: winding down at the end of the day
 - id: p0170
   name: Yara Brown
   sprite: Ryan_Park
@@ -2288,11 +2552,11 @@ agents:
     location: Research Lab
     arena: Wet Lab
     activity: reading and preparing work
-  - time: '11:00'
-    location: Quad
-    arena: Lawn
+  - time: '12:30'
+    location: Dining Hall
+    arena: Main Floor
     activity: having lunch and making plans for the afternoon
-  - time: '11:30'
+  - time: '13:00'
     location: Research Lab
     arena: Wet Lab
     activity: returning to coursework
@@ -2308,6 +2572,14 @@ agents:
     location: Quad
     arena: Lawn
     activity: meeting people from the outdoor recreation group
+  - time: '18:00'
+    location: Dining Hall
+    arena: Main Floor
+    activity: having dinner with whoever else is around
+  - time: '18:30'
+    location: Dorm
+    arena: Room 402
+    activity: winding down at the end of the day
 - id: p0177
   name: Owen Sullivan
   sprite: Adam_Smith
@@ -2359,11 +2631,11 @@ agents:
     location: Research Lab
     arena: Makerspace
     activity: reading and preparing work
-  - time: '12:00'
-    location: Cafe
-    arena: Counter
+  - time: '12:45'
+    location: Nolans
+    arena: Servery
     activity: having lunch and making plans for the afternoon
-  - time: '12:30'
+  - time: '13:15'
     location: Research Lab
     arena: Makerspace
     activity: returning to coursework
@@ -2379,6 +2651,14 @@ agents:
     location: Classroom
     arena: Seminar Room
     activity: meeting people from the board-game club
+  - time: '18:30'
+    location: Nolans
+    arena: Servery
+    activity: having dinner with whoever else is around
+  - time: '19:00'
+    location: Library
+    arena: Study Tables
+    activity: winding down at the end of the day
 - id: p0181
   name: Tatum Allen
   sprite: Carmen_Ortiz
@@ -2430,11 +2710,11 @@ agents:
     location: Library
     arena: Study Tables
     activity: reading and preparing work
-  - time: '11:00'
-    location: Dining Hall
-    arena: Main Floor
-    activity: having lunch and making plans for the afternoon
   - time: '11:30'
+    location: Nolans
+    arena: Servery
+    activity: having lunch and making plans for the afternoon
+  - time: '12:00'
     location: Library
     arena: Study Tables
     activity: returning to coursework
@@ -2450,6 +2730,14 @@ agents:
     location: Quad
     arena: Lawn
     activity: meeting people from the sustainability group
+  - time: '17:45'
+    location: Nolans
+    arena: Servery
+    activity: having dinner with whoever else is around
+  - time: '18:15'
+    location: Library
+    arena: Study Tables
+    activity: winding down at the end of the day
 - id: p0184
   name: Ellis Patel
   sprite: Giorgio_Rossi
@@ -2501,11 +2789,11 @@ agents:
     location: Research Lab
     arena: Wet Lab
     activity: reading and preparing work
-  - time: '12:30'
+  - time: '11:45'
     location: Dining Hall
     arena: Main Floor
     activity: having lunch and making plans for the afternoon
-  - time: '13:00'
+  - time: '12:15'
     location: Research Lab
     arena: Wet Lab
     activity: returning to coursework
@@ -2521,6 +2809,14 @@ agents:
     location: Dorm
     arena: Lounge
     activity: meeting people from the outdoor recreation group
+  - time: '18:00'
+    location: Dining Hall
+    arena: Main Floor
+    activity: having dinner with whoever else is around
+  - time: '18:30'
+    location: Dorm
+    arena: Room 105
+    activity: winding down at the end of the day
 - id: p0187
   name: Charlie Bailey
   sprite: Jane_Moreno
@@ -2572,11 +2868,11 @@ agents:
     location: Research Lab
     arena: Wet Lab
     activity: reading and preparing work
-  - time: '11:00'
+  - time: '13:00'
     location: Dining Hall
     arena: Main Floor
     activity: having lunch and making plans for the afternoon
-  - time: '11:30'
+  - time: '13:30'
     location: Research Lab
     arena: Wet Lab
     activity: returning to coursework
@@ -2592,6 +2888,14 @@ agents:
     location: Classroom
     arena: Seminar Room
     activity: meeting people from the sustainability group
+  - time: '17:45'
+    location: Dining Hall
+    arena: Main Floor
+    activity: having dinner with whoever else is around
+  - time: '18:15'
+    location: Dorm
+    arena: Room 310
+    activity: winding down at the end of the day
 - id: p0190
   name: Owen Taylor
   sprite: Klaus_Mueller
@@ -2643,11 +2947,11 @@ agents:
     location: Research Lab
     arena: Dry Lab
     activity: reading and preparing work
-  - time: '13:30'
-    location: Cafe
-    arena: Counter
+  - time: '12:00'
+    location: Nolans
+    arena: Servery
     activity: having lunch and making plans for the afternoon
-  - time: '14:00'
+  - time: '12:30'
     location: Research Lab
     arena: Dry Lab
     activity: working on Computer Science coursework
@@ -2659,6 +2963,14 @@ agents:
     location: Gym
     arena: Main Floor
     activity: meeting people from the cooking group
+  - time: '18:15'
+    location: Nolans
+    arena: Servery
+    activity: having dinner with whoever else is around
+  - time: '18:45'
+    location: Library
+    arena: Study Tables
+    activity: winding down at the end of the day
 - id: p0197
   name: Dakota Torres
   sprite: Tamara_Taylor
@@ -2710,11 +3022,11 @@ agents:
     location: Library
     arena: Study Tables
     activity: reading and preparing work
-  - time: '11:30'
-    location: Dining Hall
-    arena: Main Floor
+  - time: '12:30'
+    location: Nolans
+    arena: Servery
     activity: having lunch and making plans for the afternoon
-  - time: '12:00'
+  - time: '13:00'
     location: Library
     arena: Study Tables
     activity: returning to coursework
@@ -2730,6 +3042,14 @@ agents:
     location: Dorm
     arena: Lounge
     activity: meeting people from the cooking group
+  - time: '18:00'
+    location: Nolans
+    arena: Servery
+    activity: having dinner with whoever else is around
+  - time: '18:30'
+    location: Library
+    arena: Study Tables
+    activity: winding down at the end of the day
 - id: p0206
   name: Hana Gupta
   sprite: Carmen_Ortiz
@@ -2781,11 +3101,11 @@ agents:
     location: Research Lab
     arena: Wet Lab
     activity: reading and preparing work
-  - time: '13:30'
+  - time: '11:45'
     location: Dining Hall
     arena: Main Floor
     activity: having lunch and making plans for the afternoon
-  - time: '14:00'
+  - time: '12:15'
     location: Research Lab
     arena: Wet Lab
     activity: working on Neuroscience coursework
@@ -2797,6 +3117,14 @@ agents:
     location: Quad
     arena: Lawn
     activity: meeting people from the student newspaper
+  - time: '18:15'
+    location: Dining Hall
+    arena: Main Floor
+    activity: having dinner with whoever else is around
+  - time: '18:45'
+    location: Dorm
+    arena: Room 214
+    activity: winding down at the end of the day
 - id: p0208
   name: Zane Morris
   sprite: Francisco_Lopez
@@ -2848,11 +3176,11 @@ agents:
     location: Research Lab
     arena: Makerspace
     activity: reading and preparing work
-  - time: '12:30'
+  - time: '12:00'
     location: Dining Hall
     arena: Main Floor
     activity: having lunch and making plans for the afternoon
-  - time: '13:00'
+  - time: '12:30'
     location: Research Lab
     arena: Makerspace
     activity: returning to coursework
@@ -2868,6 +3196,14 @@ agents:
     location: Dorm
     arena: Lounge
     activity: meeting people from the sustainability group
+  - time: '17:45'
+    location: Dining Hall
+    arena: Main Floor
+    activity: having dinner with whoever else is around
+  - time: '18:15'
+    location: Dorm
+    arena: Room 118
+    activity: winding down at the end of the day
 - id: p0209
   name: Nia Sullivan
   sprite: Giorgio_Rossi
@@ -2919,11 +3255,11 @@ agents:
     location: Research Lab
     arena: Dry Lab
     activity: reading and preparing work
-  - time: '11:00'
+  - time: '12:45'
     location: Dining Hall
     arena: Main Floor
     activity: having lunch and making plans for the afternoon
-  - time: '11:30'
+  - time: '13:15'
     location: Research Lab
     arena: Dry Lab
     activity: returning to coursework
@@ -2939,6 +3275,14 @@ agents:
     location: Dorm
     arena: Lounge
     activity: meeting people from the debate club
+  - time: '18:30'
+    location: Dining Hall
+    arena: Main Floor
+    activity: having dinner with whoever else is around
+  - time: '19:00'
+    location: Dorm
+    arena: Room 105
+    activity: winding down at the end of the day
 - id: p0211
   name: Lee Scott
   sprite: Isabella_Rodriguez
@@ -2990,11 +3334,11 @@ agents:
     location: Library
     arena: Study Tables
     activity: reading and preparing work
-  - time: '13:30'
+  - time: '12:45'
     location: Dining Hall
     arena: Main Floor
     activity: having lunch and making plans for the afternoon
-  - time: '14:00'
+  - time: '13:15'
     location: Classroom
     arena: Seminar Room
     activity: attending a class in Economics
@@ -3006,6 +3350,14 @@ agents:
     location: Classroom
     arena: Seminar Room
     activity: meeting people from the sustainability group
+  - time: '18:30'
+    location: Dining Hall
+    arena: Main Floor
+    activity: having dinner with whoever else is around
+  - time: '19:00'
+    location: Dorm
+    arena: Room 214
+    activity: winding down at the end of the day
 - id: p0213
   name: Peyton Nguyen
   sprite: Jennifer_Moore
@@ -3054,8 +3406,8 @@ agents:
     arena: Makerspace
     activity: doing scholarly work
   - time: '13:00'
-    location: Quad
-    arena: Lawn
+    location: Nolans
+    arena: Servery
     activity: taking a lunch break
   - time: '13:30'
     location: Research Lab
@@ -3069,6 +3421,14 @@ agents:
     location: Research Lab
     arena: Makerspace
     activity: meeting colleagues and preparing the next class
+  - time: '18:30'
+    location: Nolans
+    arena: Servery
+    activity: having dinner before heading home
+  - time: '19:00'
+    location: Research Lab
+    arena: Makerspace
+    activity: winding down at the end of the day
 - id: p0227
   name: Rowan Gomez
   sprite: Adam_Smith
@@ -3120,11 +3480,11 @@ agents:
     location: Research Lab
     arena: Dry Lab
     activity: reading and preparing work
-  - time: '11:30'
+  - time: '12:15'
     location: Dining Hall
     arena: Main Floor
     activity: having lunch and making plans for the afternoon
-  - time: '12:00'
+  - time: '12:45'
     location: Research Lab
     arena: Dry Lab
     activity: returning to coursework
@@ -3140,6 +3500,14 @@ agents:
     location: Gym
     arena: Main Floor
     activity: meeting people from the board-game club
+  - time: '17:45'
+    location: Dining Hall
+    arena: Main Floor
+    activity: having dinner with whoever else is around
+  - time: '18:15'
+    location: Dorm
+    arena: Room 310
+    activity: winding down at the end of the day
 - id: p0230
   name: Taylor Davis
   sprite: Carlos_Gomez
@@ -3191,11 +3559,11 @@ agents:
     location: Research Lab
     arena: Wet Lab
     activity: reading and preparing work
-  - time: '11:30'
+  - time: '12:30'
     location: Dining Hall
     arena: Main Floor
     activity: having lunch and making plans for the afternoon
-  - time: '12:00'
+  - time: '13:00'
     location: Research Lab
     arena: Wet Lab
     activity: returning to coursework
@@ -3211,6 +3579,14 @@ agents:
     location: Quad
     arena: Lawn
     activity: meeting people from the student newspaper
+  - time: '18:00'
+    location: Dining Hall
+    arena: Main Floor
+    activity: having dinner with whoever else is around
+  - time: '18:30'
+    location: Dorm
+    arena: Room 402
+    activity: winding down at the end of the day
 - id: p0237
   name: Quinn Allen
   sprite: Jane_Moreno
@@ -3263,8 +3639,8 @@ agents:
     arena: Wet Lab
     activity: reading and preparing work
   - time: '12:00'
-    location: Dining Hall
-    arena: Main Floor
+    location: Nolans
+    arena: Servery
     activity: having lunch and making plans for the afternoon
   - time: '12:30'
     location: Research Lab
@@ -3282,6 +3658,14 @@ agents:
     location: Classroom
     arena: Seminar Room
     activity: meeting people from the music ensemble
+  - time: '17:45'
+    location: Nolans
+    arena: Servery
+    activity: having dinner with whoever else is around
+  - time: '18:15'
+    location: Library
+    arena: Study Tables
+    activity: winding down at the end of the day
 - id: p0238
   name: Emery Gomez
   sprite: Jennifer_Moore
@@ -3324,11 +3708,11 @@ agents:
     location: Quad
     arena: Lawn
     activity: working as a student organization coordinator and assisting people as needed
-  - time: '11:30'
+  - time: '12:00'
     location: Dining Hall
     arena: Main Floor
     activity: taking a meal break
-  - time: '12:00'
+  - time: '12:30'
     location: Quad
     arena: Lawn
     activity: returning to duties as a student organization coordinator
@@ -3336,6 +3720,14 @@ agents:
     location: Quad
     arena: Lawn
     activity: finishing tasks and preparing a work handover
+  - time: '18:00'
+    location: Nolans
+    arena: Servery
+    activity: having dinner at the end of the shift
+  - time: '18:30'
+    location: Quad
+    arena: Lawn
+    activity: winding down at the end of the day
 - id: p0239
   name: Naomi Carter
   sprite: John_Lin
@@ -3387,11 +3779,11 @@ agents:
     location: Research Lab
     arena: Wet Lab
     activity: reading and preparing work
-  - time: '13:30'
-    location: Cafe
-    arena: Counter
+  - time: '11:45'
+    location: Nolans
+    arena: Servery
     activity: having lunch and making plans for the afternoon
-  - time: '14:00'
+  - time: '12:15'
     location: Classroom
     arena: Seminar Room
     activity: attending a class in Neuroscience
@@ -3403,6 +3795,14 @@ agents:
     location: Gym
     arena: Main Floor
     activity: meeting people from the dance group
+  - time: '17:30'
+    location: Nolans
+    arena: Servery
+    activity: having dinner with whoever else is around
+  - time: '18:00'
+    location: Library
+    arena: Study Tables
+    activity: winding down at the end of the day
 - id: p0243
   name: Remy Mitchell
   sprite: Mei_Lin
@@ -3474,6 +3874,14 @@ agents:
     location: Quad
     arena: Lawn
     activity: meeting people from the debate club
+  - time: '18:00'
+    location: Dining Hall
+    arena: Main Floor
+    activity: having dinner with whoever else is around
+  - time: '18:30'
+    location: Dorm
+    arena: Room 118
+    activity: winding down at the end of the day
 - id: p0248
   name: Taylor Roberts
   sprite: Tom_Moreno
@@ -3521,11 +3929,11 @@ agents:
     location: Cafe
     arena: Counter
     activity: taking a short break between commitments
-  - time: '11:00'
-    location: Dining Hall
-    arena: Main Floor
+  - time: '12:45'
+    location: Nolans
+    arena: Servery
     activity: having lunch and making plans for the afternoon
-  - time: '11:30'
+  - time: '13:15'
     location: Research Lab
     arena: Wet Lab
     activity: returning to coursework
@@ -3541,6 +3949,14 @@ agents:
     location: Classroom
     arena: Seminar Room
     activity: meeting people from the dance group
+  - time: '18:00'
+    location: Nolans
+    arena: Servery
+    activity: having dinner with whoever else is around
+  - time: '18:30'
+    location: Library
+    arena: Study Tables
+    activity: winding down at the end of the day
 - id: p0260
   name: Isla Walker
   sprite: Hailey_Johnson
@@ -3583,11 +3999,11 @@ agents:
     location: Classroom
     arena: Seminar Room
     activity: working as a academic adviser and assisting people as needed
-  - time: '13:30'
-    location: Cafe
-    arena: Counter
+  - time: '11:45'
+    location: Dining Hall
+    arena: Main Floor
     activity: taking a meal break
-  - time: '14:00'
+  - time: '12:15'
     location: Classroom
     arena: Seminar Room
     activity: returning to duties as a academic adviser
@@ -3595,6 +4011,14 @@ agents:
     location: Classroom
     arena: Seminar Room
     activity: finishing tasks and preparing a work handover
+  - time: '17:30'
+    location: Nolans
+    arena: Servery
+    activity: having dinner at the end of the shift
+  - time: '18:00'
+    location: Classroom
+    arena: Seminar Room
+    activity: winding down at the end of the day
 - id: p0263
   name: Lena Mitchell
   sprite: Jennifer_Moore
@@ -3646,11 +4070,11 @@ agents:
     location: Research Lab
     arena: Wet Lab
     activity: reading and preparing work
-  - time: '11:00'
+  - time: '13:00'
     location: Dining Hall
     arena: Main Floor
     activity: having lunch and making plans for the afternoon
-  - time: '11:30'
+  - time: '13:30'
     location: Research Lab
     arena: Wet Lab
     activity: returning to coursework
@@ -3666,6 +4090,14 @@ agents:
     location: Gym
     arena: Main Floor
     activity: meeting people from the arts group
+  - time: '17:30'
+    location: Dining Hall
+    arena: Main Floor
+    activity: having dinner with whoever else is around
+  - time: '18:00'
+    location: Dorm
+    arena: Room 118
+    activity: winding down at the end of the day
 - id: p0270
   name: Alex Campbell
   sprite: Ryan_Park
@@ -3717,11 +4149,11 @@ agents:
     location: Research Lab
     arena: Wet Lab
     activity: reading and preparing work
-  - time: '13:30'
-    location: Dining Hall
-    arena: Main Floor
+  - time: '12:30'
+    location: Nolans
+    arena: Servery
     activity: having lunch and making plans for the afternoon
-  - time: '14:00'
+  - time: '13:00'
     location: Research Lab
     arena: Wet Lab
     activity: working on Biomedical Engineering coursework
@@ -3733,6 +4165,14 @@ agents:
     location: Dorm
     arena: Lounge
     activity: meeting people from the cooking group
+  - time: '18:00'
+    location: Nolans
+    arena: Servery
+    activity: having dinner with whoever else is around
+  - time: '18:30'
+    location: Library
+    arena: Study Tables
+    activity: winding down at the end of the day
 - id: p0274
   name: Cameron Young
   sprite: Wolfgang_Schulz
@@ -3784,11 +4224,11 @@ agents:
     location: Research Lab
     arena: Dry Lab
     activity: reading and preparing work
-  - time: '11:00'
-    location: Quad
-    arena: Lawn
+  - time: '11:45'
+    location: Nolans
+    arena: Servery
     activity: having lunch and making plans for the afternoon
-  - time: '11:30'
+  - time: '12:15'
     location: Research Lab
     arena: Dry Lab
     activity: returning to coursework
@@ -3804,6 +4244,14 @@ agents:
     location: Gym
     arena: Main Floor
     activity: meeting people from the sustainability group
+  - time: '18:30'
+    location: Nolans
+    arena: Servery
+    activity: having dinner with whoever else is around
+  - time: '19:00'
+    location: Library
+    arena: Study Tables
+    activity: winding down at the end of the day
 - id: p0277
   name: Logan Lee
   sprite: Adam_Smith
@@ -3855,11 +4303,11 @@ agents:
     location: Research Lab
     arena: Dry Lab
     activity: reading and preparing work
-  - time: '13:30'
-    location: Quad
-    arena: Lawn
+  - time: '11:30'
+    location: Dining Hall
+    arena: Main Floor
     activity: having lunch and making plans for the afternoon
-  - time: '14:00'
+  - time: '12:00'
     location: Classroom
     arena: Seminar Room
     activity: attending a class in Computer Science
@@ -3871,6 +4319,14 @@ agents:
     location: Quad
     arena: Lawn
     activity: meeting people from the student newspaper
+  - time: '18:15'
+    location: Dining Hall
+    arena: Main Floor
+    activity: having dinner with whoever else is around
+  - time: '18:45'
+    location: Dorm
+    arena: Room 310
+    activity: winding down at the end of the day
 - id: p0286
   name: Javier Alvarez
   sprite: Isabella_Rodriguez
@@ -3922,11 +4378,11 @@ agents:
     location: Research Lab
     arena: Wet Lab
     activity: reading and preparing work
-  - time: '11:00'
-    location: Quad
-    arena: Lawn
+  - time: '12:15'
+    location: Nolans
+    arena: Servery
     activity: having lunch and making plans for the afternoon
-  - time: '11:30'
+  - time: '12:45'
     location: Research Lab
     arena: Wet Lab
     activity: returning to coursework
@@ -3942,6 +4398,14 @@ agents:
     location: Gym
     arena: Main Floor
     activity: meeting people from the dance group
+  - time: '17:45'
+    location: Nolans
+    arena: Servery
+    activity: having dinner with whoever else is around
+  - time: '18:15'
+    location: Library
+    arena: Study Tables
+    activity: winding down at the end of the day
 - id: p0291
   name: Cameron King
   sprite: Latoya_Williams
@@ -3989,11 +4453,11 @@ agents:
     location: Research Lab
     arena: Wet Lab
     activity: doing scholarly work
-  - time: '13:30'
-    location: Quad
-    arena: Lawn
+  - time: '12:00'
+    location: Nolans
+    arena: Servery
     activity: taking a lunch break
-  - time: '14:00'
+  - time: '12:30'
     location: Library
     arena: Study Tables
     activity: holding student consultations
@@ -4001,6 +4465,14 @@ agents:
     location: Research Lab
     arena: Wet Lab
     activity: meeting colleagues and preparing the next class
+  - time: '18:15'
+    location: Nolans
+    arena: Servery
+    activity: having dinner before heading home
+  - time: '18:45'
+    location: Research Lab
+    arena: Wet Lab
+    activity: winding down at the end of the day
 - id: p0293
   name: Sam Wong
   sprite: Mei_Lin
@@ -4048,11 +4520,11 @@ agents:
     location: Research Lab
     arena: Wet Lab
     activity: doing scholarly work
-  - time: '12:30'
-    location: Cafe
-    arena: Counter
-    activity: taking a lunch break
   - time: '13:00'
+    location: Nolans
+    arena: Servery
+    activity: taking a lunch break
+  - time: '13:30'
     location: Research Lab
     arena: Wet Lab
     activity: returning to scholarly work
@@ -4064,6 +4536,14 @@ agents:
     location: Research Lab
     arena: Wet Lab
     activity: meeting colleagues and preparing the next class
+  - time: '18:00'
+    location: Nolans
+    arena: Servery
+    activity: having dinner before heading home
+  - time: '18:30'
+    location: Research Lab
+    arena: Wet Lab
+    activity: winding down at the end of the day
 - id: p0306
   name: Naomi Khan
   sprite: Carmen_Ortiz
@@ -4115,11 +4595,11 @@ agents:
     location: Research Lab
     arena: Dry Lab
     activity: reading and preparing work
-  - time: '12:30'
+  - time: '12:15'
     location: Dining Hall
     arena: Main Floor
     activity: having lunch and making plans for the afternoon
-  - time: '13:00'
+  - time: '12:45'
     location: Research Lab
     arena: Dry Lab
     activity: returning to coursework
@@ -4135,6 +4615,14 @@ agents:
     location: Dorm
     arena: Lounge
     activity: meeting people from the music ensemble
+  - time: '18:00'
+    location: Dining Hall
+    arena: Main Floor
+    activity: having dinner with whoever else is around
+  - time: '18:30'
+    location: Dorm
+    arena: Room 214
+    activity: winding down at the end of the day
 - id: p0309
   name: Casey Howard
   sprite: Giorgio_Rossi
@@ -4186,11 +4674,11 @@ agents:
     location: Research Lab
     arena: Makerspace
     activity: reading and preparing work
-  - time: '13:00'
-    location: Cafe
-    arena: Counter
+  - time: '11:45'
+    location: Dining Hall
+    arena: Main Floor
     activity: having lunch and making plans for the afternoon
-  - time: '13:30'
+  - time: '12:15'
     location: Research Lab
     arena: Makerspace
     activity: returning to coursework
@@ -4206,6 +4694,14 @@ agents:
     location: Classroom
     arena: Seminar Room
     activity: meeting people from the dance group
+  - time: '17:30'
+    location: Dining Hall
+    arena: Main Floor
+    activity: having dinner with whoever else is around
+  - time: '18:00'
+    location: Dorm
+    arena: Room 105
+    activity: winding down at the end of the day
 - id: p0310
   name: Peyton Choi
   sprite: Hailey_Johnson
@@ -4257,11 +4753,11 @@ agents:
     location: Research Lab
     arena: Wet Lab
     activity: reading and preparing work
-  - time: '12:00'
+  - time: '13:00'
     location: Dining Hall
     arena: Main Floor
     activity: having lunch and making plans for the afternoon
-  - time: '12:30'
+  - time: '13:30'
     location: Research Lab
     arena: Wet Lab
     activity: returning to coursework
@@ -4277,6 +4773,14 @@ agents:
     location: Gym
     arena: Main Floor
     activity: meeting people from the outdoor recreation group
+  - time: '18:30'
+    location: Dining Hall
+    arena: Main Floor
+    activity: having dinner with whoever else is around
+  - time: '19:00'
+    location: Dorm
+    arena: Room 402
+    activity: winding down at the end of the day
 - id: p0318
   name: Noel Kumar
   sprite: Mei_Lin
@@ -4328,11 +4832,11 @@ agents:
     location: Research Lab
     arena: Wet Lab
     activity: reading and preparing work
-  - time: '11:30'
+  - time: '12:30'
     location: Dining Hall
     arena: Main Floor
     activity: having lunch and making plans for the afternoon
-  - time: '12:00'
+  - time: '13:00'
     location: Research Lab
     arena: Wet Lab
     activity: returning to coursework
@@ -4348,6 +4852,14 @@ agents:
     location: Dorm
     arena: Lounge
     activity: meeting people from the dance group
+  - time: '18:15'
+    location: Dining Hall
+    arena: Main Floor
+    activity: having dinner with whoever else is around
+  - time: '18:45'
+    location: Dorm
+    arena: Room 118
+    activity: winding down at the end of the day
 - id: p0319
   name: Hugo Collins
   sprite: Rajiv_Patel
@@ -4399,11 +4911,11 @@ agents:
     location: Research Lab
     arena: Wet Lab
     activity: reading and preparing work
-  - time: '12:00'
+  - time: '12:15'
     location: Dining Hall
     arena: Main Floor
     activity: having lunch and making plans for the afternoon
-  - time: '12:30'
+  - time: '12:45'
     location: Research Lab
     arena: Wet Lab
     activity: returning to coursework
@@ -4419,6 +4931,14 @@ agents:
     location: Classroom
     arena: Seminar Room
     activity: meeting people from the arts group
+  - time: '17:45'
+    location: Dining Hall
+    arena: Main Floor
+    activity: having dinner with whoever else is around
+  - time: '18:15'
+    location: Dorm
+    arena: Room 105
+    activity: winding down at the end of the day
 - id: p0323
   name: Arjun Hernandez
   sprite: Tom_Moreno
@@ -4470,11 +4990,11 @@ agents:
     location: Research Lab
     arena: Wet Lab
     activity: reading and preparing work
-  - time: '12:30'
+  - time: '11:30'
     location: Dining Hall
     arena: Main Floor
     activity: having lunch and making plans for the afternoon
-  - time: '13:00'
+  - time: '12:00'
     location: Research Lab
     arena: Wet Lab
     activity: returning to coursework
@@ -4490,6 +5010,14 @@ agents:
     location: Gym
     arena: Main Floor
     activity: meeting people from the sustainability group
+  - time: '18:00'
+    location: Dining Hall
+    arena: Main Floor
+    activity: having dinner with whoever else is around
+  - time: '18:30'
+    location: Dorm
+    arena: Room 118
+    activity: winding down at the end of the day
 - id: p0325
   name: Celia Kim
   sprite: Yuriko_Yamamoto
@@ -4544,6 +5072,14 @@ agents:
     location: Dorm
     arena: Lounge
     activity: finishing tasks and preparing a work handover
+  - time: '18:30'
+    location: Nolans
+    arena: Servery
+    activity: having dinner at the end of the shift
+  - time: '19:00'
+    location: Dorm
+    arena: Lounge
+    activity: winding down at the end of the day
 - id: p0329
   name: Rina Hernandez
   sprite: Ayesha_Khan
@@ -4595,11 +5131,11 @@ agents:
     location: Research Lab
     arena: Wet Lab
     activity: reading and preparing work
-  - time: '12:00'
-    location: Cafe
-    arena: Counter
+  - time: '12:15'
+    location: Nolans
+    arena: Servery
     activity: having lunch and making plans for the afternoon
-  - time: '12:30'
+  - time: '12:45'
     location: Research Lab
     arena: Wet Lab
     activity: returning to coursework
@@ -4615,6 +5151,14 @@ agents:
     location: Dorm
     arena: Lounge
     activity: meeting people from the outdoor recreation group
+  - time: '17:30'
+    location: Nolans
+    arena: Servery
+    activity: having dinner with whoever else is around
+  - time: '18:00'
+    location: Library
+    arena: Study Tables
+    activity: winding down at the end of the day
 - id: p0339
   name: Amara Rivera
   sprite: John_Lin
@@ -4657,11 +5201,11 @@ agents:
     location: Dining Hall
     arena: Main Floor
     activity: working as a cashier and assisting people as needed
-  - time: '14:30'
-    location: Quad
-    arena: Lawn
+  - time: '12:45'
+    location: Dining Hall
+    arena: Main Floor
     activity: taking a meal break
-  - time: '15:00'
+  - time: '13:15'
     location: Dining Hall
     arena: Main Floor
     activity: returning to duties as a cashier
@@ -4669,6 +5213,14 @@ agents:
     location: Dining Hall
     arena: Main Floor
     activity: finishing tasks and preparing a work handover
+  - time: '17:45'
+    location: Nolans
+    arena: Servery
+    activity: having dinner at the end of the shift
+  - time: '18:15'
+    location: Dining Hall
+    arena: Main Floor
+    activity: winding down at the end of the day
 - id: p0351
   name: Mira Ramirez
   sprite: Abigail_Chen
@@ -4720,11 +5272,11 @@ agents:
     location: Research Lab
     arena: Wet Lab
     activity: reading and preparing work
-  - time: '12:30'
+  - time: '11:30'
     location: Dining Hall
     arena: Main Floor
     activity: having lunch and making plans for the afternoon
-  - time: '13:00'
+  - time: '12:00'
     location: Research Lab
     arena: Wet Lab
     activity: returning to coursework
@@ -4740,6 +5292,14 @@ agents:
     location: Quad
     arena: Lawn
     activity: meeting people from the dance group
+  - time: '17:45'
+    location: Dining Hall
+    arena: Main Floor
+    activity: having dinner with whoever else is around
+  - time: '18:15'
+    location: Dorm
+    arena: Room 214
+    activity: winding down at the end of the day
 - id: p0359
   name: Val Lee
   sprite: Giorgio_Rossi
@@ -4791,11 +5351,11 @@ agents:
     location: Research Lab
     arena: Makerspace
     activity: reading and preparing work
-  - time: '11:30'
-    location: Cafe
-    arena: Counter
-    activity: having lunch and making plans for the afternoon
   - time: '12:00'
+    location: Dining Hall
+    arena: Main Floor
+    activity: having lunch and making plans for the afternoon
+  - time: '12:30'
     location: Research Lab
     arena: Makerspace
     activity: returning to coursework
@@ -4811,6 +5371,14 @@ agents:
     location: Gym
     arena: Main Floor
     activity: meeting people from the recreational sports club
+  - time: '17:30'
+    location: Dining Hall
+    arena: Main Floor
+    activity: having dinner with whoever else is around
+  - time: '18:00'
+    location: Dorm
+    arena: Room 105
+    activity: winding down at the end of the day
 - id: p0361
   name: Kiran Patel
   sprite: Isabella_Rodriguez
@@ -4862,11 +5430,11 @@ agents:
     location: Library
     arena: Study Tables
     activity: reading and preparing work
-  - time: '13:30'
-    location: Cafe
-    arena: Counter
+  - time: '11:30'
+    location: Nolans
+    arena: Servery
     activity: having lunch and making plans for the afternoon
-  - time: '14:00'
+  - time: '12:00'
     location: Classroom
     arena: Seminar Room
     activity: attending a class in Public Health Studies
@@ -4878,6 +5446,14 @@ agents:
     location: Quad
     arena: Lawn
     activity: meeting people from the cooking group
+  - time: '17:30'
+    location: Nolans
+    arena: Servery
+    activity: having dinner with whoever else is around
+  - time: '18:00'
+    location: Library
+    arena: Study Tables
+    activity: winding down at the end of the day
 - id: p0362
   name: Iris Rivera
   sprite: Jane_Moreno
@@ -4928,11 +5504,11 @@ agents:
     location: Research Lab
     arena: Dry Lab
     activity: reading and preparing work
-  - time: '13:00'
+  - time: '11:45'
     location: Dining Hall
     arena: Main Floor
     activity: having lunch and making plans for the afternoon
-  - time: '13:30'
+  - time: '12:15'
     location: Research Lab
     arena: Dry Lab
     activity: returning to coursework
@@ -4948,6 +5524,14 @@ agents:
     location: Quad
     arena: Lawn
     activity: taking time for piano
+  - time: '18:30'
+    location: Dining Hall
+    arena: Main Floor
+    activity: having dinner with whoever else is around
+  - time: '19:00'
+    location: Dorm
+    arena: Room 310
+    activity: winding down at the end of the day
 - id: p0366
   name: Frankie Wu
   sprite: Latoya_Williams
@@ -4989,11 +5573,11 @@ agents:
     location: Dining Hall
     arena: Main Floor
     activity: working as a cook and assisting people as needed
-  - time: '14:30'
-    location: Quad
-    arena: Lawn
+  - time: '13:00'
+    location: Dining Hall
+    arena: Main Floor
     activity: taking a meal break
-  - time: '15:00'
+  - time: '13:30'
     location: Dining Hall
     arena: Main Floor
     activity: returning to duties as a cook
@@ -5001,6 +5585,14 @@ agents:
     location: Dining Hall
     arena: Main Floor
     activity: finishing tasks and preparing a work handover
+  - time: '17:30'
+    location: Nolans
+    arena: Servery
+    activity: having dinner at the end of the shift
+  - time: '18:00'
+    location: Dining Hall
+    arena: Main Floor
+    activity: winding down at the end of the day
 - id: p0367
   name: Anika Adams
   sprite: Maria_Lopez
@@ -5052,11 +5644,11 @@ agents:
     location: Research Lab
     arena: Wet Lab
     activity: reading and preparing work
-  - time: '13:30'
+  - time: '12:15'
     location: Dining Hall
     arena: Main Floor
     activity: having lunch and making plans for the afternoon
-  - time: '14:00'
+  - time: '12:45'
     location: Classroom
     arena: Seminar Room
     activity: attending a class in Neuroscience
@@ -5068,6 +5660,14 @@ agents:
     location: Classroom
     arena: Seminar Room
     activity: meeting people from the sustainability group
+  - time: '18:30'
+    location: Dining Hall
+    arena: Main Floor
+    activity: having dinner with whoever else is around
+  - time: '19:00'
+    location: Dorm
+    arena: Room 310
+    activity: winding down at the end of the day
 - id: p0371
   name: Mira Scott
   sprite: Sam_Moore
@@ -5119,11 +5719,11 @@ agents:
     location: Research Lab
     arena: Wet Lab
     activity: reading and preparing work
-  - time: '12:30'
-    location: Cafe
-    arena: Counter
-    activity: having lunch and making plans for the afternoon
   - time: '13:00'
+    location: Dining Hall
+    arena: Main Floor
+    activity: having lunch and making plans for the afternoon
+  - time: '13:30'
     location: Research Lab
     arena: Wet Lab
     activity: returning to coursework
@@ -5139,6 +5739,14 @@ agents:
     location: Gym
     arena: Main Floor
     activity: meeting people from the music ensemble
+  - time: '17:45'
+    location: Dining Hall
+    arena: Main Floor
+    activity: having dinner with whoever else is around
+  - time: '18:15'
+    location: Dorm
+    arena: Room 214
+    activity: winding down at the end of the day
 - id: p0375
   name: Sage Tran
   sprite: Yuriko_Yamamoto
@@ -5190,11 +5798,11 @@ agents:
     location: Research Lab
     arena: Wet Lab
     activity: reading and preparing work
-  - time: '11:30'
+  - time: '12:30'
     location: Dining Hall
     arena: Main Floor
     activity: having lunch and making plans for the afternoon
-  - time: '12:00'
+  - time: '13:00'
     location: Research Lab
     arena: Wet Lab
     activity: returning to coursework
@@ -5210,6 +5818,14 @@ agents:
     location: Quad
     arena: Lawn
     activity: meeting people from the outdoor recreation group
+  - time: '18:15'
+    location: Dining Hall
+    arena: Main Floor
+    activity: having dinner with whoever else is around
+  - time: '18:45'
+    location: Dorm
+    arena: Room 402
+    activity: winding down at the end of the day
 - id: p0380
   name: Zane Howard
   sprite: Carlos_Gomez
@@ -5261,11 +5877,11 @@ agents:
     location: Research Lab
     arena: Wet Lab
     activity: reading and preparing work
-  - time: '13:00'
-    location: Cafe
-    arena: Counter
+  - time: '11:30'
+    location: Dining Hall
+    arena: Main Floor
     activity: having lunch and making plans for the afternoon
-  - time: '13:30'
+  - time: '12:00'
     location: Research Lab
     arena: Wet Lab
     activity: returning to coursework
@@ -5281,6 +5897,14 @@ agents:
     location: Classroom
     arena: Seminar Room
     activity: meeting people from the debate club
+  - time: '18:30'
+    location: Dining Hall
+    arena: Main Floor
+    activity: having dinner with whoever else is around
+  - time: '19:00'
+    location: Dorm
+    arena: Room 402
+    activity: winding down at the end of the day
 - id: p0385
   name: Alexis Turner
   sprite: Hailey_Johnson
@@ -5332,11 +5956,11 @@ agents:
     location: Research Lab
     arena: Wet Lab
     activity: reading and preparing work
-  - time: '11:30'
-    location: Quad
-    arena: Lawn
-    activity: having lunch and making plans for the afternoon
   - time: '12:00'
+    location: Dining Hall
+    arena: Main Floor
+    activity: having lunch and making plans for the afternoon
+  - time: '12:30'
     location: Research Lab
     arena: Wet Lab
     activity: returning to coursework
@@ -5352,6 +5976,14 @@ agents:
     location: Quad
     arena: Lawn
     activity: meeting people from the student newspaper
+  - time: '18:00'
+    location: Dining Hall
+    arena: Main Floor
+    activity: having dinner with whoever else is around
+  - time: '18:30'
+    location: Dorm
+    arena: Room 402
+    activity: winding down at the end of the day
 - id: p0407
   name: Spencer Perez
   sprite: Eddy_Lin
@@ -5403,11 +6035,11 @@ agents:
     location: Research Lab
     arena: Wet Lab
     activity: reading and preparing work
-  - time: '12:00'
-    location: Quad
-    arena: Lawn
+  - time: '11:45'
+    location: Dining Hall
+    arena: Main Floor
     activity: having lunch and making plans for the afternoon
-  - time: '12:30'
+  - time: '12:15'
     location: Research Lab
     arena: Wet Lab
     activity: returning to coursework
@@ -5423,6 +6055,14 @@ agents:
     location: Gym
     arena: Main Floor
     activity: meeting people from the recreational sports club
+  - time: '17:30'
+    location: Dining Hall
+    arena: Main Floor
+    activity: having dinner with whoever else is around
+  - time: '18:00'
+    location: Dorm
+    arena: Room 310
+    activity: winding down at the end of the day
 - id: p0414
   name: Drew Taylor
   sprite: John_Lin
@@ -5474,11 +6114,11 @@ agents:
     location: Research Lab
     arena: Wet Lab
     activity: reading and preparing work
-  - time: '12:30'
-    location: Dining Hall
-    arena: Main Floor
+  - time: '11:30'
+    location: Nolans
+    arena: Servery
     activity: having lunch and making plans for the afternoon
-  - time: '13:00'
+  - time: '12:00'
     location: Research Lab
     arena: Wet Lab
     activity: returning to coursework
@@ -5494,6 +6134,14 @@ agents:
     location: Dorm
     arena: Lounge
     activity: meeting people from the outdoor recreation group
+  - time: '18:15'
+    location: Nolans
+    arena: Servery
+    activity: having dinner with whoever else is around
+  - time: '18:45'
+    location: Library
+    arena: Study Tables
+    activity: winding down at the end of the day
 - id: p0416
   name: Omar Hall
   sprite: Latoya_Williams
@@ -5545,11 +6193,11 @@ agents:
     location: Research Lab
     arena: Wet Lab
     activity: reading and preparing work
-  - time: '13:30'
-    location: Dining Hall
-    arena: Main Floor
+  - time: '11:30'
+    location: Nolans
+    arena: Servery
     activity: having lunch and making plans for the afternoon
-  - time: '14:00'
+  - time: '12:00'
     location: Research Lab
     arena: Wet Lab
     activity: working on Neuroscience coursework
@@ -5561,6 +6209,14 @@ agents:
     location: Classroom
     arena: Seminar Room
     activity: meeting people from the board-game club
+  - time: '17:45'
+    location: Nolans
+    arena: Servery
+    activity: having dinner with whoever else is around
+  - time: '18:15'
+    location: Library
+    arena: Study Tables
+    activity: winding down at the end of the day
 - id: p0420
   name: Amara Diaz
   sprite: Ryan_Park
@@ -5612,11 +6268,11 @@ agents:
     location: Library
     arena: Study Tables
     activity: reading and preparing work
-  - time: '13:30'
+  - time: '12:45'
     location: Dining Hall
     arena: Main Floor
     activity: having lunch and making plans for the afternoon
-  - time: '14:00'
+  - time: '13:15'
     location: Library
     arena: Study Tables
     activity: working on Philosophy coursework
@@ -5628,6 +6284,14 @@ agents:
     location: Gym
     arena: Main Floor
     activity: meeting people from the dance group
+  - time: '18:15'
+    location: Dining Hall
+    arena: Main Floor
+    activity: having dinner with whoever else is around
+  - time: '18:45'
+    location: Dorm
+    arena: Room 402
+    activity: winding down at the end of the day
 - id: p0421
   name: Blair Khan
   sprite: Sam_Moore
@@ -5675,11 +6339,11 @@ agents:
     location: Research Lab
     arena: Dry Lab
     activity: doing scholarly work
-  - time: '12:00'
-    location: Dining Hall
-    arena: Main Floor
+  - time: '12:15'
+    location: Nolans
+    arena: Servery
     activity: taking a lunch break
-  - time: '12:30'
+  - time: '12:45'
     location: Research Lab
     arena: Dry Lab
     activity: returning to scholarly work
@@ -5691,6 +6355,14 @@ agents:
     location: Research Lab
     arena: Dry Lab
     activity: meeting colleagues and preparing the next class
+  - time: '18:15'
+    location: Nolans
+    arena: Servery
+    activity: having dinner before heading home
+  - time: '18:45'
+    location: Research Lab
+    arena: Dry Lab
+    activity: winding down at the end of the day
 - id: p0437
   name: Ezra James
   sprite: Jane_Moreno
@@ -5742,11 +6414,11 @@ agents:
     location: Research Lab
     arena: Makerspace
     activity: reading and preparing work
-  - time: '12:30'
-    location: Quad
-    arena: Lawn
+  - time: '11:30'
+    location: Nolans
+    arena: Servery
     activity: having lunch and making plans for the afternoon
-  - time: '13:00'
+  - time: '12:00'
     location: Research Lab
     arena: Makerspace
     activity: returning to coursework
@@ -5762,6 +6434,14 @@ agents:
     location: Dorm
     arena: Lounge
     activity: meeting people from the dance group
+  - time: '18:15'
+    location: Nolans
+    arena: Servery
+    activity: having dinner with whoever else is around
+  - time: '18:45'
+    location: Library
+    arena: Study Tables
+    activity: winding down at the end of the day
 - id: p0444
   name: Luis Turner
   sprite: Rajiv_Patel
@@ -5804,11 +6484,11 @@ agents:
     location: Dining Hall
     arena: Main Floor
     activity: working as a food service worker and assisting people as needed
-  - time: '14:30'
-    location: Quad
-    arena: Lawn
+  - time: '13:00'
+    location: Dining Hall
+    arena: Main Floor
     activity: taking a meal break
-  - time: '15:00'
+  - time: '13:30'
     location: Dining Hall
     arena: Main Floor
     activity: returning to duties as a food service worker
@@ -5816,6 +6496,14 @@ agents:
     location: Dining Hall
     arena: Main Floor
     activity: finishing tasks and preparing a work handover
+  - time: '17:45'
+    location: Nolans
+    arena: Servery
+    activity: having dinner at the end of the shift
+  - time: '18:15'
+    location: Dining Hall
+    arena: Main Floor
+    activity: winding down at the end of the day
 - id: p0453
   name: Lina Ross
   sprite: Arthur_Burton
@@ -5867,11 +6555,11 @@ agents:
     location: Research Lab
     arena: Makerspace
     activity: reading and preparing work
-  - time: '13:30'
+  - time: '11:45'
     location: Dining Hall
     arena: Main Floor
     activity: having lunch and making plans for the afternoon
-  - time: '14:00'
+  - time: '12:15'
     location: Classroom
     arena: Seminar Room
     activity: attending a class in Mechanical Engineering
@@ -5883,6 +6571,14 @@ agents:
     location: Classroom
     arena: Seminar Room
     activity: meeting people from the dance group
+  - time: '17:45'
+    location: Dining Hall
+    arena: Main Floor
+    activity: having dinner with whoever else is around
+  - time: '18:15'
+    location: Dorm
+    arena: Room 118
+    activity: winding down at the end of the day
 - id: p0454
   name: Asha King
   sprite: Ayesha_Khan
@@ -5925,11 +6621,11 @@ agents:
     location: Dining Hall
     arena: Main Floor
     activity: working as a food service worker and assisting people as needed
-  - time: '14:00'
-    location: Quad
-    arena: Lawn
+  - time: '13:00'
+    location: Dining Hall
+    arena: Main Floor
     activity: taking a meal break
-  - time: '14:30'
+  - time: '13:30'
     location: Dining Hall
     arena: Main Floor
     activity: returning to duties as a food service worker
@@ -5937,6 +6633,14 @@ agents:
     location: Dining Hall
     arena: Main Floor
     activity: finishing tasks and preparing a work handover
+  - time: '18:15'
+    location: Nolans
+    arena: Servery
+    activity: having dinner at the end of the shift
+  - time: '18:45'
+    location: Dining Hall
+    arena: Main Floor
+    activity: winding down at the end of the day
 - id: p0457
   name: Spencer Harris
   sprite: Eddy_Lin
@@ -5984,11 +6688,11 @@ agents:
     location: Research Lab
     arena: Dry Lab
     activity: doing scholarly work
-  - time: '12:30'
-    location: Dining Hall
-    arena: Main Floor
+  - time: '12:15'
+    location: Nolans
+    arena: Servery
     activity: taking a lunch break
-  - time: '13:00'
+  - time: '12:45'
     location: Research Lab
     arena: Dry Lab
     activity: returning to scholarly work
@@ -6000,6 +6704,14 @@ agents:
     location: Research Lab
     arena: Dry Lab
     activity: meeting colleagues and preparing the next class
+  - time: '18:30'
+    location: Nolans
+    arena: Servery
+    activity: having dinner before heading home
+  - time: '19:00'
+    location: Research Lab
+    arena: Dry Lab
+    activity: winding down at the end of the day
 - id: p0458
   name: Ezra Ross
   sprite: Francisco_Lopez
@@ -6051,11 +6763,11 @@ agents:
     location: Research Lab
     arena: Makerspace
     activity: reading and preparing work
-  - time: '12:00'
+  - time: '12:45'
     location: Dining Hall
     arena: Main Floor
     activity: having lunch and making plans for the afternoon
-  - time: '12:30'
+  - time: '13:15'
     location: Research Lab
     arena: Makerspace
     activity: returning to coursework
@@ -6071,6 +6783,14 @@ agents:
     location: Quad
     arena: Lawn
     activity: meeting people from the cooking group
+  - time: '17:30'
+    location: Dining Hall
+    arena: Main Floor
+    activity: having dinner with whoever else is around
+  - time: '18:00'
+    location: Dorm
+    arena: Room 118
+    activity: winding down at the end of the day
 - id: p0459
   name: Parker Davis
   sprite: Giorgio_Rossi
@@ -6122,11 +6842,11 @@ agents:
     location: Library
     arena: Study Tables
     activity: reading and preparing work
-  - time: '13:30'
-    location: Quad
-    arena: Lawn
+  - time: '12:15'
+    location: Dining Hall
+    arena: Main Floor
     activity: having lunch and making plans for the afternoon
-  - time: '14:00'
+  - time: '12:45'
     location: Classroom
     arena: Seminar Room
     activity: attending a class in Psychology
@@ -6138,6 +6858,14 @@ agents:
     location: Quad
     arena: Lawn
     activity: meeting people from the dance group
+  - time: '17:45'
+    location: Dining Hall
+    arena: Main Floor
+    activity: having dinner with whoever else is around
+  - time: '18:15'
+    location: Dorm
+    arena: Room 105
+    activity: winding down at the end of the day
 - id: p0460
   name: Zane Tran
   sprite: Hailey_Johnson
@@ -6185,11 +6913,11 @@ agents:
     location: Dorm
     arena: Lounge
     activity: taking a short break between commitments
-  - time: '11:00'
-    location: Cafe
-    arena: Counter
+  - time: '12:15'
+    location: Dining Hall
+    arena: Main Floor
     activity: having lunch and making plans for the afternoon
-  - time: '11:30'
+  - time: '12:45'
     location: Library
     arena: Study Tables
     activity: returning to coursework
@@ -6205,6 +6933,14 @@ agents:
     location: Dorm
     arena: Lounge
     activity: meeting people from the sustainability group
+  - time: '18:00'
+    location: Dining Hall
+    arena: Main Floor
+    activity: having dinner with whoever else is around
+  - time: '18:30'
+    location: Dorm
+    arena: Room 402
+    activity: winding down at the end of the day
 - id: p0464
   name: Noel Martin
   sprite: John_Lin
@@ -6252,11 +6988,11 @@ agents:
     location: Research Lab
     arena: Dry Lab
     activity: doing scholarly work
-  - time: '13:30'
-    location: Cafe
-    arena: Counter
+  - time: '12:00'
+    location: Nolans
+    arena: Servery
     activity: taking a lunch break
-  - time: '14:00'
+  - time: '12:30'
     location: Library
     arena: Study Tables
     activity: holding student consultations
@@ -6264,6 +7000,14 @@ agents:
     location: Research Lab
     arena: Dry Lab
     activity: meeting colleagues and preparing the next class
+  - time: '18:30'
+    location: Nolans
+    arena: Servery
+    activity: having dinner before heading home
+  - time: '19:00'
+    location: Research Lab
+    arena: Dry Lab
+    activity: winding down at the end of the day
 - id: p0468
   name: Mira Adams
   sprite: Mei_Lin
@@ -6315,11 +7059,11 @@ agents:
     location: Research Lab
     arena: Wet Lab
     activity: reading and preparing work
-  - time: '11:30'
-    location: Dining Hall
-    arena: Main Floor
+  - time: '11:45'
+    location: Nolans
+    arena: Servery
     activity: having lunch and making plans for the afternoon
-  - time: '12:00'
+  - time: '12:15'
     location: Research Lab
     arena: Wet Lab
     activity: returning to coursework
@@ -6335,6 +7079,14 @@ agents:
     location: Gym
     arena: Main Floor
     activity: meeting people from the community volunteering group
+  - time: '17:30'
+    location: Nolans
+    arena: Servery
+    activity: having dinner with whoever else is around
+  - time: '18:00'
+    location: Library
+    arena: Study Tables
+    activity: winding down at the end of the day
 - id: p0469
   name: Shiloh Howard
   sprite: Rajiv_Patel
@@ -6386,11 +7138,11 @@ agents:
     location: Research Lab
     arena: Dry Lab
     activity: reading and preparing work
-  - time: '13:30'
+  - time: '12:30'
     location: Dining Hall
     arena: Main Floor
     activity: having lunch and making plans for the afternoon
-  - time: '14:00'
+  - time: '13:00'
     location: Classroom
     arena: Seminar Room
     activity: attending a class in Computer Science
@@ -6402,6 +7154,14 @@ agents:
     location: Quad
     arena: Lawn
     activity: meeting people from the sustainability group
+  - time: '18:30'
+    location: Dining Hall
+    arena: Main Floor
+    activity: having dinner with whoever else is around
+  - time: '19:00'
+    location: Dorm
+    arena: Room 105
+    activity: winding down at the end of the day
 - id: p0477
   name: Ben Torres
   sprite: Adam_Smith
@@ -6453,11 +7213,11 @@ agents:
     location: Research Lab
     arena: Wet Lab
     activity: reading and preparing work
-  - time: '12:00'
+  - time: '12:45'
     location: Dining Hall
     arena: Main Floor
     activity: having lunch and making plans for the afternoon
-  - time: '12:30'
+  - time: '13:15'
     location: Research Lab
     arena: Wet Lab
     activity: returning to coursework
@@ -6473,6 +7233,14 @@ agents:
     location: Classroom
     arena: Seminar Room
     activity: meeting people from the sustainability group
+  - time: '18:00'
+    location: Dining Hall
+    arena: Main Floor
+    activity: having dinner with whoever else is around
+  - time: '18:30'
+    location: Dorm
+    arena: Room 310
+    activity: winding down at the end of the day
 - id: p0478
   name: Priya Howard
   sprite: Arthur_Burton
@@ -6524,11 +7292,11 @@ agents:
     location: Research Lab
     arena: Makerspace
     activity: reading and preparing work
-  - time: '12:00'
-    location: Cafe
-    arena: Counter
+  - time: '13:00'
+    location: Nolans
+    arena: Servery
     activity: having lunch and making plans for the afternoon
-  - time: '12:30'
+  - time: '13:30'
     location: Research Lab
     arena: Makerspace
     activity: returning to coursework
@@ -6544,6 +7312,14 @@ agents:
     location: Gym
     arena: Main Floor
     activity: meeting people from the cooking group
+  - time: '18:30'
+    location: Nolans
+    arena: Servery
+    activity: having dinner with whoever else is around
+  - time: '19:00'
+    location: Library
+    arena: Study Tables
+    activity: winding down at the end of the day
 - id: p0480
   name: Alexis Rivera
   sprite: Carlos_Gomez
@@ -6595,11 +7371,11 @@ agents:
     location: Research Lab
     arena: Wet Lab
     activity: reading and preparing work
-  - time: '12:00'
+  - time: '13:00'
     location: Dining Hall
     arena: Main Floor
     activity: having lunch and making plans for the afternoon
-  - time: '12:30'
+  - time: '13:30'
     location: Research Lab
     arena: Wet Lab
     activity: returning to coursework
@@ -6615,6 +7391,14 @@ agents:
     location: Gym
     arena: Main Floor
     activity: meeting people from the music ensemble
+  - time: '18:15'
+    location: Dining Hall
+    arena: Main Floor
+    activity: having dinner with whoever else is around
+  - time: '18:45'
+    location: Dorm
+    arena: Room 402
+    activity: winding down at the end of the day
 - id: p0485
   name: Nia Wilson
   sprite: Hailey_Johnson
@@ -6666,11 +7450,11 @@ agents:
     location: Library
     arena: Study Tables
     activity: reading and preparing work
-  - time: '13:30'
-    location: Cafe
-    arena: Counter
+  - time: '11:45'
+    location: Nolans
+    arena: Servery
     activity: having lunch and making plans for the afternoon
-  - time: '14:00'
+  - time: '12:15'
     location: Classroom
     arena: Seminar Room
     activity: attending a class in Economics
@@ -6682,6 +7466,14 @@ agents:
     location: Dorm
     arena: Lounge
     activity: meeting people from the sustainability group
+  - time: '18:30'
+    location: Nolans
+    arena: Servery
+    activity: having dinner with whoever else is around
+  - time: '19:00'
+    location: Library
+    arena: Study Tables
+    activity: winding down at the end of the day
 - id: p0486
   name: Terry Diaz
   sprite: Isabella_Rodriguez
@@ -6733,11 +7525,11 @@ agents:
     location: Library
     arena: Study Tables
     activity: reading and preparing work
-  - time: '13:30'
-    location: Dining Hall
-    arena: Main Floor
+  - time: '12:30'
+    location: Nolans
+    arena: Servery
     activity: having lunch and making plans for the afternoon
-  - time: '14:00'
+  - time: '13:00'
     location: Library
     arena: Study Tables
     activity: working on International Studies coursework
@@ -6749,6 +7541,14 @@ agents:
     location: Dorm
     arena: Lounge
     activity: meeting people from the debate club
+  - time: '18:15'
+    location: Nolans
+    arena: Servery
+    activity: having dinner with whoever else is around
+  - time: '18:45'
+    location: Library
+    arena: Study Tables
+    activity: winding down at the end of the day
 relationships:
 - a: p0001
   b: p0230

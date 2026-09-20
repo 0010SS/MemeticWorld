@@ -24,8 +24,12 @@ CONFIG = "configs/homewood100_naming.yaml"
 SOURCE = "configs/population/homewood500.yaml"
 SOURCE_MEMORIES = "configs/population/homewood500_initial_memories.yaml"
 # The exact command that produced the committed files; the determinism test reruns it.
-COMMAND = ["scripts/subsample_population.py", "--n", "100", "--split", "Hopkins Cafe=20", "--seed", "42"]
+COMMAND = ["scripts/subsample_population.py", "--n", "100", "--split", "Hopkins Cafe=20", "--seed", "42",
+           "--meals"]
 AGENT_FIELDS = set(AgentProfile.__dataclass_fields__) | {"coop_role"}
+
+sys.path.insert(0, str(ROOT / "scripts"))
+import subsample_population as SUB  # noqa: E402  (the generator itself, so the meal rule has one definition)
 
 
 def edge_count(edges, ids) -> int:
@@ -135,6 +139,37 @@ class Homewood100SubsetTests(unittest.TestCase):
                     self.assertTrue(0 <= hour < 24 and 0 <= minute < 60)
                     minutes.append(hour * 60 + minute)
                 self.assertEqual(minutes, sorted(set(minutes)))
+
+    def test_everyone_eats_at_a_hall_inside_the_meal_windows(self):
+        """D76: a meal is where co-located talk happens and where a sited incident is witnessed, so a
+        routine without one is an agent that cannot take part in either."""
+        halls = set(SUB.MEAL_HALLS.values())
+        for profile in self.profiles.values():
+            meals = [e for e in profile.routine if SUB.MEAL_ACTIVITY.search(e.activity or "")]
+            sittings = {"lunch": [e for e in meals if "dinner" not in (e.activity or "")],
+                        "dinner": [e for e in meals if "dinner" in (e.activity or "")]}
+            for name, window in (("lunch", SUB.LUNCH_WINDOW), ("dinner", SUB.DINNER_WINDOW)):
+                with self.subTest(agent=profile.id, meal=name):
+                    self.assertEqual(len(sittings[name]), 1, [e.activity for e in meals])
+                    entry = sittings[name][0]
+                    self.assertIn(entry.location, halls)
+                    self.assertGreaterEqual(SUB._mins(entry.time), SUB._mins(window[0]))
+                    self.assertLessEqual(SUB._mins(entry.time) + SUB.MEAL_MINUTES, SUB._mins(window[1]))
+
+    def test_the_hall_split_is_a_real_division_that_relationships_cross(self):
+        """The two halls are an exposure manipulation, so they have to be sub-communities (each mostly one
+        component) that a phrase can still cross (many ties between them). Either alone measures nothing."""
+        hall = {aid: SUB.MEAL_HALLS[self.profiles[aid].demographics["residence"]] for aid in self.ids}
+        sides = Counter(hall.values())
+        self.assertEqual(len(sides), 2, sides)
+        self.assertGreaterEqual(min(sides.values()), 30, sides)
+        crossing = [e for e in self.raw["relationships"] if hall[e["a"]] != hall[e["b"]]]
+        self.assertGreaterEqual(len(crossing), 40, f"only {len(crossing)} of "
+                                                   f"{len(self.raw['relationships'])} ties cross the halls")
+        for side in sides:
+            inside = {aid for aid in self.ids if hall[aid] == side}
+            parts = components(inside, {aid: self.adjacency[aid] & inside for aid in inside})
+            self.assertGreaterEqual(len(parts[0]), 0.8 * len(inside), f"{side}: {[len(p) for p in parts]}")
 
     def test_subset_is_socially_connected(self):
         parts = components(self.ids, self.adjacency)

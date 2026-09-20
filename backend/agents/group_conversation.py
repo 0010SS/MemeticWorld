@@ -44,7 +44,11 @@ def _activity(agent) -> str:
 
 
 def _context(speaker, others: list, topic: str | None, conv_id: str | None = None) -> str:
-    lines = [f"{speaker.name} was {_activity(speaker)} at the {speaker.state.location}.",
+    # D75: the world describes the place, it never names it. Canonical mode renders exactly the string
+    # this line used to build ("the Dining Hall"); situated mode renders a description.
+    from backend.simulation import reference
+    where = reference.phrase(speaker.state.location, agent=speaker, cfg=speaker.cfg)
+    lines = [f"{speaker.name} was {_activity(speaker)} at {where}.",
              TOPIC_LINES.get(topic, DEFAULT_TOPIC_LINE).format(names=_names([speaker, *others]))]
     lines += [speaker.relationship_line(o) for o in others]
     lines += _mind_lines(speaker, conv_id)
@@ -111,7 +115,10 @@ def run_group_conversation(conv_id: str, participants: list, bystanders: list, r
     heard_by: dict[str, list[int]] = {b.id: [] for b in bystanders}
     orng = overhear_streams(parts, bystanders)
     k = int(cfg["retrieval"]["top_k"])
-    where = f"{first.state.arena} in {first.state.location}"
+    # D75: the group chat prompt's "<arena> in <sector>" slot. reference.inside reproduces this exact
+    # string in canonical mode and describes the room and the building in situated mode.
+    from backend.simulation import reference
+    where = reference.inside(first.state.location, first.state.arena, agent=first, cfg=cfg)
     everyone = _names(parts)
     start = int(rng.integers(len(parts)))
     for i in range(int(gc.get("max_utterances", 8))):

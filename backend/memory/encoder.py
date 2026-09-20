@@ -36,6 +36,7 @@ from backend.llm.client import llm_purpose
 from backend.llm.embeddings import cos
 from backend.memory import wording
 from backend.memory.store import MemoryMeta, recency_score, record_link
+from backend.simulation import reference
 
 ga = ga_compat.load()
 PROMPT_DIR = ga_compat.REPO_ROOT / "backend" / "prompts"
@@ -374,7 +375,7 @@ def encode(agent, obs, rng) -> object | None:
                 f"{first} remembers them as their own experience.)") if self_part else ""
         prompt = ga.gs.generate_prompt(
             [agent.name, agent.iss(), agent.scratch.curr_time.strftime("%A %H:%M"),
-             f"{obs.location} ({obs.arena})", verb, raw,
+             reference.describe(obs.location, obs.arena, agent=agent, cfg=agent.cfg), verb, raw,
              fidelity_instruction(lens["noise"], first), people, lens["text"], note],
             str(PROMPT_DIR / ENCODE_PROMPT))
         with llm_purpose("encode_memory", agent.id):

@@ -10,6 +10,7 @@ from backend import ga_compat
 from backend.agents.ga_prompts import as_json
 from backend.llm.client import llm_purpose
 from backend.memory.retrieval import merged_nodes, retrieve
+from backend.simulation import reference
 from backend.simulation.world import WORLD_GRAPH
 
 ga = ga_compat.load()
@@ -26,10 +27,15 @@ def decide_reaction(agent, obs, present: list, rng) -> dict:
     people = ", ".join(f"{p.name}" for p in present) or "nobody"
     lines = [agent.relationship_line(p) for p in present]
     lines = agent.mods.modify_prompt(agent, "react", lines)
+    # Where the agent is, and the places it may move to, in the run's reference mode: canonical mode renders
+    # "Dining Hall (Main Floor)" and the old sorted key list; situated mode offers descriptions, which
+    # `reference.resolve` maps back to the canonical id below (either form is accepted).
     prompt = ga.gs.generate_prompt(
         [agent.iss(), agent.scratch.curr_time.strftime("%A %H:%M"), agent.name,
-         f"{agent.state.location} ({agent.state.arena})", agent.state.activity, people,
-         "\n".join(lines), focal, mem, ", ".join(sorted(WORLD_GRAPH))], PROMPT)
+         reference.describe(agent.state.location, agent.state.arena, agent=agent, cfg=agent.cfg),
+         agent.state.activity, people,
+         "\n".join(lines), focal, mem, reference.options(sorted(WORLD_GRAPH), agent=agent, cfg=agent.cfg)],
+        PROMPT)
     with llm_purpose("react_decision", agent.id):
         raw = ctx.llm.complete(prompt, max_tokens=200, temperature=0.8)
     d = as_json(raw) or {}
@@ -49,8 +55,16 @@ def decide_reaction(agent, obs, present: list, rng) -> dict:
         decision["target_id"] = t.id if t else None
         if not t:
             decision["action"] = "REACT" if decision["utterance"] else "CONTINUE"
-    if action == "MOVE" and decision["target"] not in WORLD_GRAPH:
-        decision["action"] = "CONTINUE"
+    if action == "MOVE":
+        # The answer may come back as the canonical id or as the situated description it was offered; both
+        # resolve to the canonical id, which is what the engine moves the agent to. `target_said` keeps the
+        # agent's own wording for the trace.
+        canonical = reference.resolve(decision["target"], agent=agent, cfg=agent.cfg)
+        if canonical is not None and canonical != decision["target"]:
+            decision["target_said"] = decision["target"]     # the agent's own wording, for the trace
+        decision["target"] = canonical
+        if canonical is None:
+            decision["action"] = "CONTINUE"
     ctx.tracer.log("decision", agent=agent.id, kind="react", observation_id=obs.id, prompt=prompt, response=raw,
                    decision=dict(decision), retrieved=[n.node_id for n in nodes],
                    retrieval_scores={k: v for r in res.values() for k, v in r.scores.items()},

@@ -24,6 +24,7 @@ import re
 from backend import ga_compat
 from backend.agents.ga_prompts import as_json
 from backend.llm.client import llm_purpose
+from backend.simulation import reference
 
 ga = ga_compat.load()
 PROMPT = str(ga_compat.REPO_ROOT / "backend" / "prompts" / "viewpoint_v1.txt")
@@ -34,7 +35,8 @@ TAG = {"participant": "was the person involved", "near": "same room, watching",
 
 def _situation(agent) -> str:
     s = agent.state
-    where = f"{agent.name} is at the {s.location} ({s.arena}), {s.activity}"
+    where = (f"{agent.name} is at {reference.phrase(s.location, s.arena, agent=agent, cfg=agent.cfg)}, "
+             f"{s.activity}")
     if s.in_conversation:
         where += ", in the middle of a conversation"
     return where + "."

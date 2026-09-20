@@ -206,6 +206,11 @@ TRACE_TYPES: dict[str, dict] = {
         "A whole conversation (dyadic or group); `trigger` says what started it.",
         ["participants", "location", "arena", "trigger", "relationship_summaries", "utterance_ids", "transcript"],
         hidden_fields=["trigger.event_ids"]),
+    "mealtalk": _t(
+        "controller", "v2", "conversation.mealtalk (backend/agents/conversation.py)",
+        "A conversation was given the meal-arrangement cue: a reason to refer to where to eat. No place is "
+        "named and no name is suggested; only the occasion is supplied.",
+        ["conversation_id", "participants", "window"]),
     "invitation": _t(
         "agent", "v1", "engine phase 6 (reactive re-planning)",
         "After a warm conversation one participant tags along with the other for a while.",

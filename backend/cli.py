@@ -275,7 +275,10 @@ def main(argv=None):
     sub = ap.add_subparsers(dest="cmd", required=True)
     r = sub.add_parser("run")
     r.add_argument("--config", default="configs/baseline.yaml")
-    r.add_argument("--set", nargs="*", default=[])
+    # `extend`, not the default `store`: with `store` a repeated --set silently kept only the LAST
+    # occurrence, so `--set llm.backend=mock --set simulation_days=1` dropped the mock backend and ran
+    # the real one. Repeats now accumulate, which is what every call site already assumed.
+    r.add_argument("--set", nargs="*", action="extend", default=[])
     r.add_argument("--out")
     r.add_argument("--background", help="Shared UTF-8 Markdown introduction to the world")
     r.add_argument("--analyze", action="store_true")
@@ -302,7 +305,8 @@ def main(argv=None):
     b = sub.add_parser("branch", help="ad-hoc branch of a finished run (prefix replay up to --day)")
     b.add_argument("parent_run")
     b.add_argument("--day", type=int, required=True, help="at_day: the first live day")
-    b.add_argument("--set", nargs="*", default=[], help="whitelisted overlay keys, e.g. records.transitions=...")
+    b.add_argument("--set", nargs="*", action="extend", default=[],
+                   help="whitelisted overlay keys, e.g. records.transitions=... (repeatable; repeats accumulate)")
     b.add_argument("--days", type=int, default=None, help="live days (default: to the parent's end)")
     b.add_argument("--salt", default=None, type=int)
     b.add_argument("--out", default=None)

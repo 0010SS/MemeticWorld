@@ -201,3 +201,48 @@ def analyze_meaning(run_dir, cohorts: dict | None = None, targets: dict | None =
     if write:
         json.dump(out, open(Path(run_dir) / "meaning.json", "w"), indent=1, sort_keys=True, default=str)
     return out
+
+
+# ------------------------------------------------------- the injected meme cohort (memo §2.1, §3.3, §7)
+def analyze_memes(run_dir, *, checkpoints: list[str] | None = None, probes_root=None, topic: bool = False,
+                  write: bool = True) -> dict:
+    """The whole comparative result for a registry run, in one document.
+
+    Three things are joined here because no one of them answers the question on its own:
+      - the graded battery's BOUNDARY per meme x checkpoint x cohort, with its foil false-positive rate
+        (battery.boundary) - what the phrase now applies to;
+      - the in-simulation adoption curve, unique users and survival across the repair (trends) - whether
+        anyone still says it;
+      - optionally the topic control (semantics.topic_control) - the competing explanation that nothing
+        about the meaning moved and the community merely changed the subject.
+
+    Writes memes.json (via boundary.compare) and meme_analysis.json. Returns {} for a run that declares no
+    registry, so a run predating the mechanism is unaffected (R5)."""
+    from backend.analysis import trends as T
+    from backend.analysis.battery import boundary as B
+    from backend.analysis.battery import registry as REG
+    from backend.analysis.rundata import RunData
+    run_dir = Path(run_dir)
+    rd = RunData(run_dir)
+    specs = REG.load_registry(rd.cfg, only_enabled=False)
+    if not specs:
+        return {}
+    doc = B.compare(run_dir, checkpoints=checkpoints, probes_root=probes_root, write=write)
+    series = {s["id"]: s for s in T.registry_series(run_dir, rd=rd)}
+    tpd = rd.ticks_per_day
+    for s in specs:
+        m = doc["memes"].get(s.id)
+        if m is None:
+            continue
+        m["trend"] = series.get(s.id)
+        if topic:
+            from backend.llm.embeddings import make_embedder
+            from backend.analysis import semantics as S
+            embed = make_embedder(rd.cfg.get("embedding"))
+            us = REG.find_usages(rd, s)
+            cut = (s.repaired_day - 1) * tpd if s.repaired_day else None
+            m["topic_control"] = S.topic_control(us, [s.phrase], rd, embed, cut)
+    doc["world_contamination"] = REG.world_contamination(specs, rd.world_text)   # R1/R2, machine-checked
+    if write:
+        json.dump(doc, open(run_dir / "meme_analysis.json", "w"), indent=1, sort_keys=True, default=str)
+    return doc

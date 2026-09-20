@@ -1,0 +1,407 @@
+# Seed memories for the meme-cohort study (configs/homewood100_memes.yaml).
+#
+# What every agent starts this study with, and why (task 3g):
+#   * NO phrase and none of any phrase's distinctive words (R1, R2). The naming study's seed file handed every
+#     agent a ready-made label; here the only text in the whole run that carries a coined phrase is the seeded
+#     minority's habit line.
+#   * NO canonical campus name (R3). Every place below is read AT GENERATION TIME out of
+#     backend/simulation/world.py, so a seed memory and a percept refer to the same place in exactly the same
+#     words. Hard-coding the descriptions here is how the two quietly drift apart.
+#   * Something for an incident to ATTACH to, for the GROUNDED memes only. An incident on the serving floor is
+#     a fact about a place the agent already eats at; one on the wet-work side is about a bench it already
+#     shares. The ungrounded memes get nothing here on purpose: a pre-loaded referent for them would be
+#     grounding, and grounding is the factor under manipulation.
+#   * A REASON TO REFER. Two dining halls, not one, so settling where to eat is a real decision. Agents
+#     referred to the dining hall 0.16 times per agent-day in the naming run; a choice between two places is
+#     the cheapest honest way to raise that without telling anyone to name anything.
+#
+# Generated from configs/population/homewood100.yaml and backend/simulation/world.py; regenerate
+# rather than hand-edit, so the place descriptions cannot fall out of step with the world.
+p0001:
+- I eat most days at the dining hall beside the freshman residences. When it is packed, or when my day has kept
+  me on the far side of campus, I go to the dining hall by the graduate flats instead.
+p0006:
+- I eat most days at the dining hall beside the freshman residences. When it is packed, or when my day has kept
+  me on the far side of campus, I go to the dining hall by the graduate flats instead.
+- I spend part of most weeks on the wet-work side, where the benches and the equipment are shared and everyone
+  works around everyone else.
+p0009:
+- I eat most days at the dining hall beside the freshman residences. When it is packed, or when my day has kept
+  me on the far side of campus, I go to the dining hall by the graduate flats instead.
+- I spend part of most weeks on the wet-work side, where the benches and the equipment are shared and everyone
+  works around everyone else.
+p0015:
+- I eat most days at the dining hall beside the freshman residences. When it is packed, or when my day has kept
+  me on the far side of campus, I go to the dining hall by the graduate flats instead.
+p0022:
+- I take meals wherever the day leaves me, most often at the dining hall beside the freshman residences; some
+  weeks I end up at the dining hall by the graduate flats instead.
+p0023:
+- I eat most days at the dining hall beside the freshman residences. When it is packed, or when my day has kept
+  me on the far side of campus, I go to the dining hall by the graduate flats instead.
+- I spend part of most weeks on the wet-work side, where the benches and the equipment are shared and everyone
+  works around everyone else.
+p0027:
+- I eat most days at the dining hall beside the freshman residences. When it is packed, or when my day has kept
+  me on the far side of campus, I go to the dining hall by the graduate flats instead.
+p0028:
+- I work the serving floor at the dining hall beside the freshman residences, so I am there through both meal
+  rushes. On my own time I eat at the dining hall by the graduate flats.
+p0031:
+- I take meals wherever the day leaves me, most often at the dining hall beside the freshman residences; some
+  weeks I end up at the dining hall by the graduate flats instead.
+- I spend part of most weeks on the wet-work side, where the benches and the equipment are shared and everyone
+  works around everyone else.
+p0033:
+- I eat most days at the dining hall beside the freshman residences. When it is packed, or when my day has kept
+  me on the far side of campus, I go to the dining hall by the graduate flats instead.
+- I spend part of most weeks on the wet-work side, where the benches and the equipment are shared and everyone
+  works around everyone else.
+p0042:
+- I eat most days at the dining hall beside the freshman residences. When it is packed, or when my day has kept
+  me on the far side of campus, I go to the dining hall by the graduate flats instead.
+p0047:
+- I eat most days at the dining hall beside the freshman residences. When it is packed, or when my day has kept
+  me on the far side of campus, I go to the dining hall by the graduate flats instead.
+- I spend part of most weeks on the wet-work side, where the benches and the equipment are shared and everyone
+  works around everyone else.
+p0051:
+- I take meals wherever the day leaves me, most often at the dining hall beside the freshman residences; some
+  weeks I end up at the dining hall by the graduate flats instead.
+p0054:
+- I work the serving floor at the dining hall beside the freshman residences, so I am there through both meal
+  rushes. On my own time I eat at the dining hall by the graduate flats.
+p0057:
+- I eat most days at the dining hall beside the freshman residences. When it is packed, or when my day has kept
+  me on the far side of campus, I go to the dining hall by the graduate flats instead.
+p0058:
+- I take meals wherever the day leaves me, most often at the dining hall beside the freshman residences; some
+  weeks I end up at the dining hall by the graduate flats instead.
+p0067:
+- I eat most days at the dining hall beside the freshman residences. When it is packed, or when my day has kept
+  me on the far side of campus, I go to the dining hall by the graduate flats instead.
+p0085:
+- I eat most days at the dining hall beside the freshman residences. When it is packed, or when my day has kept
+  me on the far side of campus, I go to the dining hall by the graduate flats instead.
+- I spend part of most weeks on the wet-work side, where the benches and the equipment are shared and everyone
+  works around everyone else.
+p0086:
+- I take meals wherever the day leaves me, most often at the dining hall beside the freshman residences; some
+  weeks I end up at the dining hall by the graduate flats instead.
+- I spend part of most weeks on the wet-work side, where the benches and the equipment are shared and everyone
+  works around everyone else.
+p0088:
+- I eat most days at the dining hall beside the freshman residences. When it is packed, or when my day has kept
+  me on the far side of campus, I go to the dining hall by the graduate flats instead.
+p0098:
+- I take meals wherever the day leaves me, most often at the dining hall beside the freshman residences; some
+  weeks I end up at the dining hall by the graduate flats instead.
+p0105:
+- I take meals wherever the day leaves me, most often at the dining hall beside the freshman residences; some
+  weeks I end up at the dining hall by the graduate flats instead.
+- I spend part of most weeks on the wet-work side, where the benches and the equipment are shared and everyone
+  works around everyone else.
+p0108:
+- I eat most days at the dining hall beside the freshman residences. When it is packed, or when my day has kept
+  me on the far side of campus, I go to the dining hall by the graduate flats instead.
+- I spend part of most weeks on the wet-work side, where the benches and the equipment are shared and everyone
+  works around everyone else.
+p0112:
+- I take meals wherever the day leaves me, most often at the dining hall beside the freshman residences; some
+  weeks I end up at the dining hall by the graduate flats instead.
+p0121:
+- I eat most days at the dining hall beside the freshman residences. When it is packed, or when my day has kept
+  me on the far side of campus, I go to the dining hall by the graduate flats instead.
+p0124:
+- I eat most days at the dining hall beside the freshman residences. When it is packed, or when my day has kept
+  me on the far side of campus, I go to the dining hall by the graduate flats instead.
+p0135:
+- I eat most days at the dining hall beside the freshman residences. When it is packed, or when my day has kept
+  me on the far side of campus, I go to the dining hall by the graduate flats instead.
+p0139:
+- I take meals wherever the day leaves me, most often at the dining hall beside the freshman residences; some
+  weeks I end up at the dining hall by the graduate flats instead.
+- I spend part of most weeks on the wet-work side, where the benches and the equipment are shared and everyone
+  works around everyone else.
+p0146:
+- I work the serving floor at the dining hall beside the freshman residences, so I am there through both meal
+  rushes. On my own time I eat at the dining hall by the graduate flats.
+p0150:
+- I work the serving floor at the dining hall beside the freshman residences, so I am there through both meal
+  rushes. On my own time I eat at the dining hall by the graduate flats.
+p0159:
+- I eat most days at the dining hall beside the freshman residences. When it is packed, or when my day has kept
+  me on the far side of campus, I go to the dining hall by the graduate flats instead.
+- I spend part of most weeks on the wet-work side, where the benches and the equipment are shared and everyone
+  works around everyone else.
+p0165:
+- I take meals wherever the day leaves me, most often at the dining hall beside the freshman residences; some
+  weeks I end up at the dining hall by the graduate flats instead.
+- I spend part of most weeks on the wet-work side, where the benches and the equipment are shared and everyone
+  works around everyone else.
+p0168:
+- I take meals wherever the day leaves me, most often at the dining hall beside the freshman residences; some
+  weeks I end up at the dining hall by the graduate flats instead.
+- I spend part of most weeks on the wet-work side, where the benches and the equipment are shared and everyone
+  works around everyone else.
+p0170:
+- I eat most days at the dining hall beside the freshman residences. When it is packed, or when my day has kept
+  me on the far side of campus, I go to the dining hall by the graduate flats instead.
+- I spend part of most weeks on the wet-work side, where the benches and the equipment are shared and everyone
+  works around everyone else.
+p0177:
+- I take meals wherever the day leaves me, most often at the dining hall beside the freshman residences; some
+  weeks I end up at the dining hall by the graduate flats instead.
+p0181:
+- I take meals wherever the day leaves me, most often at the dining hall beside the freshman residences; some
+  weeks I end up at the dining hall by the graduate flats instead.
+p0184:
+- I eat most days at the dining hall beside the freshman residences. When it is packed, or when my day has kept
+  me on the far side of campus, I go to the dining hall by the graduate flats instead.
+- I spend part of most weeks on the wet-work side, where the benches and the equipment are shared and everyone
+  works around everyone else.
+p0187:
+- I eat most days at the dining hall beside the freshman residences. When it is packed, or when my day has kept
+  me on the far side of campus, I go to the dining hall by the graduate flats instead.
+- I spend part of most weeks on the wet-work side, where the benches and the equipment are shared and everyone
+  works around everyone else.
+p0190:
+- I take meals wherever the day leaves me, most often at the dining hall beside the freshman residences; some
+  weeks I end up at the dining hall by the graduate flats instead.
+p0197:
+- I take meals wherever the day leaves me, most often at the dining hall beside the freshman residences; some
+  weeks I end up at the dining hall by the graduate flats instead.
+p0206:
+- I eat most days at the dining hall beside the freshman residences. When it is packed, or when my day has kept
+  me on the far side of campus, I go to the dining hall by the graduate flats instead.
+- I spend part of most weeks on the wet-work side, where the benches and the equipment are shared and everyone
+  works around everyone else.
+p0208:
+- I eat most days at the dining hall beside the freshman residences. When it is packed, or when my day has kept
+  me on the far side of campus, I go to the dining hall by the graduate flats instead.
+p0209:
+- I eat most days at the dining hall beside the freshman residences. When it is packed, or when my day has kept
+  me on the far side of campus, I go to the dining hall by the graduate flats instead.
+p0211:
+- I eat most days at the dining hall beside the freshman residences. When it is packed, or when my day has kept
+  me on the far side of campus, I go to the dining hall by the graduate flats instead.
+p0213:
+- I take meals wherever the day leaves me, most often at the dining hall beside the freshman residences; some
+  weeks I end up at the dining hall by the graduate flats instead.
+p0227:
+- I eat most days at the dining hall beside the freshman residences. When it is packed, or when my day has kept
+  me on the far side of campus, I go to the dining hall by the graduate flats instead.
+p0230:
+- I eat most days at the dining hall beside the freshman residences. When it is packed, or when my day has kept
+  me on the far side of campus, I go to the dining hall by the graduate flats instead.
+- I spend part of most weeks on the wet-work side, where the benches and the equipment are shared and everyone
+  works around everyone else.
+p0237:
+- I take meals wherever the day leaves me, most often at the dining hall beside the freshman residences; some
+  weeks I end up at the dining hall by the graduate flats instead.
+- I spend part of most weeks on the wet-work side, where the benches and the equipment are shared and everyone
+  works around everyone else.
+p0238:
+- I eat most days at the dining hall beside the freshman residences. When it is packed, or when my day has kept
+  me on the far side of campus, I go to the dining hall by the graduate flats instead.
+p0239:
+- I take meals wherever the day leaves me, most often at the dining hall beside the freshman residences; some
+  weeks I end up at the dining hall by the graduate flats instead.
+- I spend part of most weeks on the wet-work side, where the benches and the equipment are shared and everyone
+  works around everyone else.
+p0243:
+- I eat most days at the dining hall beside the freshman residences. When it is packed, or when my day has kept
+  me on the far side of campus, I go to the dining hall by the graduate flats instead.
+p0248:
+- I take meals wherever the day leaves me, most often at the dining hall beside the freshman residences; some
+  weeks I end up at the dining hall by the graduate flats instead.
+- I spend part of most weeks on the wet-work side, where the benches and the equipment are shared and everyone
+  works around everyone else.
+p0260:
+- I eat most days at the dining hall beside the freshman residences. When it is packed, or when my day has kept
+  me on the far side of campus, I go to the dining hall by the graduate flats instead.
+p0263:
+- I eat most days at the dining hall beside the freshman residences. When it is packed, or when my day has kept
+  me on the far side of campus, I go to the dining hall by the graduate flats instead.
+- I spend part of most weeks on the wet-work side, where the benches and the equipment are shared and everyone
+  works around everyone else.
+p0270:
+- I take meals wherever the day leaves me, most often at the dining hall beside the freshman residences; some
+  weeks I end up at the dining hall by the graduate flats instead.
+- I spend part of most weeks on the wet-work side, where the benches and the equipment are shared and everyone
+  works around everyone else.
+p0274:
+- I take meals wherever the day leaves me, most often at the dining hall beside the freshman residences; some
+  weeks I end up at the dining hall by the graduate flats instead.
+p0277:
+- I eat most days at the dining hall beside the freshman residences. When it is packed, or when my day has kept
+  me on the far side of campus, I go to the dining hall by the graduate flats instead.
+p0286:
+- I take meals wherever the day leaves me, most often at the dining hall beside the freshman residences; some
+  weeks I end up at the dining hall by the graduate flats instead.
+- I spend part of most weeks on the wet-work side, where the benches and the equipment are shared and everyone
+  works around everyone else.
+p0291:
+- I take meals wherever the day leaves me, most often at the dining hall beside the freshman residences; some
+  weeks I end up at the dining hall by the graduate flats instead.
+- I spend part of most weeks on the wet-work side, where the benches and the equipment are shared and everyone
+  works around everyone else.
+p0293:
+- I take meals wherever the day leaves me, most often at the dining hall beside the freshman residences; some
+  weeks I end up at the dining hall by the graduate flats instead.
+- I spend part of most weeks on the wet-work side, where the benches and the equipment are shared and everyone
+  works around everyone else.
+p0306:
+- I eat most days at the dining hall beside the freshman residences. When it is packed, or when my day has kept
+  me on the far side of campus, I go to the dining hall by the graduate flats instead.
+p0309:
+- I eat most days at the dining hall beside the freshman residences. When it is packed, or when my day has kept
+  me on the far side of campus, I go to the dining hall by the graduate flats instead.
+p0310:
+- I eat most days at the dining hall beside the freshman residences. When it is packed, or when my day has kept
+  me on the far side of campus, I go to the dining hall by the graduate flats instead.
+- I spend part of most weeks on the wet-work side, where the benches and the equipment are shared and everyone
+  works around everyone else.
+p0318:
+- I eat most days at the dining hall beside the freshman residences. When it is packed, or when my day has kept
+  me on the far side of campus, I go to the dining hall by the graduate flats instead.
+- I spend part of most weeks on the wet-work side, where the benches and the equipment are shared and everyone
+  works around everyone else.
+p0319:
+- I eat most days at the dining hall beside the freshman residences. When it is packed, or when my day has kept
+  me on the far side of campus, I go to the dining hall by the graduate flats instead.
+- I spend part of most weeks on the wet-work side, where the benches and the equipment are shared and everyone
+  works around everyone else.
+p0323:
+- I eat most days at the dining hall beside the freshman residences. When it is packed, or when my day has kept
+  me on the far side of campus, I go to the dining hall by the graduate flats instead.
+- I spend part of most weeks on the wet-work side, where the benches and the equipment are shared and everyone
+  works around everyone else.
+p0325:
+- I eat most days at the dining hall beside the freshman residences. When it is packed, or when my day has kept
+  me on the far side of campus, I go to the dining hall by the graduate flats instead.
+p0329:
+- I take meals wherever the day leaves me, most often at the dining hall beside the freshman residences; some
+  weeks I end up at the dining hall by the graduate flats instead.
+- I spend part of most weeks on the wet-work side, where the benches and the equipment are shared and everyone
+  works around everyone else.
+p0339:
+- I work the serving floor at the dining hall beside the freshman residences, so I am there through both meal
+  rushes. On my own time I eat at the dining hall by the graduate flats.
+p0351:
+- I eat most days at the dining hall beside the freshman residences. When it is packed, or when my day has kept
+  me on the far side of campus, I go to the dining hall by the graduate flats instead.
+- I spend part of most weeks on the wet-work side, where the benches and the equipment are shared and everyone
+  works around everyone else.
+p0359:
+- I eat most days at the dining hall beside the freshman residences. When it is packed, or when my day has kept
+  me on the far side of campus, I go to the dining hall by the graduate flats instead.
+p0361:
+- I take meals wherever the day leaves me, most often at the dining hall beside the freshman residences; some
+  weeks I end up at the dining hall by the graduate flats instead.
+p0362:
+- I eat most days at the dining hall beside the freshman residences. When it is packed, or when my day has kept
+  me on the far side of campus, I go to the dining hall by the graduate flats instead.
+p0366:
+- I work the serving floor at the dining hall beside the freshman residences, so I am there through both meal
+  rushes. On my own time I eat at the dining hall by the graduate flats.
+p0367:
+- I eat most days at the dining hall beside the freshman residences. When it is packed, or when my day has kept
+  me on the far side of campus, I go to the dining hall by the graduate flats instead.
+- I spend part of most weeks on the wet-work side, where the benches and the equipment are shared and everyone
+  works around everyone else.
+p0371:
+- I eat most days at the dining hall beside the freshman residences. When it is packed, or when my day has kept
+  me on the far side of campus, I go to the dining hall by the graduate flats instead.
+- I spend part of most weeks on the wet-work side, where the benches and the equipment are shared and everyone
+  works around everyone else.
+p0375:
+- I eat most days at the dining hall beside the freshman residences. When it is packed, or when my day has kept
+  me on the far side of campus, I go to the dining hall by the graduate flats instead.
+- I spend part of most weeks on the wet-work side, where the benches and the equipment are shared and everyone
+  works around everyone else.
+p0380:
+- I eat most days at the dining hall beside the freshman residences. When it is packed, or when my day has kept
+  me on the far side of campus, I go to the dining hall by the graduate flats instead.
+- I spend part of most weeks on the wet-work side, where the benches and the equipment are shared and everyone
+  works around everyone else.
+p0385:
+- I eat most days at the dining hall beside the freshman residences. When it is packed, or when my day has kept
+  me on the far side of campus, I go to the dining hall by the graduate flats instead.
+- I spend part of most weeks on the wet-work side, where the benches and the equipment are shared and everyone
+  works around everyone else.
+p0407:
+- I eat most days at the dining hall beside the freshman residences. When it is packed, or when my day has kept
+  me on the far side of campus, I go to the dining hall by the graduate flats instead.
+- I spend part of most weeks on the wet-work side, where the benches and the equipment are shared and everyone
+  works around everyone else.
+p0414:
+- I take meals wherever the day leaves me, most often at the dining hall beside the freshman residences; some
+  weeks I end up at the dining hall by the graduate flats instead.
+- I spend part of most weeks on the wet-work side, where the benches and the equipment are shared and everyone
+  works around everyone else.
+p0416:
+- I take meals wherever the day leaves me, most often at the dining hall beside the freshman residences; some
+  weeks I end up at the dining hall by the graduate flats instead.
+- I spend part of most weeks on the wet-work side, where the benches and the equipment are shared and everyone
+  works around everyone else.
+p0420:
+- I eat most days at the dining hall beside the freshman residences. When it is packed, or when my day has kept
+  me on the far side of campus, I go to the dining hall by the graduate flats instead.
+p0421:
+- I take meals wherever the day leaves me, most often at the dining hall beside the freshman residences; some
+  weeks I end up at the dining hall by the graduate flats instead.
+p0437:
+- I take meals wherever the day leaves me, most often at the dining hall beside the freshman residences; some
+  weeks I end up at the dining hall by the graduate flats instead.
+p0444:
+- I work the serving floor at the dining hall beside the freshman residences, so I am there through both meal
+  rushes. On my own time I eat at the dining hall by the graduate flats.
+p0453:
+- I eat most days at the dining hall beside the freshman residences. When it is packed, or when my day has kept
+  me on the far side of campus, I go to the dining hall by the graduate flats instead.
+p0454:
+- I work the serving floor at the dining hall beside the freshman residences, so I am there through both meal
+  rushes. On my own time I eat at the dining hall by the graduate flats.
+p0457:
+- I take meals wherever the day leaves me, most often at the dining hall beside the freshman residences; some
+  weeks I end up at the dining hall by the graduate flats instead.
+p0458:
+- I eat most days at the dining hall beside the freshman residences. When it is packed, or when my day has kept
+  me on the far side of campus, I go to the dining hall by the graduate flats instead.
+p0459:
+- I eat most days at the dining hall beside the freshman residences. When it is packed, or when my day has kept
+  me on the far side of campus, I go to the dining hall by the graduate flats instead.
+p0460:
+- I eat most days at the dining hall beside the freshman residences. When it is packed, or when my day has kept
+  me on the far side of campus, I go to the dining hall by the graduate flats instead.
+p0464:
+- I take meals wherever the day leaves me, most often at the dining hall beside the freshman residences; some
+  weeks I end up at the dining hall by the graduate flats instead.
+p0468:
+- I take meals wherever the day leaves me, most often at the dining hall beside the freshman residences; some
+  weeks I end up at the dining hall by the graduate flats instead.
+- I spend part of most weeks on the wet-work side, where the benches and the equipment are shared and everyone
+  works around everyone else.
+p0469:
+- I eat most days at the dining hall beside the freshman residences. When it is packed, or when my day has kept
+  me on the far side of campus, I go to the dining hall by the graduate flats instead.
+p0477:
+- I eat most days at the dining hall beside the freshman residences. When it is packed, or when my day has kept
+  me on the far side of campus, I go to the dining hall by the graduate flats instead.
+- I spend part of most weeks on the wet-work side, where the benches and the equipment are shared and everyone
+  works around everyone else.
+p0478:
+- I take meals wherever the day leaves me, most often at the dining hall beside the freshman residences; some
+  weeks I end up at the dining hall by the graduate flats instead.
+p0480:
+- I eat most days at the dining hall beside the freshman residences. When it is packed, or when my day has kept
+  me on the far side of campus, I go to the dining hall by the graduate flats instead.
+- I spend part of most weeks on the wet-work side, where the benches and the equipment are shared and everyone
+  works around everyone else.
+p0485:
+- I take meals wherever the day leaves me, most often at the dining hall beside the freshman residences; some
+  weeks I end up at the dining hall by the graduate flats instead.
+p0486:
+- I take meals wherever the day leaves me, most often at the dining hall beside the freshman residences; some
+  weeks I end up at the dining hall by the graduate flats instead.

@@ -41,8 +41,12 @@ selected members (dropped below two members), and the source circles restricted 
 Connectivity is bounded by the source graph and is reported, not assumed: a cohort that the source
 never ties to anyone outside its own department cannot be connected to the rest by any subset.
 
+``--meals`` (off by default, so an existing subset regenerates byte for byte) adds the sixth pass,
+`assign_meals`: every selected agent gets a lunch and a dinner inside the two meal windows, at one of
+the campus's two dining halls. See that function for the rule and why the hall is not a coin flip.
+
     .venv/bin/python scripts/subsample_population.py --n 100 --split "Hopkins Cafe=20" --seed 42 \\
-        --out configs/population/homewood100.yaml
+        --meals --out configs/population/homewood100.yaml
 """
 from __future__ import annotations
 
@@ -52,6 +56,7 @@ import hashlib
 import json
 import math
 from pathlib import Path
+import re
 import sys
 
 import yaml
@@ -60,6 +65,7 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
 from backend.simulation.circles import MIN_MEMBERS as MIN_CIRCLE_MEMBERS  # noqa: E402
+from backend.simulation.world import ARENAS, WORLD_GRAPH, default_arena  # noqa: E402
 
 OTHER = "(other)"          # residual pool: agents matching no declared --split label
 MIN_GROUP_MEMBERS = 2      # backend.agents.profile.load_population drops smaller groups anyway
@@ -293,6 +299,204 @@ def components(selected: set, adjacency: dict) -> list[list[str]]:
     return sorted(found, key=lambda c: (-len(c), c[0]))
 
 
+# --- meals, and the hall split as an exposure manipulation -------------------------------------------------
+# Everyone has to eat, and WHERE they eat is a manipulation rather than decoration: an incident sited in one
+# dining hall is SEEN by the people who eat there and only HEARD ABOUT by the people who eat at the other one,
+# which is the whole point of having a second hall (backend/simulation/world.py "Nolans").
+#
+# The split is `demographics.residence`, i.e. where the person lives, for three reasons:
+#   * it is real and legible -- you eat at the hall on your own side of campus, the way a first-year in the
+#     AMRs eats downstairs and someone commuting in up N Charles eats at the Commons hall;
+#   * it runs ALONG the social graph instead of cutting randomly across it, so each hall is a sub-community
+#     (a convention needs those) rather than a random half of the roster;
+#   * it is nonetheless crossed by a large share of the relationships, so a phrase has somewhere to cross.
+# Both of the last two are measured and reported in `summarise` -- they are properties of this population, not
+# guarantees of the rule, and a different source population could need rebalancing.
+#
+# One exception, from the other fact the profile carries: if your working day happens AT or NEXT DOOR TO the
+# other hall, you take the midday meal there and the evening meal at your own. Those people are the bridge --
+# they can witness at one hall and carry it to the other. It is a rule, not a hand-placed set.
+MEAL_HALLS = {"on campus": "Dining Hall", "off campus": "Nolans"}
+LUNCH_WINDOW = ("11:30", "13:30")
+DINNER_WINDOW = ("17:30", "19:00")
+MEAL_MINUTES = 30          # two 15-minute ticks at the table: two chances to be paired into a conversation
+SLOT_MINUTES = 15          # meal starts land on the tick grid, so nobody arrives mid-tick
+# Dining staff keep the source generator's intent -- a break after the service peak, not in the middle of the
+# student wave -- as far as a window that must contain everybody's lunch allows: they take the last slots.
+LATE_LUNCH_DEPARTMENT = re.compile(r"dining service", re.I)
+MEAL_ACTIVITY = re.compile(r"\blunch\b|\bdinner\b|\bmeal\b|having a meal|\beating\b", re.I)
+LUNCH_ACTIVITY = {"student": "having lunch and making plans for the afternoon",
+                  "faculty": "taking a lunch break", "staff": "taking a meal break"}
+DINNER_ACTIVITY = {"student": "having dinner with whoever else is around",
+                   "faculty": "having dinner before heading home",
+                   "staff": "having dinner at the end of the shift"}
+WIND_DOWN_ACTIVITY = "winding down at the end of the day"
+
+
+def _hhmm(minutes: int) -> str:
+    return f"{minutes // 60:02d}:{minutes % 60:02d}"
+
+
+def _mins(value) -> int:
+    """'11:30' -> 690. YAML 1.1 parses an unquoted 08:30 as the integer 510, which is already minutes."""
+    if isinstance(value, int):
+        return value
+    h, m = str(value).split(":")
+    return int(h) * 60 + int(m)
+
+
+def meal_slots(window: tuple[str, str]) -> list[int]:
+    """Every tick-aligned start whose whole meal still fits in the window. Spread is not cosmetic: the engine
+    charges `perception.crowd_factor` per other person in the ROOM, so a hall that seats its whole side at
+    once (0.92 ** 50) makes each diner nearly blind to what happens there, which is where the grounded memes
+    have to be witnessed. Dealing the slots round-robin rather than by a hash keeps the peak at the floor the
+    window allows."""
+    start, end = _mins(window[0]), _mins(window[1])
+    return list(range(start, end - MEAL_MINUTES + 1, SLOT_MINUTES))
+
+
+def deal_slots(ids: list[str], slots: list[int], seed: int, meal: str) -> dict[str, int]:
+    """Spread `ids` evenly over `slots`: order them by their own per-agent key, then deal round-robin. The
+    order is deterministic in (--seed, id, meal) and the balance is exact, where `key % len(slots)` would
+    leave the peak to chance (it bunched the 64 midday diners into a 38-deep tick; round-robin gives 24)."""
+    return {aid: slots[i % len(slots)]
+            for i, aid in enumerate(sorted(ids, key=lambda a: (_key(seed, a, meal), a)))}
+
+
+def routine_anchor(routine: list[dict]) -> str | None:
+    """The place this routine spends the most minutes in: where the person's working day actually happens.
+
+    The same notion backend/simulation/reference.py uses to decide what an agent calls its own building, and
+    read the same way (a routine entry carries a start only, so the last one is given one hour).
+    """
+    spent: dict[str, int] = {}
+    for i, e in enumerate(routine):
+        start = _mins(e["time"])
+        end = _mins(routine[i + 1]["time"]) if i + 1 < len(routine) else start + 60
+        spent[e["location"]] = spent.get(e["location"], 0) + max(0, end - start)
+    return max(sorted(spent), key=lambda k: spent[k]) if spent else None
+
+
+def assign_meals(agents: list[dict], seed: int) -> dict:
+    """Give every agent a lunch and a dinner at a dining hall, in place. -> counts for the summary.
+
+    The existing meal entries are replaced, never added to, so an agent still eats once at midday and the
+    entry it used to return to afterwards keeps its wording and simply moves to the new end of the meal.
+    """
+    halls = sorted(set(MEAL_HALLS.values()))
+    for hall in halls:
+        if hall not in WORLD_GRAPH:
+            raise ValueError(f"meal hall {hall!r} is not a place in backend/simulation/world.py WORLD_GRAPH")
+    # The halls are a manipulation only while they are matched: same number of rooms, so an agent's meal is
+    # one room's worth of company at either, and a difference between them is exposure and not the venue.
+    if len({len(ARENAS[hall]) for hall in halls}) != 1:
+        raise ValueError(f"the dining halls are not matched on rooms: {({h: ARENAS[h] for h in halls})}")
+    lunch_slots, dinner_slots = meal_slots(LUNCH_WINDOW), meal_slots(DINNER_WINDOW)
+    if not lunch_slots or not dinner_slots:
+        raise ValueError("a meal window is shorter than one meal")
+    # "at or next door to" a hall, from the world graph itself, so a new edge needs no change here.
+    near = {hall: {hall, *WORLD_GRAPH[hall]} for hall in halls}
+    stats: Counter = Counter()
+    per_hall: dict[str, Counter] = {hall: Counter() for hall in halls}
+    hall_of: dict[str, str] = {}
+    lunch_hall_of: dict[str, str] = {}
+    late_of: dict[str, bool] = {}
+
+    # 1. who eats where. Two facts about the person decide it and nothing else is consulted.
+    for agent in agents:
+        demographics = agent.get("demographics") or {}
+        residence = demographics.get("residence")
+        if residence not in MEAL_HALLS:
+            raise ValueError(f"agent {agent['id']!r}: demographics.residence {residence!r} has no dining hall; "
+                             f"expected one of {sorted(MEAL_HALLS)}")
+        home_hall = MEAL_HALLS[residence]
+        other = next(h for h in halls if h != home_hall)
+        anchor = routine_anchor(agent["routine"])
+        hall_of[agent["id"]] = home_hall
+        lunch_hall_of[agent["id"]] = other if anchor in near[other] else home_hall
+        late_of[agent["id"]] = bool(LATE_LUNCH_DEPARTMENT.search(str(demographics.get("department") or "")))
+        stats["bridge_agents"] += lunch_hall_of[agent["id"]] != home_hall
+        per_hall[home_hall]["evening"] += 1
+        per_hall[lunch_hall_of[agent["id"]]]["midday"] += 1
+
+    # 2. when. Dealt per sitting -- each hall's own queue, and the late shift separately -- so that it is the
+    #    room an agent is actually in that is level, not the campus's meal load in aggregate.
+    sittings: dict[tuple[str, str, bool], list[str]] = defaultdict(list)
+    for agent in agents:
+        aid = agent["id"]
+        sittings[("lunch", lunch_hall_of[aid], late_of[aid])].append(aid)
+        sittings[("dinner", hall_of[aid], False)].append(aid)
+    start_of: dict[tuple[str, str], int] = {}
+    for (meal, _hall, late), ids in sorted(sittings.items()):
+        slots = dinner_slots if meal == "dinner" else (lunch_slots[-2:] if late else lunch_slots)
+        for aid, minute in deal_slots(ids, slots, seed, meal).items():
+            start_of[(aid, meal)] = minute
+
+    # 3. rewrite each routine. The old meal entries are replaced, never added to, so an agent still eats once
+    #    at midday, and the entry it used to go back to afterwards keeps its wording and just moves.
+    for agent in agents:
+        aid = agent["id"]
+        category = (agent.get("demographics") or {}).get("category")
+        routine = list(agent["routine"])
+        old = [i for i, e in enumerate(routine) if MEAL_ACTIVITY.search(e.get("activity") or "")]
+        # The entry right after the old meal is what this person goes back to; keep its wording, move its time.
+        resume = routine[old[0] + 1] if old and old[0] + 1 < len(routine) else None
+        routine = [e for i, e in enumerate(routine) if i not in set(old)]
+        lunch_at, dinner_at = start_of[(aid, "lunch")], start_of[(aid, "dinner")]
+        clash = [e for e in routine if lunch_at < _mins(e["time"]) < lunch_at + MEAL_MINUTES and e is not resume]
+        if clash:
+            raise ValueError(f"agent {aid!r}: routine entry {clash[0]} falls inside the lunch window; "
+                             "the meal pass would silently drop it")
+        home = agent.get("home") or {}
+        meals = [_entry(lunch_at, lunch_hall_of[aid], LUNCH_ACTIVITY.get(category, LUNCH_ACTIVITY["student"])),
+                 _entry(dinner_at, hall_of[aid], DINNER_ACTIVITY.get(category, DINNER_ACTIVITY["student"])),
+                 {"time": _hhmm(dinner_at + MEAL_MINUTES), "location": home["location"],
+                  "arena": home["arena"], "activity": WIND_DOWN_ACTIVITY}]
+        if resume is not None:
+            resume["time"] = _hhmm(lunch_at + MEAL_MINUTES)
+        # Last entry wins if the same minute occurs twice, exactly as the source generator resolves it.
+        agent["routine"] = sorted({_mins(e["time"]): e for e in routine + meals}.values(),
+                                  key=lambda e: _mins(e["time"]))
+        stats["agents_with_lunch"] += 1
+        stats["agents_with_dinner"] += 1
+    return {"lunch_slots": [_hhmm(s) for s in lunch_slots], "dinner_slots": [_hhmm(s) for s in dinner_slots],
+            "meal_minutes": MEAL_MINUTES, "counts": dict(stats), "hall_of": hall_of,
+            "by_hall": {hall: dict(per_hall[hall]) for hall in halls},
+            "peak_in_room_per_tick": hall_occupancy(agents, halls)}
+
+
+def _entry(minutes: int, location: str, activity: str) -> dict:
+    return {"time": _hhmm(minutes), "location": location, "arena": default_arena(location), "activity": activity}
+
+
+def _key(seed: int, agent_id: str, name: str) -> int:
+    """A per-agent, per-mechanism draw. Deterministic in (--seed, id, mechanism) and nothing else, so adding
+    a meal never perturbs any other choice the script makes."""
+    return int.from_bytes(hashlib.blake2b(f"{seed}:{agent_id}:{name}".encode(), digest_size=8).digest(), "big")
+
+
+def hall_occupancy(agents: list[dict], halls) -> dict:
+    """Peak head-count in each hall in any 15-minute tick, per meal. The engine's attention model charges a
+    crowd factor for every other person in the ROOM, so how bunched the slots are is a measurable cost of
+    the meal design, not a detail: reported so it can be traded against co-location."""
+    peaks: dict[str, dict[str, int]] = {}
+    for hall in halls:
+        peaks[hall] = {}
+        for label, window in (("midday", LUNCH_WINDOW), ("evening", DINNER_WINDOW)):
+            best = 0
+            for tick in range(_mins(window[0]), _mins(window[1]), SLOT_MINUTES):
+                here = 0
+                for agent in agents:
+                    for e in agent["routine"]:
+                        start = _mins(e["time"])
+                        if (e["location"] == hall and MEAL_ACTIVITY.search(e.get("activity") or "")
+                                and start <= tick < start + MEAL_MINUTES):
+                            here += 1
+                best = max(best, here)
+            peaks[hall][label] = best
+    return peaks
+
+
 def select(data: dict, memories: dict, n: int, targets: dict[str, int], seed: int,
            seed_groups: int) -> tuple[list[str], dict]:
     """-> (selected ids in source order, provenance of the selection)."""
@@ -351,7 +555,43 @@ def subset_population(data: dict, selected: list[str]) -> dict:
     return {"agents": agents, "relationships": relationships, "groups": groups, "circles": circles}
 
 
-def summarise(data: dict, subset: dict, selected: list[str], provenance: dict, args) -> dict:
+def meal_summary(subset: dict, meals: dict) -> dict:
+    """What the hall split is worth as an exposure manipulation: the two sides' sizes, how well connected each
+    side is to the other, and whether either side is a pile of fragments. A split nothing crosses measures
+    nothing, so the crossing count is reported next to the split and not left to be assumed."""
+    hall_of = meals["hall_of"]
+    edges = [e for e in subset["relationships"] if e["a"] in hall_of and e["b"] in hall_of]
+    crossing = [e for e in edges if hall_of[e["a"]] != hall_of[e["b"]]]
+    degree: Counter = Counter()
+    for e in edges:
+        degree[e["a"]] += 1
+        degree[e["b"]] += 1
+    adjacency = defaultdict(set)
+    for e in edges:
+        adjacency[e["a"]].add(e["b"])
+        adjacency[e["b"]].add(e["a"])
+    out = {k: v for k, v in meals.items() if k != "hall_of"}
+    out["split"] = dict(sorted(Counter(hall_of.values()).items()))
+    out["crossing_relationships"] = len(crossing)
+    out["crossing_fraction"] = round(len(crossing) / len(edges), 4) if edges else None
+    out["by_side"] = {}
+    for hall in sorted(set(hall_of.values())):
+        side = [aid for aid in hall_of if hall_of[aid] == hall]
+        inside = set(side)
+        reach = [aid for aid in side if adjacency[aid] - inside]
+        degrees = sorted(degree[aid] for aid in side)
+        out["by_side"][hall] = {
+            "agents": len(side),
+            "mean_degree": round(sum(degrees) / len(side), 3) if side else None,
+            "degree_min_median_max": [degrees[0], degrees[len(degrees) // 2], degrees[-1]] if degrees else None,
+            "with_a_tie_to_the_other_hall": len(reach),
+            "internal_component_sizes": [len(c) for c in components(inside, adjacency)][:5],
+        }
+    return out
+
+
+def summarise(data: dict, subset: dict, selected: list[str], provenance: dict, args,
+              meals: dict | None = None) -> dict:
     """Counts only. Nothing here describes conversation, adoption, or any cultural outcome."""
     adjacency = provenance["adjacency"]
     labels = provenance["labels"]
@@ -393,6 +633,7 @@ def summarise(data: dict, subset: dict, selected: list[str], provenance: dict, a
         "groups": {"source": len(data.get("groups") or {}), "kept": len(subset["groups"]),
                    "dropped_below_2_members": len(data.get("groups") or {}) - len(subset["groups"])},
         "circles": {"source": len(data.get("circles") or {}), "kept": len(subset["circles"])},
+        **({"meals": meal_summary(subset, meals)} if meals else {}),
         "limitations": [
             "Counts describe a synthetic population, not measured campus behaviour.",
             "Retained ties and components bound who could meet through the designed structure; "
@@ -402,9 +643,23 @@ def summarise(data: dict, subset: dict, selected: list[str], provenance: dict, a
     }
 
 
-def write_yaml(path: Path, data) -> None:
+def leading_comments(text: str) -> str:
+    """The `#` block a file opens with, or "". A subset of a file is still that file's data, so the note that
+    says what is in it and why belongs on the cut too -- `yaml.safe_load` drops comments, so it is carried
+    across by hand. It is read from the SOURCE, never from whatever happens to be at `--out`, or regenerating
+    into an empty directory would not reproduce the committed bytes."""
+    kept = []
+    for line in text.splitlines():
+        if not line.startswith("#"):
+            break
+        kept.append(line)
+    return "".join(line + "\n" for line in kept)
+
+
+def write_yaml(path: Path, data, header: str = "") -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(yaml.safe_dump(data, sort_keys=False, allow_unicode=True, width=110), encoding="utf-8")
+    path.write_text(header + yaml.safe_dump(data, sort_keys=False, allow_unicode=True, width=110),
+                    encoding="utf-8")
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -419,6 +674,10 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--n", type=int, required=True, help="agents to select")
     parser.add_argument("--split", default="", help='exact naming targets, e.g. "Hopkins Cafe=20"')
     parser.add_argument("--seed", type=int, default=42, help="breaks exact ties only")
+    parser.add_argument("--meals", action="store_true",
+                        help="give every selected agent a lunch and a dinner at a dining hall, and split the "
+                             "halls by residence (see assign_meals). Off by default: without it a subset "
+                             "regenerates byte for byte as it did before this pass existed.")
     parser.add_argument("--seed-groups", type=int, default=0,
                         help="candidate snowball seeds to try, densest first (0 = every group)")
     parser.add_argument("--out", type=Path, required=True, help="population YAML to write")
@@ -440,19 +699,25 @@ def main(argv: list[str] | None = None) -> int:
 
     try:
         targets = parse_split(args.split)
-        data = yaml.safe_load(resolve(args.population).read_text(encoding="utf-8"))
-        memories = yaml.safe_load(resolve(args.memories).read_text(encoding="utf-8")) or {}
+        population_text = resolve(args.population).read_text(encoding="utf-8")
+        memories_text = resolve(args.memories).read_text(encoding="utf-8")
+        data = yaml.safe_load(population_text)
+        memories = yaml.safe_load(memories_text) or {}
         selected, provenance = select(data, memories, args.n, targets, args.seed, args.seed_groups)
         subset = subset_population(data, selected)
-        write_yaml(resolve(args.out), subset)
-        write_yaml(resolve(args.out_memories), {aid: memories[aid] for aid in selected})
+        meals = assign_meals(subset["agents"], args.seed) if args.meals else None
+        write_yaml(resolve(args.out), subset, leading_comments(population_text))
+        write_yaml(resolve(args.out_memories), {aid: memories[aid] for aid in selected},
+                   leading_comments(memories_text))
         if args.both_names_memories:
-            both = yaml.safe_load(resolve(args.both_names_memories).read_text(encoding="utf-8")) or {}
+            both_text = resolve(args.both_names_memories).read_text(encoding="utf-8")
+            both = yaml.safe_load(both_text) or {}
             absent = [aid for aid in selected if aid not in both]
             if absent:
                 raise ValueError(f"{len(absent)} selected agents are missing from the both-names file")
-            write_yaml(resolve(args.out_both_names), {aid: both[aid] for aid in selected})
-        summary = summarise(data, subset, selected, provenance, args)
+            write_yaml(resolve(args.out_both_names), {aid: both[aid] for aid in selected},
+                       leading_comments(both_text))
+        summary = summarise(data, subset, selected, provenance, args, meals)
     except (OSError, ValueError, KeyError) as exc:
         parser.exit(1, f"subsampling failed: {exc}\n")
     text = json.dumps(summary, indent=2, ensure_ascii=False) + "\n"

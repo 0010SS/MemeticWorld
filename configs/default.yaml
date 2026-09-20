@@ -8,6 +8,7 @@
 #             conversation.group.enabled, need.enabled
 #   LINK    : reminding.enabled, latent_events.link_visibility
 #   WORDING : memory.verbatim.enabled, priming.enabled, retrieval.source_weights
+#   MEMES   : memes.enabled (the injected cohort, see `memes:` below), conversation.repair.enabled
 run_name: default
 seed: 42
 world_seed: null            # null -> seed. The world script (events, casting, referents) uses only this seed,
@@ -15,6 +16,10 @@ world_seed: null            # null -> seed. The world script (events, casting, r
 population: configs/population/homewood8.yaml
 population_size: 16         # first N agents of the population file
 initial_memories_file: null # optional per-agent one-time seed memories; no permanent linguistic habit
+initial_memories_importance: 5   # GA importance (1-10) of those seed memories. They stay MEMORIES: they decay,
+                            # compete for retrieval and can be forgotten; raising this only makes them
+                            # reachable when the topic comes up, it never makes them a persona habit.
+                            # 5 = the v2 behaviour (the same importance as the seeded relationship facts).
 shared_background:          # optional shared Markdown introduction, retained in identity prompts
   file: null                # UTF-8 Markdown file, relative to repository root or absolute
   markdown: null            # inline text; resolved files are frozen here for replay
@@ -26,7 +31,12 @@ day_end: "22:30"
 tick_minutes: 15
 
 # Legacy world selection; the co-op is enabled through its existing mechanisms.
-world: {mode: latent_events}
+# reference_mode: how the world refers to a place when it talks to an agent (backend/simulation/reference.py).
+#   canonical = v2 behaviour, the canonical key ("the Dining Hall"), so existing runs reproduce.
+#   situated  = a relative description ("the dining hall beside the freshman residences"). The world gives
+#               percepts, never proper names; naming is the agents' business. Required by the seeded naming
+#               experiment, which cannot measure whose name wins while every prompt supplies the world's own.
+world: {mode: latent_events, reference_mode: canonical}
 commons: {}
 
 llm:
@@ -138,14 +148,37 @@ conversation:
     min_familiarity: 0.6
     prob: 0.8
   catchup_max_utterances: 6
+  mealtalk:                 # a REASON TO REFER: people who have not eaten yet settle where they are going.
+    enabled: false          #   One context line and one meal focal point; no place is ever named and no one
+    windows: ["11:30-13:30", "17:30-19:00"]   # is asked to invent a name (backend/agents/conversation.py).
+    prob: 0.6               # per conversation that starts in a window with a meal still ahead of a participant
   group:                    # NEED: multi-party talk at shared venues (meal tables)
     enabled: false
-    venues: [["Dining Hall", "Main Floor"]]
+    # Both dining halls. A venue nobody is standing in costs nothing and draws no random number (the
+    # engine skips a venue before the per-window draw when fewer than `min_participants` are there), so
+    # adding the second hall leaves every existing run byte-identical while making the control hall a
+    # real place where a table forms. Listing only the exposed hall would have put every group meal in
+    # the one room the meme incidents happen in.
+    venues: [["Dining Hall", "Main Floor"], ["Nolans", "Servery"]]
     windows: ["12:00-13:30", "18:00-19:30"]
     min_participants: 3
     max_participants: 5
     max_utterances: 8
     prob: 0.5
+  repair:                   # MEMES: ordinary clarification -- "what do you mean by that?" -- and one answer.
+    # Not a mechanism for spreading a phrase: a mechanism for NEGOTIATING one. The research memo (§5,
+    # GlossoGen) is explicit that a world which forbids explicit discussion is a different experiment from
+    # one that allows it, and RQ1 lists "misunderstanding followed by repair" as one of the five routes by
+    # which an expression acquires a new shared interpretation. Without it a hearer who does not understand
+    # a coined phrase has no move except to drop it, and every meme dies for the same uninteresting reason.
+    # These three keys are the experimental dial and nothing else belongs here. The mechanism's other
+    # constants (phrase_source, zipf_max, lexicon_filter, min_speaker_memories, collide_below, explain_k)
+    # live in backend/agents/repair.py's DEFAULTS, so a config carrying only these three behaves exactly
+    # as specified; setting one of them in a config warns as an unknown key, which is the intended signal
+    # that you are reaching past the dial into the mechanism.
+    enabled: false
+    prob: 0.7               # p(a listener who did not understand actually asks), per opportunity
+    max_followups: 1        # answers the asker gets back; 1 keeps repair from eating a short conversation
 
 routine:
   jitter_minutes: 20
@@ -197,6 +230,49 @@ module_params:
 
 controls:
   planted_phrase: null      # positive control: {agent: maya, habit: "Maya has a habit of calling any mess \"a full pickle\"."}
+
+# ---------------------------------------------------------------- MEMES: the injected cohort
+# `controls.planted_phrase` plants ONE phrase in ONE agent, which tells you that a phrase spread or did not.
+# It cannot tell you WHY, because n=1 has nothing to contrast with. The registry injects a COHORT of phrases
+# that differ along dimensions we control, so the finding is which property predicts survival and
+# reinterpretation rather than an anecdote about one coinage.
+#
+# EVERY MEME IS DATA, NEVER CODE. Nothing in backend/ may name a phrase, an id, a location or a habit from
+# this registry: adding, removing or swapping a meme is a config edit. The prior check can disqualify a
+# phrase (a phrase a fresh model coins by itself cannot distinguish transmission from rediscovery), and when
+# it does, the replacement must be a one-line change here.
+#
+# Entry schema -- every key, and why it exists:
+#   id               stable slot label used by traces, probes and analysis. It names the 2x2 CELL and the
+#                    origin, not the phrase, so swapping the phrase leaves every trace field valid.
+#   phrase           the coined expression. Appears in exactly one place in the whole run: the habit line
+#                    of the seeded minority (R1). Two tokens, both content words, at least one of them rare
+#                    enough to survive `memory.verbatim` -- see the registry in the study config for the
+#                    measured check.
+#   grounding        grounded | ungrounded -- factor 1. Grounded = a witnessed origin event exists.
+#   breadth          broad | narrow -- factor 2. Broad = the phrase's referent is a class of situations and
+#                    can move; narrow = it names one individual and cannot broaden by construction.
+#   habit            the name-free habit fragment given to the seeded minority, in the shape the profile
+#                    renders ("<First> <habit>; <habit>."). It states the seed's OWN usage; it is never a
+#                    dictionary entry handed to anyone else (R7).
+#   seeds            {k, strategy, agents} -- the committed minority. `agents`, when given, is an explicit
+#                    id list and wins over `strategy`: matching the cohorts on graph position (R6) is not
+#                    something a sampling strategy can guarantee, and an unmatched cohort makes a spread
+#                    difference attributable to the graph instead of to the factors.
+#   incident         the world event the meme is grounded in, or null for an ungrounded meme. `repaired_day`
+#                    is the manipulation: the basis of the grounded memes is removed partway through, and
+#                    the ungrounded memes have no basis to remove, which is what makes them the comparison.
+#   distinctive_words  the words that must never appear in ANY world-emitted text (R2). A compositional
+#                    coinage an agent can assemble from words the world handed it makes transmission
+#                    indistinguishable from independent rediscovery, which is the single easiest way to
+#                    ruin this experiment. Machine-checked; the phrase itself is forbidden by R1 anyway.
+#   probe_gradient   OBSERVER ONLY. Situations at increasing distance from the origin, used to tell dying
+#                    from calcifying from broadening. Must never reach an agent (R7).
+#   foils            OBSERVER ONLY. Situations that share the phrase's surface features and not its
+#                    structure, so "applies to everything" is not scored as broadening.
+memes:
+  enabled: false            # off -> no habit is planted, no incident is staged, nothing is traced (R5)
+  registry: []              # filled by the study config; see configs/homewood100_memes.yaml
 
 # ---------------------------------------------------------------- v3 (docs/ONTOLOGY_V3.md §8.2); all OFF
 workshop:

@@ -48,6 +48,7 @@ from backend.simulation.lexicon import population_lexicon
 from backend.memory.store import MemoryMeta, SimMemoryMeta
 from backend.modules.base import build_modules
 from backend.simulation import latent_events as LE
+from backend.simulation import reference
 from backend.simulation.rngs import seed_rng, world_seed
 from backend.simulation.scheduler import next_entry, plan_day, routine_position
 from backend.simulation.world import (ARENAS, HOMEWOOD_LABELS, MAP_POS, WORLD_GRAPH, Clock,
@@ -104,13 +105,17 @@ def _load_initial_memories(path: str | Path | None) -> dict[str, list[str]]:
     return out
 
 
-def forced_activity(routine: dict, place: dict) -> str:
+def forced_activity(routine: dict, place: dict, cfg: dict | None = None) -> str:
     """Activity of a beat mover (agreement c): the world moves people, it does not narrate them. Keep what
     the agent was going to do there anyway (same building, awake), else a neutral, event-independent
-    'stopping by the <location>'. Never a gloss that tells the agent or onlookers that something happened."""
+    'stopping by the <location>'. Never a gloss that tells the agent or onlookers that something happened.
+
+    An activity is world text that everyone in the room reads, so the place is referred to generically (no
+    `agent=`): "stopping by the dining hall beside the freshman residences" in situated mode, and the same
+    'stopping by the Dining Hall' as before in canonical mode."""
     if routine["location"] == place["location"] and routine["activity"] != "sleeping":
         return routine["activity"]
-    return f"stopping by the {place['location']}"
+    return f"stopping by {reference.phrase(place['location'], cfg=cfg)}"
 
 
 def _manip(mods) -> dict:
@@ -211,6 +216,11 @@ class Simulation:
         from backend.agents.profile import apply_planted
         apply_planted(profiles, cfg)                      # positive-control cell only (controls.planted_phrase)
         self.rng = np.random.default_rng(cfg["seed"])     # legacy; per-purpose streams are used below
+        # Tell the module-level CampusMaze (built at import time by conversation.py) which run's
+        # world.reference_mode the upstream chat prompt should render places in. Before the agents are
+        # built, because Agent.__init__ freezes `daily_plan_req` through the same reference layer.
+        from backend.agents.agent import set_reference_cfg
+        set_reference_cfg(cfg)
         for pid, prof in profiles.items():
             a = Agent(prof, cfg, None, cfg["seed"])
             a.ctx = self.ctx
@@ -250,6 +260,16 @@ class Simulation:
         self.stats = {"conversations": 0, "utterances": 0, "events": 0, "reflections": 0}
         self._job_symptom: dict[str, str | None] = {}     # frame view of co-op jobs (world text only)
         self._job_end_shown: set[str] = set()
+        # MEME COHORT (memes.registry): the grounded arm's origin incidents. Built here, before a single LLM
+        # call, because IncidentWorld refuses to construct on a contaminated registry (R1/R2) and a paid run
+        # must not discover that at tick 40. Off by default, so nothing above changes when `memes` is absent.
+        self.incidents = None
+        if ((cfg.get("memes") or {}).get("enabled")):
+            if mode_name != "latent_events":
+                raise ValueError("memes.enabled requires world.mode: latent_events (the campus world); the "
+                                 "commons world has no routine meals for an incident to recur at")
+            from backend.simulation.incidents import IncidentWorld
+            self.incidents = IncidentWorld(self)
 
     # ------------------------------------------------------------------ utils
     def _parallel(self, jobs: list[tuple[str, callable]]):
@@ -283,12 +303,13 @@ class Simulation:
                                     importance=5, salience=0.3, source_type="seed", observation_id=None,
                                     observation=None, encoding_ops=[], prompt=None, originating_event_ids=[],
                                     speakers=[], utterance_ids=[])
+                imp = int(self.cfg.get("initial_memories_importance") or 5)   # 5 = v2 behaviour
                 for index, text in enumerate(initial.get(a.id, [])):
                     node = a.a_mem.add("thought", t0, a.name, "remembers", "an earlier experience", text,
-                                       {a.name.lower()}, 5, self.embed(text), [])
+                                       {a.name.lower()}, imp, self.embed(text), [])
                     self.meta.set(node.node_id, MemoryMeta(agent_id=a.id, source_type="seed", salience=0.3))
                     self.tracer.log("memory_encoded", agent=a.id, node_id=node.node_id, kind="thought", text=text,
-                                    importance=5, salience=0.3, source_type="seed", observation_id=None,
+                                    importance=imp, salience=0.3, source_type="seed", observation_id=None,
                                     observation=None, encoding_ops=[], prompt=None, originating_event_ids=[],
                                     speakers=[], utterance_ids=[], initial_memory=True, initial_memory_index=index)
         self.tracer.flush()
@@ -393,7 +414,7 @@ class Simulation:
                 self.follow.pop(aid)
             if aid in forced:
                 f = forced[aid]
-                activity = forced_activity({**pos, "activity": activity}, f)
+                activity = forced_activity({**pos, "activity": activity}, f, self.cfg)
                 pos = f
                 forced_by = f["event"]
             a.state.location, a.state.arena, a.state.activity = pos["location"], pos["arena"], activity
@@ -482,8 +503,12 @@ class Simulation:
                         continue
                     if o.state.activity == "sleeping":
                         continue
+                    # What `a` sees someone else doing. The place is referred to generically (no `agent=`):
+                    # this is a percept of another person, so it must not be personalised to the watcher,
+                    # and the activity it may already end in was written generically too.
                     act, loc = o.state.activity, o.state.location
-                    text = f"{o.name} is {act}." if act.endswith(f"the {loc}") else f"{o.name} is {act} at the {loc}."
+                    where = reference.phrase(loc, cfg=self.cfg)
+                    text = f"{o.name} is {act}." if act.endswith(where) else f"{o.name} is {act} at {where}."
                     recent = [n.description for n in a.a_mem.seq_event[:6]]
                     if text in recent:
                         continue
@@ -580,8 +605,11 @@ class Simulation:
                     elif d["action"] == "MOVE":
                         nxt = next_entry(a, k)
                         until = (nxt["k"] - 1 + (tick - k)) if nxt else tick + 4
-                        self.overrides[aid] = {"location": d["target"], "arena": default_arena(d["target"]),
-                                               "activity": f"heading to the {d['target']}", "until": until}
+                        # `location` is the canonical id (the engine's own bookkeeping); the activity is
+                        # world text others read, so it is referred to generically.
+                        self.overrides[aid] = {
+                            "location": d["target"], "arena": default_arena(d["target"]), "until": until,
+                            "activity": f"heading to {reference.phrase(d['target'], cfg=self.cfg)}"}
                         self.tracer.log("replan", agent=aid, reason="reaction", to=d["target"], until=until)
         return talks, remark_obs
 
@@ -881,6 +909,13 @@ class Simulation:
             with open(self.run_dir / "world_script.jsonl", "a") as fh:
                 fh.write(self.coop.script_jsonl())
             self.world_sha = hashlib.sha256((self.run_dir / "world_script.jsonl").read_bytes()).hexdigest()
+        if self.incidents:
+            # The conditions go into the world script like any other pre-generated world state. The encounters
+            # do not: who is in the hall at 12:15 depends on the agents' own days, so they are traced as they
+            # happen (`incident_encounter`) instead of being pre-drawn.
+            with open(self.run_dir / "world_script.jsonl", "a") as fh:
+                fh.write(self.incidents.script_jsonl())
+            self.world_sha = hashlib.sha256((self.run_dir / "world_script.jsonl").read_bytes()).hexdigest()
         self.write_manifest("running")
         self._seed_memories()
         tpd = self.clock.ticks_per_day
@@ -914,6 +949,10 @@ class Simulation:
                 self._release_events(tick)
                 beats = self._beats_now(tick) + (self.coop.world(tick) if self.coop else [])   # 1
                 self._move(tick, beats)
+                if self.incidents:
+                    # 1b, after movement: an incident is a condition, not a scene. Who runs into it is decided
+                    # by who actually turned up, and nobody is moved there (see incidents.IncidentWorld.world).
+                    beats = beats + self.incidents.world(tick)
                 obs = self._perceive(tick, beats)
             if self.coop:
                 obs = self.coop.perception_hook(tick, obs)                          # 3+
@@ -966,6 +1005,8 @@ class Simulation:
         man = _manip(self.ctx.mods)
         if getattr(self, "coop", None):
             man = {**man, "coop": self.coop.manipulation_checks()}
+        if getattr(self, "incidents", None):
+            man = {**man, "memes": self.incidents.manipulation_checks()}
         self.write_manifest(status, {"wall_seconds": round(seconds, 1),
                                          "manipulation": man,
                                          "trace_sha256": trace_digest(self.run_dir)})

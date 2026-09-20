@@ -63,6 +63,7 @@ The API without `?debug=1` applies the registry to every trace record it serves:
 | `viewpoint` | agent | v1 | strips `originating_event_ids` | D42 | The agent's own rendering of what it noticed (participant, near, distracted, far). |
 | `wording` | agent | v2 | public | v2 §2.4; D58 | WORDING: a distinctive phrase stuck verbatim in a memory. |
 | `checkpoint` | controller | v3 | public | v3 §5.1 | A day-end checkpoint was written (`id` is the checkpoint id, e.g. C4). |
+| `mealtalk` | controller | v2 | public | conversation.mealtalk (backend/agents/conversation.py) | A conversation was given the meal-arrangement cue: a reason to refer to where to eat. No place is named and no name is suggested; only the occasion is supplied. |
 | `shared_background` | controller | v3 | public | EXPERIMENT_PIPELINE.md | Shared Markdown supplied in identity prompts; initial material, not agent invention. |
 
 ## World records
@@ -393,6 +394,13 @@ A day-end checkpoint was written (`id` is the checkpoint id, e.g. C4).
 
 - defined in: v3 §5.1 (since v3)
 - required: `files`
+
+### `mealtalk`
+
+A conversation was given the meal-arrangement cue: a reason to refer to where to eat. No place is named and no name is suggested; only the occasion is supplied.
+
+- defined in: conversation.mealtalk (backend/agents/conversation.py) (since v2)
+- required: `conversation_id`, `participants`, `window`
 
 ### `shared_background`
 

@@ -6,6 +6,14 @@ relevant to the expression without updating access times, and asks the agent
 what the expression means. Answers are written only to analysis.json: they
 never enter any agent memory and are never shown to other agents, and the
 simulation that produced the memories has already finished.
+
+SCOPE, so that nobody builds a fourth probe path. This module is the FINAL-MEMORY probe over the mined
+candidate pool: one meaning question and one four-way match, on `agents_final`, at the end of a run. The
+memo is explicit that final-memory probes "give weak evidence about intermediate meanings", so for a
+declared meme cohort use `backend.analysis.battery.graded` instead: it probes checksummed copies of
+several checkpoints, asks a graded applicability question with foils, and is driven by the config registry
+rather than by whatever the miner happened to surface. `battery.runner` remains the v3 workshop battery.
+`graded_probe_ready` says which of the two a given run supports.
 """
 from __future__ import annotations
 
@@ -139,3 +147,27 @@ def probe_candidate(cand: dict, agents: dict, llm, heard: dict, seed: int, famil
         out[aid] = {"meaning": meaning, "heard_before": aid in heard.get("heard", set()),
                     "used": aid in heard.get("used", set()), "match_choice": letter, "match_family": fam}
     return {"agents": out, "options": [{"letter": letters[i], "family": f, "text": t} for i, (f, t) in enumerate(options)]}
+
+
+def graded_probe_ready(run_dir) -> dict:
+    """Whether a run can be probed with the graded meme battery, and what it is missing if not.
+
+    Temporal checkpoints are the part most often absent: without `checkpoints.enabled` a run has only
+    `agents_final`, so the battery can measure where a boundary ENDED but not that it MOVED - and movement
+    is the finding."""
+    from pathlib import Path as _P
+
+    from backend.analysis.battery import registry as REG
+    from backend.analysis.battery.graded import available_checkpoints
+    run_dir = _P(run_dir)
+    specs = REG.load_registry(run_dir, only_enabled=False)
+    cks = sorted(p.name for p in (run_dir / "checkpoints").glob("C*")) if (run_dir / "checkpoints").is_dir() else []
+    missing = []
+    if not specs:
+        missing.append("no memes.registry in the run config")
+    if not cks:
+        missing.append("no checkpoints/: only the final memory state can be probed, so boundary MOVEMENT "
+                       "is unmeasurable (set checkpoints.enabled)")
+    return {"registry": [s.id for s in specs], "registry_errors": REG.validate(specs),
+            "checkpoints_on_disk": cks, "final_available": (run_dir / "agents_final").is_dir(),
+            "probed": available_checkpoints(run_dir), "missing": missing, "ready": not missing}

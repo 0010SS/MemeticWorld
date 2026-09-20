@@ -76,9 +76,15 @@ _WORD = re.compile(r"[a-z][a-z'\-]*")
 
 def vocabulary(rd) -> dict:
     """Population lexicon tokens (manifest `population_lexicon`, else recomputed the way the engine does:
-    population file + generated topology, before planting). Tokens that come only from a planted-phrase
-    habit (controls.planted_phrase) are removed, so the positive control is not discounted as routine
-    vocabulary."""
+    population file + generated topology, before planting). Tokens that come only from an INJECTED habit
+    are removed, so neither the positive control (controls.planted_phrase) nor a study meme
+    (memes.registry) is discounted as routine vocabulary.
+
+    This is the opposite of excluding the study memes: an injected phrase enters the population file's
+    lexicon only because the experimenter put it in a seed's habit line, and a phrase counted as routine
+    vocabulary is bucketed as wording and can never be seen to spread. Words the campus already used
+    before the injection stay in the lexicon (`fresh` is the pre-planting recomputation), so a meme built
+    out of ordinary campus words is not given a free pass either."""
     man = rd.manifest.get("population_lexicon")
     fresh = None
 
@@ -94,8 +100,7 @@ def vocabulary(rd) -> dict:
             source = "population_file"
         except Exception:                 # population file moved: fall back to the manifest's profiles
             vocab, source = _manifest_vocab(rd), "manifest_agents"
-    habit = ((rd.cfg.get("controls") or {}).get("planted_phrase") or {}).get("habit")
-    if habit:
+    for habit in injected_habits(rd):
         quoted = " ".join(re.findall(r"[\"“]([^\"”]+)[\"”]", habit)) or habit
         if fresh is None:
             try:
@@ -104,6 +109,21 @@ def vocabulary(rd) -> dict:
                 fresh = set()
         vocab -= {t for t in _WORD.findall(quoted.lower()) if t not in fresh}
     return {"tokens": vocab, "source": source}
+
+
+def injected_habits(rd) -> list[str]:
+    """The habit lines the experimenter planted, as written in the config: the positive control's, then
+    one per study meme."""
+    out = []
+    habit = ((rd.cfg.get("controls") or {}).get("planted_phrase") or {}).get("habit")
+    if habit:
+        out.append(str(habit))
+    try:
+        from backend.agents.profile import meme_registry
+        out += [m["habit"] for m in meme_registry(rd.cfg)]
+    except (ValueError, ImportError):       # a malformed registry never breaks reading a run
+        pass
+    return out
 
 
 def _manifest_vocab(rd) -> set:

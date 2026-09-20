@@ -4,6 +4,14 @@
 `status` (one chip, first applicable) and `flags` (every applicable chip):
     planted > system_wording > world_wording > emerged > spreading > echo > new
 - planted: matches controls.planted_phrase (the positive control);
+
+An INJECTED STUDY MEME (memes.registry) is not a control and is never treated as one: `planted` stays
+false for it, so its status is the dynamic one (emerged / spreading / echo / new) -- it is the dependent
+variable of the cohort design, and "planted" would hide the very outcome being measured. It carries an
+extra `meme` chip in `flags` (never first, so the seven status chips are unchanged) and counts in
+`tier_counts` like any other expression. It is NOT exempted from the system_wording / world_wording /
+model_register stops: those stops are how R1/R2 contamination shows up. A study meme flagged
+world_wording means the WORLD said its words, which invalidates that meme rather than excusing it.
 - system_wording: a substring / template match of text the SYSTEM gave the agents (wording.Infrastructure:
   relationship lines, routines, seed and ambient memories, memory frames, profile text, lexicon ...);
 - world_wording: event wording (facts, referent names, viewpoint renderings, co-op surfaces);
@@ -32,14 +40,15 @@ from backend.analysis.candidates import tokens
 STATUSES = ("planted", "system_wording", "world_wording", "emerged", "spreading", "echo", "new")
 TIERS = ("candidate", "spreading", "convention")
 NO_REAL_JUDGE = "no real judge has run"
+MEME_FLAG = "meme"
 
 
 def classify_status(em: dict, *, world: bool, planted: bool, system: bool = False,
-                    ordinary: bool = False) -> tuple[str, list[str]]:
+                    ordinary: bool = False, meme: bool = False) -> tuple[str, list[str]]:
     """(status, flags). The dynamic chip: emerged (spread, not world/system wording and not the actor
     model's own register) > spreading (>= 1 carried adopter) > echo (adopters, none carried) > new.
     `ordinary` also adds the "ordinary" chip to `flags` (it is not a status of its own, so the UI's seven
-    status chips are unchanged)."""
+    status chips are unchanged); `meme` adds the study-meme chip the same way."""
     if em.get("spread") and not world and not system and not ordinary:
         dyn = "emerged"
     elif (em.get("n_adopters_carried") or 0) >= 1:
@@ -49,7 +58,8 @@ def classify_status(em: dict, *, world: bool, planted: bool, system: bool = Fals
     else:
         dyn = "new"
     flags = (["planted"] if planted else []) + (["system_wording"] if system else []) + \
-            (["world_wording"] if world else []) + [dyn] + (["ordinary"] if ordinary and not planted else [])
+            (["world_wording"] if world else []) + [dyn] + (["ordinary"] if ordinary and not planted else []) + \
+            ([MEME_FLAG] if meme else [])
     return flags[0], flags
 
 
@@ -140,10 +150,13 @@ def verdict_summary(row: dict | None) -> dict | None:
 
 
 def tier_counts(records: list[dict]) -> dict:
-    """{"candidate", "spreading", "convention"} over records carrying `tier`; the planted control is left out."""
+    """{"candidate", "spreading", "convention"} over records carrying `tier`; the positive CONTROL is left
+    out (it would otherwise count as evidence of the thing it exists to test for). An injected study meme
+    is counted: it is an object of study, not a control. Records that predate the distinction set
+    `control` and `planted` together, so they are unaffected."""
     out = {t: 0 for t in TIERS}
     for r in records:
-        if r.get("control") or r.get("planted"):
+        if r.get("control"):
             continue
         t = r.get("tier")
         if t in out:

@@ -93,8 +93,10 @@ def maybe_remind(agent, obs, new_node, rng=None):
     if not cands:
         return None
     listing = "\n".join(f"{i + 1}. {n.description}" for i, n in enumerate(cands))
+    from backend.simulation import reference
+    where = reference.phrase(agent.state.location, agent=agent, cfg=agent.cfg)   # D75: describe, never name
     prompt = ga.gs.generate_prompt([agent.iss(), agent.name,
-                                    f"{agent.scratch.curr_time.strftime('%A %H:%M')} at the {agent.state.location}",
+                                    f"{agent.scratch.curr_time.strftime('%A %H:%M')} at {where}",
                                     focal, listing, agent.profile.first_name, _how(agent, obs)], PROMPT)
     with llm_purpose("reminding", agent.id):
         raw = agent.ctx.llm.complete(prompt, max_tokens=120, temperature=1.0)

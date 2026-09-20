@@ -66,13 +66,42 @@ class AgentState:
     last_talk: dict = field(default_factory=dict)     # other_id -> datetime
 
 
+_REFERENCE_CFG: dict | None = None
+
+
+def set_reference_cfg(cfg: dict | None) -> None:
+    """Tell the module-level `CampusMaze()` (conversation.py builds one at import time, with no run in
+    scope) which run it is serving, so the upstream chat prompt gets that run's reference mode. The
+    Simulation calls this once at construction; tests may call it with None to reset."""
+    global _REFERENCE_CFG
+    _REFERENCE_CFG = cfg
+
+
 class CampusMaze:
     """Minimal stand-in for the upstream `Maze`: only access_tile() is used by the
-    upstream chat prompt ('<arena> in <sector>'). Our tiles are (location, arena)."""
+    upstream chat prompt ('<arena> in <sector>'). Our tiles are (location, arena).
+
+    That prompt is the biggest single agent-facing use of a place name in the run, so the tile detail it
+    reads is the run's reference rendering: canonical mode returns the keys unchanged, situated mode returns
+    descriptions. `viewer` is the agent the prompt is being built for, when the caller knows it (their home
+    room then reads "your room"); without one the generic description is used, which is always safe.
+    """
+
+    def __init__(self, cfg: dict | None = None, viewer=None):
+        self.cfg = cfg
+        self.viewer = viewer
+
+    def _cfg(self):
+        return self.cfg if self.cfg is not None else _REFERENCE_CFG
 
     def access_tile(self, tile):
+        from backend.simulation import reference
+        from backend.simulation.world import WORLD_NAME
         loc, arena = tile
-        return {"world": "the Homewood campus", "sector": loc, "arena": arena, "game_object": ""}
+        cfg = self._cfg()
+        return {"world": WORLD_NAME, "game_object": "",
+                "sector": reference.place(loc, agent=self.viewer, cfg=cfg),
+                "arena": reference.room(loc, arena, agent=self.viewer, cfg=cfg)}
 
 
 class Agent:
@@ -97,8 +126,8 @@ class Agent:
             sc.learned += "\n\nShared introduction to the world:\n" + background
         sc.currently = ""
         sc.lifestyle = profile.ga_lifestyle()
-        sc.living_area = f"{profile.home['location']}:{profile.home['arena']}"
-        sc.daily_plan_req = profile.ga_daily_plan_req()
+        sc.living_area = f"{profile.home['location']}:{profile.home['arena']}"   # internal id, never a prompt
+        sc.daily_plan_req = profile.ga_daily_plan_req(cfg)
         sc.importance_trigger_max = cfg["reflection"]["importance_threshold"]
         sc.importance_trigger_curr = sc.importance_trigger_max
         sc.importance_ele_n = 0
@@ -124,12 +153,18 @@ class Agent:
         self.scratch.curr_time = t
 
     def sync_scratch(self):
+        """`curr_tile` stays canonical -- it is the internal id, and CampusMaze.access_tile renders it for
+        whatever prompt reads it. `act_description` / `currently` are agent-facing, and the activity they
+        quote was already written in the run's reference mode by the engine and the scheduler."""
         s = self.state
         self.scratch.curr_tile = (s.location, s.arena)
         self.scratch.act_description = s.activity
         self.scratch.currently = s.current_goal or f"{self.profile.first_name} is {s.activity}."
 
     def iss(self) -> str:
+        """GA identity stable set: name, age, traits, `currently`, lifestyle and `daily_plan_req`. Its two
+        place-bearing parts are `currently` (above) and `daily_plan_req` (profile.ga_daily_plan_req, built
+        with this run's cfg in __init__), so the ISS carries no canonical place name in situated mode."""
         return self.scratch.get_str_iss()
 
     @property

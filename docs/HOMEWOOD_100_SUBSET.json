@@ -1,0 +1,157 @@
+{
+  "schema_version": 1,
+  "selection": "deterministic quota-constrained snowball, split repair, tie-maximising swaps",
+  "source_population": "configs/population/homewood500.yaml",
+  "source_memories": "configs/population/homewood500_initial_memories.yaml",
+  "seed": 42,
+  "seed_group": "academic_Philosophy",
+  "seed_groups_tried": 78,
+  "split_repair_swaps": 0,
+  "tie_maximising_swaps": 7,
+  "unconnected_additions": 1,
+  "source_agents": 500,
+  "selected_agents": 100,
+  "naming_split": {
+    "(other)": 80,
+    "Hopkins Cafe": 20
+  },
+  "naming_split_source": {
+    "(other)": 400,
+    "Hopkins Cafe": 100
+  },
+  "categories": {
+    "faculty": 9,
+    "staff": 11,
+    "student": 80
+  },
+  "categories_source_share": {
+    "faculty": 0.088,
+    "staff": 0.112,
+    "student": 0.8
+  },
+  "years": {
+    "faculty": 9,
+    "first-year": 20,
+    "junior": 20,
+    "senior": 20,
+    "sophomore": 20,
+    "staff": 11
+  },
+  "relationships": {
+    "source": 1404,
+    "retained": 214,
+    "retained_fraction": 0.1524,
+    "first_n_prefix_baseline": 60
+  },
+  "mean_degree": {
+    "subset": 4.28,
+    "source": 5.616,
+    "first_n_prefix_baseline": 1.2
+  },
+  "components": {
+    "count": 2,
+    "sizes": [
+      97,
+      3
+    ],
+    "largest": 97
+  },
+  "groups": {
+    "source": 78,
+    "kept": 43,
+    "dropped_below_2_members": 35
+  },
+  "circles": {
+    "source": 0,
+    "kept": 0
+  },
+  "meals": {
+    "lunch_slots": [
+      "11:30",
+      "11:45",
+      "12:00",
+      "12:15",
+      "12:30",
+      "12:45",
+      "13:00"
+    ],
+    "dinner_slots": [
+      "17:30",
+      "17:45",
+      "18:00",
+      "18:15",
+      "18:30"
+    ],
+    "meal_minutes": 30,
+    "counts": {
+      "bridge_agents": 11,
+      "agents_with_lunch": 100,
+      "agents_with_dinner": 100
+    },
+    "by_hall": {
+      "Dining Hall": {
+        "evening": 53,
+        "midday": 64
+      },
+      "Nolans": {
+        "evening": 47,
+        "midday": 36
+      }
+    },
+    "peak_in_room_per_tick": {
+      "Dining Hall": {
+        "midday": 24,
+        "evening": 22
+      },
+      "Nolans": {
+        "midday": 11,
+        "evening": 20
+      }
+    },
+    "split": {
+      "Dining Hall": 53,
+      "Nolans": 47
+    },
+    "crossing_relationships": 99,
+    "crossing_fraction": 0.4626,
+    "by_side": {
+      "Dining Hall": {
+        "agents": 53,
+        "mean_degree": 3.83,
+        "degree_min_median_max": [
+          2,
+          4,
+          7
+        ],
+        "with_a_tie_to_the_other_hall": 52,
+        "internal_component_sizes": [
+          46,
+          2,
+          2,
+          1,
+          1
+        ]
+      },
+      "Nolans": {
+        "agents": 47,
+        "mean_degree": 4.787,
+        "degree_min_median_max": [
+          1,
+          4,
+          10
+        ],
+        "with_a_tie_to_the_other_hall": 41,
+        "internal_component_sizes": [
+          43,
+          3,
+          1
+        ]
+      }
+    }
+  },
+  "limitations": [
+    "Counts describe a synthetic population, not measured campus behaviour.",
+    "Retained ties and components bound who could meet through the designed structure; they do not predict contact, conversation, or naming outcomes.",
+    "A cohort the source never ties outside its own department cannot be connected by any subset."
+  ]
+}

@@ -29,12 +29,17 @@ WORLD_GRAPH = {
     "Auditorium": ["Research Lab", "Engineering Hall", "Shuttle Stop"],       # Shriver Hall
     "Engineering Hall": ["Research Lab", "Auditorium"],                      # Malone Hall, south of Hackerman
     "Science Hall": ["Quad", "Gym", "Dining Hall"],                          # Mudd Hall
-    "Museum": ["Quad", "Library", "Apartments"],                             # Homewood Museum
+    "Museum": ["Quad", "Library", "Apartments", "Nolans"],                   # Homewood Museum
     "Theater": ["Quad", "Library", "Shuttle Stop"],                          # Merrick Barn, behind Brody
-    "Apartments": ["Museum", "Shuttle Stop"],                                # The Charles, on N Charles St
+    "Apartments": ["Museum", "Shuttle Stop", "Nolans"],                      # The Charles, on N Charles St
     "Athletic Center": ["Gym", "Dorm"],                                      # White Athletic Center
     "Admin Building": ["Cafe", "Student Center", "Research Lab"],            # Garland Hall
     "Shuttle Stop": ["Auditorium", "Theater", "Apartments"],                 # N Charles St at the Gatehouse
+    # The second dining hall (D76). It is the UNEXPOSED control venue for a dining-sited incident: people who
+    # eat here have to HEAR about what happened, they cannot see it. Its walking neighbours are the real
+    # east-side ones (Scott-Bates Commons sits beside The Charles, up N Charles St from the Museum), and the
+    # reciprocal edges are appended to the END of those two lists, so no pre-existing shortest path moves.
+    "Nolans": ["Apartments", "Museum"],                                      # Nolan's, Scott-Bates Commons
 }
 
 ARENAS = {
@@ -58,6 +63,7 @@ ARENAS = {
     "Athletic Center": ["Field House", "Track"],
     "Admin Building": ["Front Desk", "Mailroom"],
     "Shuttle Stop": ["Bench"],
+    "Nolans": ["Servery"],      # one room, like the other hall: the two venues differ in where they are, not in kind
 }
 
 # Places anyone on campus knows and may drop by (every profile's known_locations; the default errand places).
@@ -84,6 +90,78 @@ HOMEWOOD_LABELS = {   # the real Homewood buildings each place is drawn as (fron
     "Athletic Center": "White Athletic Center",
     "Admin Building": "Garland Hall",
     "Shuttle Stop": "Gatehouse stop, N Charles St",
+    "Nolans": "Nolan's on 33rd",   # the dining hall in Scott-Bates Commons; the map draws its western wing
+}
+
+# --- situated reference (world.reference_mode: situated) --------------------------------------------------
+# What the world SHOWS an agent standing here, instead of the place's canonical name. A description, never a
+# proper name: no canonical key of WORLD_GRAPH/ARENAS and no HOMEWOOD_LABELS building, so the only names in an
+# agent's head are the ones it was seeded with or heard from someone else (naming is the agents' business).
+# Written from this map's own geography: WORLD_GRAPH adjacency for "beside/across from", MAP_POS for the
+# compass words. Lower case and article-carrying, because they are common nouns, not labels.
+#
+# The one common noun that survives is "dining hall" (see backend/simulation/reference.py): a seed memory about
+# a dining hall has to use the same common noun as the percept, or it never attaches to the referent at all. It
+# is not the canonical label "Dining Hall" and the name analyzer scores it `no_target_alias`. Since D76 there
+# are TWO halls, so the noun alone no longer picks one out: each description names the hall's own side of
+# campus, in the same shape, and it is the speaker -- not the world -- who says which hall is meant.
+PLACE_DESCRIPTIONS = {
+    "Dorm": "the freshman residence halls to the west",
+    "Dining Hall": "the dining hall beside the freshman residences",
+    "Classroom": "the teaching building south of the green",
+    "Library": "the quiet building full of books",
+    "Research Lab": "the research building on the north-east edge",
+    "Gym": "the workout building at the north end",
+    "Cafe": "the small coffee place to the south-east",
+    "Quad": "the open green at the campus centre",
+    "Student Center": "the student hangout building to the south-east",
+    "Auditorium": "the big event hall to the north-east",
+    "Engineering Hall": "the engineering building at the far north-east",
+    "Science Hall": "the science teaching building to the north-west",
+    "Museum": "the old exhibit house to the east",
+    "Theater": "the old playhouse just north-east",
+    "Apartments": "the graduate flats on the far east",
+    "Athletic Center": "the sports complex at the far north",
+    "Admin Building": "the administration offices to the far east",
+    "Shuttle Stop": "the shuttle pickup at the north-east gate",
+    # The control hall. Word for word the same shape as the other hall's description -- "the dining hall" plus
+    # whose side of campus it is on -- so nothing in the world's own wording marks one of them as the main one
+    # or the other one; which hall a story is about has to come from what the speaker says. It locates the
+    # hall by the graduate flats' own DESCRIPTION, never by the canonical key "Apartments", and it carries no
+    # comma, because `reference.options()` joins the MOVE list with ", " and a comma inside one option splits
+    # it into two (tests/test_reference.py checks both).
+    "Nolans": "the dining hall by the graduate flats",
+}
+
+# Rooms, described the same way (keyed by place, because arena names repeat: "Main Floor" is both a serving
+# floor and a gym floor). Every ARENAS entry has one.
+ARENA_DESCRIPTIONS = {
+    "Dorm": {"Room 214": "a single bedroom", "Room 310": "a single bedroom", "Room 118": "a single bedroom",
+             "Room 105": "a single bedroom", "Room 402": "a single bedroom", "Room 216": "a single bedroom",
+             "Room 120": "a single bedroom", "Room 107": "a single bedroom", "Room 312": "a single bedroom",
+             "Room 404": "a single bedroom", "Grad Apartment": "a graduate flat upstairs",
+             "Lounge": "the shared sitting area"},
+    "Dining Hall": {"Main Floor": "the serving floor"},
+    "Classroom": {"Lecture Hall": "the big tiered teaching room", "Seminar Room": "the small seminar space"},
+    "Library": {"Study Tables": "the shared work tables", "Quiet Floor": "the silent upper level"},
+    "Research Lab": {"Dry Lab": "the computer side", "Wet Lab": "the wet-work side",
+                     "Makerspace": "the build space", "Stockroom": "the supply closet"},
+    "Gym": {"Main Floor": "the workout floor"},
+    "Cafe": {"Counter": "the order line"},
+    "Quad": {"Lawn": "the grass"},
+    "Student Center": {"Common Room": "the shared sitting area", "Club Room": "the club meeting space"},
+    "Auditorium": {"Main Hall": "the seating hall", "Lobby": "the entrance area"},
+    "Engineering Hall": {"Computer Lab": "the machine room", "Study Lounge": "the quiet corner"},
+    "Science Hall": {"Teaching Lab": "the student work room", "Lecture Room": "the tiered teaching room"},
+    "Museum": {"Gallery": "the display rooms", "Garden": "the walled grounds"},
+    "Theater": {"Stage": "the performance floor", "Green Room": "the backstage room"},
+    "Apartments": {"Kitchen": "the shared cooking area", "Study Room": "the quiet work room"},
+    "Athletic Center": {"Field House": "the indoor court", "Track": "the running oval"},
+    "Admin Building": {"Front Desk": "the reception window", "Mailroom": "the package room"},
+    "Shuttle Stop": {"Bench": "the waiting spot"},
+    # Word for word what the exposed hall's room is called. The two halls are matched on everything the world
+    # says about them except where they are, so a difference between them is an exposure difference.
+    "Nolans": {"Servery": "the serving floor"},
 }
 
 # Normalised map coordinates for the frontend (0..1): a display-only schematic (the tile map in
@@ -95,7 +173,7 @@ MAP_POS = {
     "Student Center": (0.63, 0.7), "Auditorium": (0.76, 0.12), "Engineering Hall": (0.95, 0.14),
     "Science Hall": (0.3, 0.32), "Museum": (0.76, 0.52), "Theater": (0.6, 0.35),
     "Apartments": (0.88, 0.44), "Athletic Center": (0.32, 0.06), "Admin Building": (0.95, 0.6),
-    "Shuttle Stop": (0.72, 0.26),
+    "Shuttle Stop": (0.72, 0.26), "Nolans": (0.91, 0.52),
 }
 
 

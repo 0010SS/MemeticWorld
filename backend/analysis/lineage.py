@@ -79,3 +79,25 @@ def centroid(cand, embed):
     from backend.analysis.semantics import _mask
     vs = [np.array(embed(_mask(u["context"], cand["variants"]))) for u in cand["usages"]]
     return np.mean(vs, axis=0) if vs else None
+
+
+def formal_variation(usages: list[dict], canonical: str) -> dict:
+    """Formal variation (memo §2.1) for a registry meme: which surface forms were actually said, when each
+    first appeared, and how much of the use the declared form still carries.
+
+    This is the outcome that is easy to mistake for death: a meme whose canonical share falls to zero has
+    not necessarily stopped being used, it may only have stopped being said the way it was seeded.
+    """
+    canon = " ".join(str(canonical).lower().split())
+    first, count = {}, {}
+    for u in sorted(usages, key=lambda u: (u["tick"], u.get("idx", 0))):
+        v = " ".join(str(u.get("variant") or "").lower().split())
+        first.setdefault(v, u["tick"])
+        count[v] = count.get(v, 0) + 1
+    n = sum(count.values())
+    return {"canonical": canon, "n_uses": n, "n_variants": len(count),
+            "variants": [{"form": v, "uses": count[v], "first_tick": first[v],
+                          "is_canonical": v == canon, "similarity_to_canonical": round(lexical_sim(canon, v), 3)}
+                         for v in sorted(count, key=lambda v: (-count[v], first[v]))],
+            "canonical_share": round(count.get(canon, 0) / n, 3) if n else None,
+            "tree": variant_tree({"usages": usages})}

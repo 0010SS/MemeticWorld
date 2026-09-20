@@ -1,0 +1,314 @@
+# MEME COHORT: four injected phrases crossed on GROUNDING x BREADTH, 100 agents, 7 days.
+#
+# WHY A COHORT AND NOT ONE MEME. One injected phrase tells you that it spread or died; it can never tell you
+# why, because there is nothing to contrast it with. Four phrases that differ only along two controlled
+# dimensions turn the result into "which property predicts survival and reinterpretation", which is a
+# comparative finding rather than an anecdote. A null -- no cell differs -- is an honest, publishable outcome.
+#
+#                   |  narrow extension                |  broad extension
+#   ----------------+----------------------------------+----------------------------------
+#   GROUNDED        |  hood_sash    "ochre hood"       |  tray_washer  "teal tray"
+#   (witnessed      |  one fume hood, lab              |  the cold wash, dining
+#    origin event)  |                                  |
+#   ----------------+----------------------------------+----------------------------------
+#   UNGROUNDED      |  tuesday_list "mauve list"       |  running_warm "indigo case"
+#   (seeded only)   |  one standing note, social       |  anything out of hand, coursework
+#
+# THE MANIPULATION is `incident.repaired_day: 4`: on day 4 the thing that was failing is repaired, so the
+# grounded memes lose their basis while the ungrounded ones have no basis to lose. Three outcomes have to be
+# distinguishable for every meme: DIES (stops being used), CALCIFIES (still used, still means only the
+# original thing), BROADENS (starts applying beyond its origin). Days 1-3 establish, day 4 removes, days 4-7
+# are where the three outcomes separate.
+#
+# THIS IS NOT THE NAMING STUDY. configs/homewood100_naming*.yaml stay where they are: they are a documented
+# negative control (a proper noun for a fixed building can only show diffusion and formal variation, two of
+# the memo's eight outcomes) and the situated-reference work was validated against them. Do not delete them.
+extends: configs/baseline.yaml
+run_name: homewood100_memes
+seed: 42
+world_seed: 42
+population: configs/population/homewood100.yaml
+population_size: 100
+initial_memories_file: configs/population/homewood100_meme_memories.yaml
+# Back to the v2 default of 5, down from the naming study's 7. There the seed memory WAS the manipulation and
+# had to be reachable whenever a meal came up; here the manipulation lives in twenty agents' habit lines and
+# the seed memories are only background familiarity -- somewhere for an incident to attach. At 7 a seed comes
+# back whatever the subject is, which stops being a memory and becomes a habit; nothing in this study may be
+# a habit except the twenty seeded ones.
+initial_memories_importance: 5
+simulation_days: 7
+
+# ---------------------------------------------------------------- the day, and the dinner it never had
+# The naming study ran 08:30-17:00, which is 34 ticks, and its own config admits the 17:30-19:00 meal window
+# therefore never fired once. Ending at 19:30 gives 44 ticks, last tick 19:15 (+29.4%), and puts both meal
+# windows, the group dinner window and the DEFAULT 17:00 catch-up inside the day for the first time -- the
+# naming study had to move `catchup.after` to 16:00 to get any evening at all.
+#
+# Measured on this config against the population's own routines, at 17:00 and then at 19:30:
+#   agents with a meal still AHEAD inside 17:30-19:00      0  ->  79 of 100
+#   peak agents seated in a dining hall after 17:00        0  ->  46
+#   venue-ticks with >= 3 agents in 18:00-19:30 (group)    0  ->  6 at the exposed hall, 4 at the control
+# So the evening is not extra idle time: it is the busiest meal-arrangement window in the run, and it is
+# where the second dining hall first has anyone in it. What it costs is in this study's DECISIONS entry.
+day_start: "08:30"
+day_end: "19:30"
+
+llm:
+  backend: claude_cli
+  model: haiku
+  max_workers: 12
+
+world:
+  # R3, shipped as D75. Every agent-facing string is a description, never a canonical key: an experiment
+  # about which words a community settles on cannot have the world handing out its own labels. Checked on
+  # the last 2-day 100-agent run (runs/verify_wording_2day, 31,821 prompts): "Dining Hall" appears in 0 of
+  # them. What was left there came from the SEED FILE -- "AMR III" in 1,690 prompts (5.3%), and 11.9% of
+  # chat prompts -- which is why this study's seed memories describe places the way the world does.
+  reference_mode: situated
+
+routine:
+  jitter_minutes: 0         # a fixed clock, so who is present at an incident is a property of the design
+  deviation_prob: 0         # and not of a draw that differs between conditions
+
+latent_events:
+  # OFF, deliberately, and not just to save calls. (a) Four memes already compete for scarce conversational
+  # airtime and generic E1-E4 mishaps would compete with all four. (b) The event skins are full of colour
+  # words ("red grapes", "pink colony", "green mint leaf", and 20 more): every phrase in this registry is a
+  # rare colour plus a noun, so a world that hands out colour adjectives hands out half of every coinage and
+  # breaks R2. The four incidents in `memes.registry` ARE this study's world events.
+  event_rate: 0
+
+memory:
+  verbatim:
+    # WORDING, and the mechanism this whole study stands on. A coined phrase that does not survive lossy
+    # encoding word for word is never heard again, so it can neither spread nor be reinterpreted. All four
+    # phrases were checked against this exact filter (zipf_max 3.6, lexicon distinctiveness, 2-3 token spans
+    # with content-word edges): each yields exactly one candidate span, the phrase itself. The candidate
+    # phrases in the design brief -- "blue-tray", "hood-three", "running warm", "the Tuesday list" -- yield
+    # ZERO spans each and could never have stuck; that measurement is why the phrases below are different.
+    enabled: true
+priming:
+  enabled: true             # WORDING: a phrase heard lately is in mind when the agent next speaks. Without
+                            # it a phrase reaches memory and never comes back out, and nothing spreads.
+retrieval:
+  # WORDING (D50). The naming study documented that `seed: 0.5` halved the very memory that study was about,
+  # because its seeded name carried source_type `seed`. That asymmetry is gone here: the phrases live in the
+  # seeded minority's PROFILE habits, not in seed memories, so the down-weight now does only what it was
+  # meant to do -- stop static pre-run background from crowding out lived experience.
+  source_weights: {seed: 0.5, ambient: 0.5}
+
+reminding:
+  # LINK. The route by which a phrase BROADENS: a new situation brings the old one to mind, and the words
+  # that came with the old one come with it. Outcome (c) has no mechanism without this.
+  enabled: true
+
+need:
+  # OFF, and this is a design decision rather than an omission. NEED keeps unresolved matters on an agent's
+  # mind and cues conversation about them. The two grounded memes have an unresolved incident behind them;
+  # the two ungrounded memes have nothing to leave unresolved. Switching NEED on would hand extra airtime to
+  # exactly one level of the grounding factor and confound the headline contrast.
+  enabled: false
+
+conversation:
+  invite_prob: 0            # invitations pull agents off their routine, which changes who is present at an
+                            # incident; presence has to be a property of the design, not of an invitation
+  max_utterances: 6         # 3f: 4 -> 6. THIS is the key that governs a meal conversation. `mealtalk` cues
+                            # dyads only (group talk at a table has its own meal line), and a cued dyad takes
+                            # its budget from `conversation.max_utterances`; `catchup_max_utterances` governs
+                            # evening catch-ups and `group.max_utterances` the table, and both are already 6
+                            # and 8. Four utterances is two turns each: enough to settle where to eat and not
+                            # enough for anyone to use a coined phrase, be asked what it means, and answer.
+  max_per_agent_per_day: 8  # 6 -> 8. A per-DAY cap that does not grow with the day silently cancels the
+                            # extra evening: 6/34 ticks = 0.176 conversations per agent-tick, 8/44 = 0.182.
+  catchup:
+    # NEED/recurrence. Close friends who did not meet in the day meet in the evening, which is the only
+    # repeated context in which "what happened lately" comes up again by itself. The default `after: "17:00"`
+    # works for the first time now that the day reaches 19:15; the naming study had to move it to 16:00.
+    enabled: true
+  mealtalk:
+    # A REASON TO REFER, not a name. Two people who still have a meal ahead of them settle where they are
+    # going. With two dining halls in the seed memories this is a real choice rather than a formality.
+    enabled: true
+  group:
+    # Multi-party talk at the tables. The cheapest increase in airtime in the build: one utterance at a table
+    # of five reaches four listeners instead of one, and this is where a phrase meets people who are not the
+    # speaker's friends. Both halls are venues (see configs/default.yaml).
+    enabled: true
+    # The run's fixed meal windows, not the default 12:00-13:30 / 18:00-19:30. The population's own meals
+    # are staggered from 11:30 and from 17:30, so the default windows open after the first sitting has
+    # already formed and miss it. Measured against these routines, per hall per day: 8 eligible group
+    # draws under the defaults, 12 under the meal windows.
+    windows: ["11:30-13:30", "17:30-19:00"]
+  repair:
+    # MEMES. A hearer who does not understand a coined phrase otherwise has exactly one move -- drop it --
+    # and every meme dies for the same uninteresting reason. The memo (§5, GlossoGen; RQ1) treats ordinary
+    # clarification as part of the world and "without explicit agreement" as a separate experiment.
+    enabled: true
+
+# ---------------------------------------------------------------- the registry
+# R1  the world never says any phrase here. Only the habit lines below carry them.
+# R2  `distinctive_words` are the words the world may never emit, so no agent can assemble a coinage out of
+#     vocabulary it was handed and make transmission indistinguishable from rediscovery. Measured: teal,
+#     ochre, indigo and mauve occur 0 times in backend/, configs/ and frontend/ today.
+# R6  the four are matched on everything except grounding and breadth. Same k; habit lines of 19-21 words
+#     and 93-109 characters in one register; the same construction (<rare colour adjective> + <common
+#     noun>, two content tokens, exactly one candidate verbatim span each).
+#     The minorities come from `strategy: spread`, NOT from a hand-picked list, and that was a measured
+#     decision rather than a preference. A hand-picked set matched exactly on degree [3,4,4,5,6] and
+#     constrained to the incident sites scored max |SMD| 0.000 on degree but 0.369 on weighted degree and
+#     1.886 on routine reach -- two of the three covariates outside the 0.25 line, because forcing all five
+#     lab seeds into the wet lab also forces them to be the busiest agents on the map. `spread` scores
+#     0.115 / 0.048 / 0.000 and reports `matched: true`. Exact matching on the covariate you thought of
+#     unbalances the ones you did not.
+#     Residual, to be read as an observed covariate and not a success: `spread` puts 3 of 5 tray_washer
+#     seeds at the exposed hall and 5 of 5 hood_sash seeds in the lab. Check `at_own_site` in the matching
+#     report before committing compute; a grounded meme whose minority never visits its own incident is
+#     grounded for nobody.
+# R7  `probe_gradient` and `foils` are OBSERVER ONLY. Nothing reads them into a prompt: the injector uses
+#     `habit`, `seeds` and `incident` and nothing else, and both keys are absent from every agent-facing
+#     path. They are the observer's instrument for telling a dead phrase from a calcified one from a
+#     broadened one, and an agent that saw them would be told what its own words mean.
+memes:
+  enabled: true
+  registry:
+
+    # ---- GROUNDED x BROAD -------------------------------------------------- dining
+    # The tray washer runs cold for three days. Trays come out looking clean and are still greasy; a few
+    # people get sick. The seeds' word for it is the colour of the trays, which is why the world may never
+    # mention a colour: "teal" is the half of the coinage no agent can supply for itself. Broad because its
+    # referent is a KIND of situation -- something that looks fine and is not -- so it has somewhere to go.
+    - id: tray_washer
+      phrase: "teal tray"
+      grounding: grounded
+      breadth: broad
+      habit: 'has a habit of calling the trays that came out of the cold wash looking clean but greasy a "teal tray".'
+      seeds: {k: 5, strategy: spread}
+      incident:
+        location: "Dining Hall"
+        arena: "Main Floor"
+        days: [1, 2, 3]
+        repaired_day: 4
+        prob_per_meal: 0.6
+        # windows: the default meal windows. salience and max_per_tick: the module defaults, identical to
+        # the lab incident's, so the two grounded cells differ in their site and not in their settings.
+        surfaces:
+          - "{P} lifted a tray off the clean rack and the underside was still slick."
+          - "{P} wiped down a tray straight out of the wash and the cloth came away greasy."
+          - "{P} put a plate back on the stack after finding a film on it the wash had not taken off."
+          - "{P} left half a meal and spent the rest of the day with a bad stomach."
+        # The repair is perceptible and never announced (D39): what a person could see, and nothing about
+        # what it means. No sentence here says anything is fixed.
+        repaired_surfaces:
+          - "{P} lifted a tray off the clean rack and it came away dry under a thumb."
+          - "{P} wiped down a tray straight out of the wash and the cloth stayed clean."
+          - "{P} took a plate off the stack, turned it over, and found nothing on it."
+          - "{P} felt the heat still coming off a rack of trays that had just come through."
+      # R2: only the colour is banned. The world MUST be able to say "tray" or the condition cannot be
+      # described at all, and "tray" alone is not the coinage -- "teal" is the half no agent can supply for
+      # itself, and it occurs 0 times in backend/, configs/ and frontend/. The registry records the
+      # exemption rather than applying it silently.
+      distinctive_words: [teal]
+      probe_gradient:
+        literal: "a rack of trays comes out of the wash looking clean and is still greasy"
+        near: "a coffee urn is wiped down and still tastes of yesterday"
+        mid: "a bench is signed off as clear and still has someone's samples on it"
+        far: "a reading list looks complete and leaves out the one chapter the exam covers"
+      foils:
+        - "a tray that is visibly dirty, which everyone can see for themselves"
+        - "a wash cycle that is cancelled before it starts, so nothing comes out at all"
+
+    # ---- GROUNDED x NARROW -------------------------------------------------- lab
+    # One fume hood reads shut and does not seal. Matched to tray_washer on everything an incident has:
+    # same days, same repaired_day, same prob_per_meal. Narrow BY CONSTRUCTION -- the phrase is the name of
+    # one object, so there is nothing for it to broaden to; if it survives at all it can only calcify. The
+    # decisive probe is `near`: a SECOND hood with the same fault. A phrase that covers it has broadened.
+    - id: hood_sash
+      phrase: "ochre hood"
+      grounding: grounded
+      breadth: narrow
+      habit: 'has a habit of calling the one fume hood that reads shut and does not actually seal the "ochre hood".'
+      seeds: {k: 5, strategy: spread}
+      incident:
+        location: "Research Lab"
+        arena: "Wet Lab"
+        days: [1, 2, 3]
+        repaired_day: 4
+        prob_per_meal: 0.6      # per exposure opportunity at the site; "meal" is the schema's word, not a
+                                # claim that the lab serves lunch
+        # Two windows, like the dining incident, placed on the two blocks the population's own routines put
+        # people at the benches. Measured agent-window opportunities per day: 43 + 44 = 87 here against
+        # 64 + 61 = 125 at the exposed hall, over a pool of 44 wet-lab users against 64 hall users. That
+        # asymmetry is ECOLOGICAL and is left alone: raising this meme's probability to compensate would
+        # hit the same 44 people more often, would not widen the pool, and would put a second uncontrolled
+        # difference between the two grounded cells. Reported as a covariate instead.
+        windows: ["09:00-11:30", "13:30-16:00"]
+        surfaces:
+          - "{P} pulled the front of one fume hood down until it read shut, and felt air moving past the gap."
+          - "{P} held a strip of tissue at the front of one fume hood and watched it hang still while the panel read closed."
+          - "{P} closed one fume hood, and the smell of solvent stayed in the room."
+          - "{P} ran a hand along the front edge of one fume hood and felt a draught coming out."
+        repaired_surfaces:
+          - "{P} pulled the front of that fume hood down and it seated with a soft knock."
+          - "{P} held a strip of tissue at the front of that fume hood and it pulled flat inwards."
+          - "{P} closed that fume hood, and the smell of solvent went with it."
+          - "{P} ran a hand along the front edge of that fume hood and felt nothing coming out."
+      # R2: only the colour is banned. "hood" has to stay sayable or the condition has no description.
+      distinctive_words: [ochre]
+      probe_gradient:
+        literal: "that one fume hood is in use and its front does not seal"
+        near: "a different fume hood on the same bench does not seal either"
+        mid: "a door in the same building reads shut and is not"
+        far: "a submitted form reads complete and is not"
+      foils:
+        - "a fume hood that is out of service with a sign on it, so nobody is misled"
+        - "a fume hood that seals properly and is simply in use by someone else"
+
+    # ---- UNGROUNDED x BROAD ------------------------------------------------- coursework
+    # No incident. The id is the design brief's slot label; the phrase it started from ("running warm") could
+    # never stick verbatim, so the phrase changed and the slot did not. Matched to tray_washer on breadth --
+    # the referent is a class of situations -- and differs only in that nothing in the world corroborates it.
+    # An arbitrary modifier is not a flaw here: an arbitrary label the minority just uses IS the ungrounded
+    # condition.
+    - id: running_warm
+      phrase: "indigo case"
+      grounding: ungrounded
+      breadth: broad
+      habit: 'has a habit of calling any stretch of work that has quietly got out of hand an "indigo case".'
+      seeds: {k: 5, strategy: spread}
+      incident: null
+      distinctive_words: [indigo]
+      probe_gradient:
+        literal: "someone has taken on more this week than they can finish"
+        near: "a group project is two sessions behind its own plan"
+        mid: "one piece of equipment is booked by three people for the same hour"
+        far: "a friendship is running on favours nobody has returned"
+      foils:
+        - "a week that is genuinely busy and is finishing on time"
+        - "a plan that was cancelled outright, so there is nothing left to fall behind on"
+
+    # ---- UNGROUNDED x NARROW ------------------------------------------------ social
+    # No incident, and one referent. The floor of the design: if this one spreads as far as the others, then
+    # neither grounding nor breadth is doing any work and the honest finding is a null.
+    - id: tuesday_list
+      phrase: "mauve list"
+      grounding: ungrounded
+      breadth: narrow
+      habit: 'has a habit of calling the standing note of who is bringing what to the weekly get-together the "mauve list".'
+      seeds: {k: 5, strategy: spread}
+      incident: null
+      distinctive_words: [mauve]
+      probe_gradient:
+        # Deliberately NOT the habit line's own wording. The injector refuses a probe string that is a
+        # substring of the habit, and it is right to: scoring an agent on the exact sentence it was handed
+        # measures recall of a config line, not what the phrase has come to mean.
+        literal: "the sheet people add their name to before the weekly get-together"
+        near: "a second sign-up sheet, for a different thing that happens every week"
+        mid: "any sign-up sheet at all"
+        far: "any running tally of what people owe each other"
+      foils:
+        - "a one-off sign-up for a single trip that will not happen again"
+        - "a printed class roster that nobody adds their own name to"
+
+analysis:
+  llm_classifier: true
+  probes: true              # the observer battery reads probe_gradient and foils; see R7 -- observer only

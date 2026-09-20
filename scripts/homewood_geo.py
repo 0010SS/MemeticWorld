@@ -273,6 +273,10 @@ PLACE_BUILDINGS = {
     "Athletic Center": ["White Athletic Center"],   # shares a wall with O'Connor (the Gym keeps the shared cells)
     "Admin Building": ["Garland Hall"],
     "Shuttle Stop": ["Gatehouse"],                 # anchor only: the stop is the verge between the Gatehouse and N Charles St
+    # The second dining hall (D76): Nolan's is the dining hall inside Scott-Bates Commons (the former Charles
+    # Commons), on N Charles at 33rd, beside The Charles. OSM maps the Commons as two wings; `building_named`
+    # takes the first, the western one, so the place's footprint never overlaps The Charles's box.
+    "Nolans": ["Scott-Bates Commons"],
 }
 PLACE_LABELS = {"Gym": "O'Connor Rec Center", "Dining Hall": "Hopkins Cafe (FFC)", "Dorm": "AMR II",
                 "Classroom": "Gilman Hall", "Library": "MSE Library / Brody", "Cafe": "Levering Cafe",
@@ -280,7 +284,7 @@ PLACE_LABELS = {"Gym": "O'Connor Rec Center", "Dining Hall": "Hopkins Cafe (FFC)
                 "Student Center": "Glass Pavilion", "Auditorium": "Shriver Hall", "Engineering Hall": "Malone Hall",
                 "Science Hall": "Mudd Hall", "Museum": "Homewood Museum", "Theater": "Merrick Barn",
                 "Apartments": "The Charles", "Athletic Center": "White Athletic Center", "Admin Building": "Garland Hall",
-                "Shuttle Stop": "Gatehouse stop, N Charles St"}
+                "Shuttle Stop": "Gatehouse stop, N Charles St", "Nolans": "Nolan's on 33rd"}
 OUTDOOR = {"Quad": "lawn", "Shuttle Stop": "stop"}   # places that are open ground, not a building
 
 

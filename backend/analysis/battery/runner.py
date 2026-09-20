@@ -296,18 +296,23 @@ def build_agents(cfg: dict, manifest: dict, cd: CheckpointData, when: dt.datetim
 # ------------------------------------------------------------------------------------------ responders
 @dataclass
 class Responder:
-    """Who answers: an isolated agent copy (memory), or the persona-free responder (fresh / record-only)."""
+    """Who answers: an isolated agent copy (memory), or the persona-free responder (fresh / record-only).
+
+    `focal_extra` is the second retrieval focal point. It defaults to the v3 workshop's machine so the LB1
+    battery is unchanged; the campus meme battery (graded.py) passes () because there is no single artefact
+    every probe is about, and adding one would bias retrieval toward whatever the world talked about."""
     rid: str
     iss: str
     first: str
     agent: object | None = None
     exclude: frozenset = frozenset()
+    focal_extra: tuple = (MACHINE_FOCAL,)
 
     def memories(self, focal: str, seed, parts: tuple, k: int, raw_meta: dict) -> tuple[str, list[str], bool]:
         if self.agent is None or not self.agent.a_mem.id_to_node:
             return "- (nothing comes to mind)", [], False
         from backend.memory.retrieval import merged_nodes, retrieve
-        res = retrieve(self.agent, [focal, MACHINE_FOCAL], k=k, rng=seed_rng(seed, "probe", *parts), touch=False,
+        res = retrieve(self.agent, [focal, *self.focal_extra], k=k, rng=seed_rng(seed, "probe", *parts), touch=False,
                        exclude_ids=self.exclude)
         nodes = merged_nodes(res, limit=k)
         ids = [n.node_id for n in nodes]

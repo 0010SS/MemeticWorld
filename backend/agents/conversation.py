@@ -8,11 +8,21 @@ relationship, retrieved memories (incl. private reflections) and the
 conversation so far -- never latent labels, analyzer output or other agents'
 memories.
 
+`conversation.mealtalk` (off by default) adds one situational line and one retrieval focal point when two
+people who still have a meal ahead of them meet inside a meal window: a REASON to refer to a place, never
+a name for one. See MEALTALK_LINE below.
+
+`conversation.repair` (off by default) lets the addressee stop the speaker over an expression they have
+never heard ("the what?"). The mechanism lives in backend/agents/repair.py; this module owns only the
+seam -- its turns are appended to this conversation's utterances and transcript, so they reach memory,
+exposure and the observer through the ordinary path rather than a side channel.
+
 Every utterance produces exposure records for the listeners who actually heard it.
 """
 from __future__ import annotations
 
 import math
+import re
 
 from backend.agents import ga_prompts
 from backend.agents.agent import CampusMaze
@@ -69,6 +79,74 @@ def decide_to_talk(agent, target, rng) -> tuple[bool, dict]:
 
 CATCHUP_FOCAL = "what has happened lately that stood out"
 
+# ------------------------------------------------------------------ meal arrangement (conversation.mealtalk)
+# A REASON TO REFER, not a name. Two people who have not eaten yet and meet inside a meal window have to
+# settle where they are going -- the everyday moment at which a place gets referred to at all. The world
+# supplies the occasion; which words the agents reach for (the label they were seeded with, one they heard
+# from someone else, or a description) is entirely theirs. Nothing here names a place, and nothing here
+# asks anyone to invent or adopt a name.
+MEALTALK_LINE = "{a} and {b} have not eaten yet and are working out where to eat."
+# Retrieval focal point: pulls up what the speaker remembers about arranging and having meals. A seeded
+# memory about where the agent eats ("... I eat most days at the dining hall beside the freshman residences
+# ... I go to the dining hall by the graduate flats instead") is one such memory and competes on relevance
+# like any other -- it is not privileged, only reachable. No canonical place name appears in either: the
+# seed files say what the world says (R3/D75), so the memory and the percept name the same referent.
+MEALTALK_FOCAL = "arranging a meal: where to eat, and meals they have had before"
+# Routine wording for a meal, matched against the plan the WORLD drew (never against a place name).
+MEAL_RE = re.compile(r"\b(?:lunch|dinner|breakfast|brunch|supper|meals?|eat|eating|ate|dining)\b", re.I)
+
+
+def _mins(v) -> int:
+    h, m = map(int, str(v).split(":"))
+    return h * 60 + m
+
+
+def meal_window(cfg: dict, now) -> str | None:
+    """The configured `conversation.mealtalk.windows` entry `now` falls in (inclusive), else None."""
+    mins = now.hour * 60 + now.minute
+    for w in ((cfg.get("conversation") or {}).get("mealtalk") or {}).get("windows") or []:
+        lo, hi = (_mins(x) for x in str(w).split("-"))
+        if lo <= mins <= hi:
+            return str(w)
+    return None
+
+
+def next_step_is_meal(agent) -> bool:
+    """True when the agent's NEXT routine step is a meal, i.e. they still have to go and eat.
+
+    Read from the day plan the world drew, so it is a fact about the agent's schedule, not about any
+    place: an agent already at the table has decided, and gets no cue.
+    """
+    clock = getattr(getattr(agent, "ctx", None), "clock", None)
+    plan = getattr(agent, "day_plan", None)
+    if clock is None or not plan:
+        return False
+    from backend.simulation.scheduler import next_entry
+    nxt = next_entry(agent, agent.ctx.tracer.tick % clock.ticks_per_day)
+    return bool(nxt and MEAL_RE.search(nxt["activity"]))
+
+
+def mealtalk(conv_id: str, participants: list) -> dict | None:
+    """Decide ONCE per conversation whether it carries the meal-arrangement cue, and trace the decision.
+
+    Fires when the conversation starts inside a meal window and at least one participant still has a meal
+    ahead of them, with probability `conversation.mealtalk.prob`. The draw comes from its own seeded
+    stream (seed, "mealtalk", tick, participant ids), so switching the cue on never shifts the retrieval,
+    overhearing or talk draws (common random numbers across conditions, ontology v2 §2.1).
+    """
+    first = participants[0]
+    mc = ((first.cfg.get("conversation") or {}).get("mealtalk") or {})
+    if not mc.get("enabled"):
+        return None
+    window = meal_window(first.cfg, first.scratch.curr_time)
+    if window is None or not any(next_step_is_meal(a) for a in participants):
+        return None
+    who = sorted(a.id for a in participants)
+    if seed_rng(first.seed, "mealtalk", first.ctx.tracer.tick, *who).random() >= float(mc.get("prob", 0.6)):
+        return None
+    first.ctx.tracer.log("mealtalk", conversation_id=conv_id, participants=who, window=window)
+    return {"focal": MEALTALK_FOCAL}
+
 
 def _mind(speaker, conv_id: str | None) -> dict:
     """v2 WORDING/NEED hooks (off by default), computed ONCE per speaker per conversation from the speaker's
@@ -103,7 +181,7 @@ def _need_focal(speaker, conv_id: str | None = None) -> list[str]:
 
 
 def _context(speaker, other, started_by_speaker: bool, trigger_text: str | None, topic: str | None = None,
-             conv_id: str | None = None) -> str:
+             conv_id: str | None = None, meal: dict | None = None) -> str:
     s, o = speaker.scratch, other.scratch
     s_act = speaker.state.pre_chat_activity or s.act_description
     o_act = other.state.pre_chat_activity or o.act_description
@@ -121,6 +199,8 @@ def _context(speaker, other, started_by_speaker: bool, trigger_text: str | None,
         tl = coop_talk.speaker_topic_line(topic, speaker, other, started_by_speaker)
         if tl:
             lines.append(tl)
+    if meal:
+        lines.append(MEALTALK_LINE.format(a=s.name, b=o.name))
     lines += _mind_lines(speaker, conv_id)
     if trigger_text:
         lines.append(f"{s.name} just noticed: {trigger_text}")
@@ -151,6 +231,7 @@ def run_conversation(conv_id: str, init, target, bystanders: list, rng, *, openi
     orng = overhear_streams(parts, bystanders)
     k = int(init.cfg["retrieval"]["top_k"])
     topic = (trigger or {}).get("topic")
+    meal = mealtalk(conv_id, parts)
     n_max = int(cc.get("catchup_max_utterances", cc["max_utterances"])) if topic == "catchup" else int(cc["max_utterances"])
     if topic in ("clarify", "handover"):                  # v3 co-op talk budgets (§4.5)
         from backend.agents import coop_talk
@@ -166,12 +247,14 @@ def run_conversation(conv_id: str, init, target, bystanders: list, rng, *, openi
             focal.append(trig)
         if topic == "catchup":
             focal.append(CATCHUP_FOCAL)
+        if meal:
+            focal.append(meal["focal"])
         focal += _need_focal(speaker, conv_id)
         per = max(1, math.ceil(k / len(focal)))
         res = retrieve(speaker, focal, k=per, rng=rng)
         nodes = merged_nodes(res, limit=k + 1)
         retrieved = {"memories": nodes}
-        curr_context = _context(speaker, other, speaker is init, trig, topic, conv_id)
+        curr_context = _context(speaker, other, speaker is init, trig, topic, conv_id, meal)
         if i == 0 and opening:
             text, end = opening, False
             source = "reaction_opening"
@@ -182,10 +265,14 @@ def run_conversation(conv_id: str, init, target, bystanders: list, rng, *, openi
             break
         uid = f"{conv_id}.u{i}"
         listeners = [other.id]
+        # WHERE this line lands in `utterances`, not the loop index: with `conversation.repair` on, a line
+        # can be followed by repair turns, so the two stop agreeing after the first repair and a bystander
+        # would be handed somebody else's words.
+        pos = len(utterances)
         for b in bystanders:
             if orng[b.id].random() < overhear_prob(b, pc):
                 listeners.append(b.id)
-                heard_by[b.id].append(i)
+                heard_by[b.id].append(pos)
         ev_ids = ctx.meta.events_of([n.node_id for n in nodes])
         if (speaker.cfg.get("need") or {}).get("enabled"):
             from backend.memory import need as NEED
@@ -200,6 +287,20 @@ def run_conversation(conv_id: str, init, target, bystanders: list, rng, *, openi
         tracer.log("exposure", utterance_id=uid, speaker_id=speaker.id, listener_ids=listeners, utterance=text,
                    conversation_id=conv_id, location=speaker.state.location, arena=speaker.state.arena)
         chat.append([speaker.name, text])
+        # MEMES: the addressee may stop the speaker over something they just said (backend/agents/repair.py,
+        # `conversation.repair`, off by default). The turns are appended here rather than logged there, so
+        # they go through the ordinary path: they end up in the transcript the next speaker sees, and in the
+        # whole-conversation memory both participants encode below. A repair reaches exactly the ears that
+        # heard the line it is about and takes no overhearing draw of its own, so the bystanders who heard
+        # that line are handed the turns directly instead of being rolled for again.
+        if ((speaker.cfg.get("conversation") or {}).get("repair") or {}).get("enabled"):
+            from backend.agents import repair as REPAIR
+            for r in REPAIR.maybe_repair(conv_id, u, speaker, other, utterances, chat):
+                for b in bystanders:
+                    if b.id in u["listeners"]:
+                        heard_by[b.id].append(len(utterances))
+                utterances.append(r)
+                chat.append([ctx.agents[r["speaker"]].name, r["text"]])
         if end and i >= 1:
             break
     conv = {"id": conv_id, "participants": [init.id, target.id], "utterances": utterances,

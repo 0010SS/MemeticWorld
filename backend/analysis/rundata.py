@@ -60,15 +60,77 @@ def planted_spec(cfg: dict, manifest: dict | None = None, agents: dict | None = 
     if not habit:
         from types import SimpleNamespace
 
-        from backend.agents.profile import apply_planted
+        from backend.agents.profile import apply_control
         name = ((agents or {}).get(aid) or {}).get("name") or str(aid or "").title()
         stub = SimpleNamespace(first_name=name.split()[0] if name.split() else "", habits=[])
-        try:
-            habit = (apply_planted({aid: stub}, cfg) or {}).get("habit") or ""
+        try:                       # the control alone: a stub profile has no ties to plan a cohort over
+            habit = (apply_control({aid: stub}, cfg) or {}).get("habit") or ""
         except ValueError:
             habit = ""
     q = _QUOTED.findall(raw) or _QUOTED.findall(habit)
     return {"agent": aid, "habit": habit, "phrase": (q[0] if q else habit).strip().lower()}
+
+
+def meme_specs(cfg: dict, manifest: dict | None = None, agents: dict | None = None) -> list[dict]:
+    """The STUDY memes (`memes.registry`) as the simulation injected them, in registry order:
+    [{"id", "phrase", "norm" (lower-case phrase), "grounding", "breadth", "habit", "site", "k",
+      "strategy", "seeds" (the committed minority), "seeds_source"}].
+
+    Study memes are the dependent variable of the cohort design, NOT a control to be excluded: the
+    observer has to be able to name each one. The minority is recovered from the manifest's record of
+    the profiles as simulated (an agent is a seed when one of its habits quotes that meme's phrase),
+    which needs neither the population file nor the run's RNG; only when the manifest carries no habits
+    is the deterministic plan recomputed from the config.
+    """
+    from backend.agents.profile import meme_registry
+    try:
+        entries = meme_registry(cfg)
+    except ValueError:                       # a malformed registry never breaks reading a run
+        return []
+    if not entries:
+        return []
+    recorded = (manifest or {}).get("planted")
+    by_id = {m.get("id"): m for m in (recorded or {}).get("memes") or []} if isinstance(recorded, dict) else {}
+    habits = {aid: [str(h) for h in (a.get("habits") or [])] for aid, a in (agents or {}).items()
+              if isinstance(a, dict)}
+    plan = None
+    out = []
+    for e in entries:
+        seeds, source = list((by_id.get(e["id"]) or {}).get("seeds") or []), "manifest_record"
+        if not seeds and habits:
+            low = e["phrase"].lower()
+            seeds = sorted(aid for aid, hs in habits.items()
+                           if any(q.strip().lower() == low for h in hs for q in _QUOTED.findall(h)))
+            source = "manifest_habits"
+        if not seeds:
+            if plan is None:
+                try:
+                    from backend.agents.profile import plan_memes
+                    plan = {m["id"]: m for m in plan_memes(simulated_profiles(cfg, manifest, planted=False), cfg)}
+                except Exception:            # noqa: BLE001 - population file moved: no minority to report
+                    plan = {}
+            seeds, source = list((plan.get(e["id"]) or {}).get("seeds") or []), "recomputed"
+        out.append(dict(e, norm=e["phrase"].lower(), seeds=seeds, seeds_source=source if seeds else "unknown"))
+    return out
+
+
+def injected_specs(cfg: dict, manifest: dict | None = None, agents: dict | None = None) -> list[dict]:
+    """Every expression the experimenter put into an agent's head, both roles, as
+    [{"role": "control"|"study", "id", "phrase", "habit", "seeds", ...}].
+
+    The two roles share this mechanism and must never share an interpretation: a control exists to prove
+    the pipeline can see a convention and is excluded from convention counts; a study meme IS the thing
+    being measured. What they DO share is that neither is routine vocabulary or world wording, so both
+    are kept out of the lexicon and out of `world_text` -- otherwise an injected phrase would be
+    discounted as the campus's own words and could never be seen to spread at all.
+    """
+    out = []
+    pl = planted_spec(cfg, manifest, agents)
+    if pl:
+        out.append({**pl, "role": "control", "id": "control", "norm": (pl.get("phrase") or "").lower(),
+                    "seeds": [pl["agent"]] if pl.get("agent") else []})
+    out += [{**m, "role": "study"} for m in meme_specs(cfg, manifest, agents)]
+    return out
 
 
 def simulated_profiles(cfg: dict, manifest: dict | None = None, planted: bool = True) -> dict:
@@ -220,6 +282,16 @@ class RunData:
         return planted_spec(self.cfg, self.manifest, self.agents)
 
     @cached_property
+    def memes(self) -> list[dict]:
+        """The study memes of the injected cohort (see `meme_specs`); [] when none were declared."""
+        return meme_specs(self.cfg, self.manifest, self.agents)
+
+    @cached_property
+    def injected(self) -> list[dict]:
+        """Control + study memes (see `injected_specs`)."""
+        return injected_specs(self.cfg, self.manifest, self.agents)
+
+    @cached_property
     def lexicon_tokens(self) -> set:
         """Population lexicon tokens (emergence.vocabulary: manifest, else the population file), without
         planted-only tokens."""
@@ -229,9 +301,10 @@ class RunData:
     @cached_property
     def world_text(self) -> str:
         """All surface text the WORLD produced (event facts, referent names, viewpoint renderings,
-        routines, profile text). The planted-phrase habit (positive control) is not world wording: it is
-        left out of the planted agent's habits in the exact form the engine appended it."""
-        pl = self.planted or {}
+        routines, profile text). An INJECTED habit is not world wording -- neither the positive control's
+        nor a study meme's: it is left out of its seed's habits in the exact form the engine appended it.
+        (The world saying a registry phrase would be R1/R2 contamination; it is detected by the phrase
+        turning up in event text, not by counting its own seed habit as world wording.)"""
         parts = []
         for e in self.events.values():
             parts.append(e.get("narrative") or "")
@@ -240,7 +313,7 @@ class RunData:
             parts += [f.get("perceived") or "" for f in r.get("facts", [])]
         for aid, a in self.agents.items():
             parts += [a.get("background", "")] + [r["activity"] for r in a.get("routine", [])]
-            parts += [h for h in a.get("habits", []) if not (aid == pl.get("agent") and _is_planted(h, pl))]
+            parts += [h for h in a.get("habits", []) if not is_injected_habit(h, aid, self.injected)]
         return " ".join(parts).lower()
 
     def conversation_context(self, u: dict, window: int = 1) -> str:
@@ -261,3 +334,19 @@ def _is_planted(habit: str, pl: dict) -> bool:
         return True
     ph = pl.get("phrase")
     return bool(ph) and any(q.strip().lower() == ph for q in _QUOTED.findall(h))
+
+
+def is_injected_habit(habit: str, agent: str, injected: list[dict]) -> bool:
+    """Is this habit entry of this agent one the experimenter planted (control or study meme)? A study
+    meme's line is written once and seeded into k different profiles (with `{name}` filled in), so the
+    test is the quoted phrase, not the whole sentence."""
+    h = " ".join(str(habit).split())
+    for spec in injected or []:
+        if agent not in (spec.get("seeds") or []):
+            continue
+        if spec.get("role") == "control" and _is_planted(h, spec):
+            return True
+        ph = (spec.get("norm") or spec.get("phrase") or "").strip().lower()
+        if ph and any(q.strip().lower() == ph for q in _QUOTED.findall(h)):
+            return True
+    return False

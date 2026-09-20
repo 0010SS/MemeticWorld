@@ -18,8 +18,14 @@ from backend.analysis.rundata import chron_key, precedes
 INDEPENDENT_PRIOR = 0.15
 
 
-def analyze_transmission(cand: dict, rd, retained: dict) -> dict:
-    """retained: (agent, utterance_id) -> memory text containing the utterance (from memory_encoded)."""
+def analyze_transmission(cand: dict, rd, retained: dict, seeds=()) -> dict:
+    """retained: (agent, utterance_id) -> memory text containing the utterance (from memory_encoded).
+
+    `seeds` is the committed minority of an injected meme. A seed was handed the phrase, so listing it as
+    an "inventor" would report the experimenter's own injection as independent invention - the very thing
+    the inventor list exists to distinguish. Seeds stay sources for everyone else; depth is measured from
+    them. Default () leaves discovered candidates analysed exactly as before."""
+    seeds = set(seeds)
     idx = {uid: u.get("idx") for uid, u in (getattr(rd, "utt_by_id", None) or {}).items()}
     usages = sorted((dict(u, idx=idx.get(u["utterance_id"], u.get("idx"))) for u in cand["usages"]), key=chron_key)
     variants = cand["variants"]
@@ -35,6 +41,8 @@ def analyze_transmission(cand: dict, rd, retained: dict) -> dict:
     tpd = rd.manifest["ticks_per_day"]
     tm = rd.manifest["tick_minutes"]
     for spk, first in sorted(by_speaker_first.items(), key=lambda kv: chron_key(kv[1])):
+        if spk in seeds:
+            continue
         prior = [e for e in exposures.get(spk, []) if precedes(e, first)]
         if not prior:
             inventors.append({"agent": spk, "tick": first["tick"], "utterance_id": first["utterance_id"]})
@@ -56,7 +64,7 @@ def analyze_transmission(cand: dict, rd, retained: dict) -> dict:
             edges.append({"meme_id": cand["id"], "source_agent": src, "target_agent": spk,
                           "exposure_timestamp": min(x["tick"] for x in ex), "exposures": ex,
                           "first_reuse_timestamp": first["tick"], "first_reuse_utterance": first["utterance_id"],
-                          "confidence": round(w / z, 3),
+                          "confidence": round(w / z, 3), "from_seed": src in seeds,
                           "cross_group": not (rd.groups_of(src) & rd.groups_of(spk))})
         if INDEPENDENT_PRIOR / z > 0.5:
             inventors.append({"agent": spk, "tick": first["tick"], "utterance_id": first["utterance_id"],
@@ -73,7 +81,7 @@ def analyze_transmission(cand: dict, rd, retained: dict) -> dict:
         if not p or p["source_agent"] in seen:
             return 0
         return 1 + depth(p["source_agent"], seen + (a,))
-    max_depth = max([depth(a) for a in by_speaker_first] or [0])
+    max_depth = max([depth(a) for a in by_speaker_first if a not in seeds] or [0])
     # adoption curve
     curve, users = [], set()
     for u in usages:
@@ -84,6 +92,6 @@ def analyze_transmission(cand: dict, rd, retained: dict) -> dict:
         per_day[u["tick"] // tpd + 1] += 1
     cross = [e for e in edges if e["cross_group"] and e["confidence"] >= 0.3]
     return {"edges": edges, "inventors": inventors, "depth": max_depth, "adoption_curve": curve,
-            "uses_per_day": dict(sorted(per_day.items())),
+            "uses_per_day": dict(sorted(per_day.items())), "seeds": sorted(seeds),
             "first_cross_group": min(cross, key=lambda e: e["first_reuse_timestamp"]) if cross else None,
-            "n_exposed": len({l for u in usages for l in u["listeners"]} | set(by_speaker_first))}
+            "n_exposed": len(({l for u in usages for l in u["listeners"]} | set(by_speaker_first)) - seeds)}

@@ -1,0 +1,33 @@
+repair_explain_v1.txt  (MemeWorld, non-GA: a speaker says what an expression of theirs applies to, from
+their OWN decayed memory of using it; `conversation.repair`, backend/agents/repair.py)
+
+Nothing in this template says what any expression means. The only thing that can answer the question is
+INPUT 6 -- memories retrieved from the answering agent's own memory stream. If retrieval brought back
+little, the answer is correspondingly thin, and that thinness is the mechanism, not a failure.
+
+Variables:
+!<INPUT 0>! -- persona ISS of whoever is answering
+!<INPUT 1>! -- their name
+!<INPUT 2>! -- current time ("Thursday 12:15")
+!<INPUT 3>! -- where they are (a situated description; never a canonical place name)
+!<INPUT 4>! -- the situation line (who asked, or what did not match)
+!<INPUT 5>! -- the conversation so far
+!<INPUT 6>! -- what this persona remembers that bears on it (their own memories, verbatim)
+!<INPUT 7>! -- the expression in question
+
+<commentblockmarker>###</commentblockmarker>
+!<INPUT 0>!
+
+It is !<INPUT 2>! and !<INPUT 1>! is at !<INPUT 3>!.
+
+The conversation so far:
+!<INPUT 5>!
+
+!<INPUT 4>!
+
+This is everything !<INPUT 1>! can bring to mind about it:
+!<INPUT 6>!
+
+Answer out loud, as !<INPUT 1>! would. Say what sort of thing !<INPUT 1>! uses the words "!<INPUT 7>!" for, going only by what is listed above. Do not add cases, causes or details that are not there. If what !<INPUT 1>! can bring to mind is thin, vague or only one occasion, then say something thin, vague or tied to that one occasion -- do not tidy it up into a definition.
+
+One or two sentences. Output only what !<INPUT 1>! says out loud: no speaker prefix, and no quotation marks around the whole line.

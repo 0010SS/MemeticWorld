@@ -3,6 +3,10 @@
 Context embeddings are computed with the expression itself masked out, so the
 coherence score measures what the expression is used *about*, not the fact
 that the same words recur.
+
+`topic_control` exists because the memo is blunt that these measures "can confuse topic change with
+meaning change": it reports the same similarity drop for the whole run's talk, so a drop the run shows
+everywhere is read as topic drift rather than as the meme's meaning moving.
 """
 from __future__ import annotations
 
@@ -66,3 +70,46 @@ def analyze_semantics(cand: dict, rd, embed) -> dict:
             "within_group": {g: round(v, 3) for g, v in within.items() if v is not None},
             "between_group_centroid_sim": round(float(np.mean(between)), 3) if between else None,
             "over_time": over_time}
+
+
+def _split(items, key, cut: int | None):
+    if cut is None:
+        return list(items), []
+    return [x for x in items if key(x) < cut], [x for x in items if key(x) >= cut]
+
+
+def _drift(pre_vecs, post_vecs) -> dict:
+    """Mean pairwise coherence each side of a cut, and the similarity between the two centroids."""
+    out = {"n_pre": len(pre_vecs), "n_post": len(post_vecs),
+           "coherence_pre": _mean_pairwise(pre_vecs), "coherence_post": _mean_pairwise(post_vecs),
+           "centroid_sim": None}
+    if pre_vecs and post_vecs:
+        out["centroid_sim"] = round(cos(np.mean(pre_vecs, axis=0), np.mean(post_vecs, axis=0)), 3)
+    return out
+
+
+def topic_control(usages: list[dict], variants: list[str], rd, embed, cut_tick: int | None,
+                  sample: int = 120) -> dict:
+    """Context drift across a cut, WITH the run-wide topic drift computed the same way beside it.
+
+    NOT EVIDENCE OF MEANING CHANGE ON ITS OWN. A fall in centroid similarity is explained just as well by
+    the community having moved on to other subjects; `excess` (the meme's drop minus the run's drop) is the
+    part a topic change does not already account for, and even that is a competing explanation to rule out
+    next to the probe boundary, never a second measurement of it.
+    """
+    pre, post = _split(usages, lambda u: u["tick"], cut_tick)
+    mv = lambda us: [np.array(embed(_mask(u.get("context") or u.get("text") or "", variants))) for u in us]
+    meme = _drift(mv(pre), mv(post))
+    # the baseline is every utterance of the run, deterministically thinned to `sample` per side so a long
+    # run does not embed tens of thousands of lines for a control
+    allu = sorted(rd.utterances, key=lambda u: (u["tick"], u.get("id") or ""))
+    bpre, bpost = _split(allu, lambda u: u["tick"], cut_tick)
+    thin = lambda us: us[:: max(1, len(us) // sample)][:sample]
+    base = _drift([np.array(embed(u.get("text") or "")) for u in thin(bpre)],
+                  [np.array(embed(u.get("text") or "")) for u in thin(bpost)])
+    excess = None
+    if meme["centroid_sim"] is not None and base["centroid_sim"] is not None:
+        excess = round(base["centroid_sim"] - meme["centroid_sim"], 3)
+    return {"cut_tick": cut_tick, "meme": meme, "run_baseline": base, "excess_drift": excess,
+            "caveat": "context similarity cannot separate topic change from meaning change; read the "
+                      "probe boundary (battery.boundary) for meaning"}

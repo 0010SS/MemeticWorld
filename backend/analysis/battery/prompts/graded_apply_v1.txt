@@ -1,0 +1,22 @@
+graded_apply_v1.txt  (OBSERVER probe, form G: graded applicability + foils; answers never enter agent memory)
+
+Variables:
+!<INPUT 0>! -- persona ISS
+!<INPUT 1>! -- weekday of the checkpoint
+!<INPUT 2>! -- who: e.g. Maya
+!<INPUT 3>! -- retrieved memories, one "- " line each
+!<INPUT 4>! -- the phrase, exactly as the registry declares it
+!<INPUT 5>! -- numbered situations (1..n): gradient levels and foils, shuffled
+
+No definition of the phrase appears anywhere below (R7): the copy answers from its own decayed memory of it.
+
+<commentblockmarker>###</commentblockmarker>
+!<INPUT 0>!
+It is !<INPUT 1>! evening. !<INPUT 2>! is thinking back over the last few weeks on campus.
+What !<INPUT 2>! remembers:
+!<INPUT 3>!
+Someone says "!<INPUT 4>!". For each situation below, would !<INPUT 2>! say "!<INPUT 4>!" fits what happened?
+!<INPUT 5>!
+
+For every number, answer "fits", "doesn't fit" or "not sure". Answer as !<INPUT 2>! would, with JSON only:
+{"1": "fits", "2": "doesn't fit", "3": "not sure", ...}
