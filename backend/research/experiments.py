@@ -34,9 +34,18 @@ def resolve(name, runs_root=None):
 
 
 def configure(design, *, population=None, population_size=None, days=None, background=None,
-              agent_model=None, observer_model=None):
+              agent_model=None, observer_model=None, backend=None):
     """Save a concrete custom design so subprocesses, status and reports use the same inputs."""
-    options = {k: v for k, v in locals().copy().items() if k != "design" and v is not None}
+    if backend == "codex_cli":
+        from backend.llm.codex_cli import DEFAULT_MODEL
+        original = D.expand(design)[0].config()
+        if original['llm']['backend'] != backend:
+            agent_model = agent_model or DEFAULT_MODEL
+        obs = original['analysis'].get('observer') or {}
+        if obs.get('backend') != backend:
+            observer_model = observer_model or DEFAULT_MODEL
+    options = {k: v for k, v in locals().copy().items()
+               if k in ('population', 'population_size', 'days', 'background', 'agent_model', 'observer_model') and v is not None}
     if not options:
         return design
     if population_size is not None and population_size < 1:
@@ -45,6 +54,9 @@ def configure(design, *, population=None, population_size=None, days=None, backg
         raise ValueError("Days must be positive")
     raw = yaml.safe_load(design.path.read_text(encoding="utf-8"))
     common = raw.setdefault("common", {})
+    if backend == "codex_cli":
+        common.setdefault("llm", {})["backend"] = backend
+        raw.setdefault("observer", {})["backend"] = backend
     if population:
         common["population"] = population
         if population_size is None:
@@ -104,7 +116,17 @@ def check(design, backend_override=None, cells=None):
             if backend == 'auto':
                 backend = 'anthropic' if os.environ.get('ANTHROPIC_API_KEY') else 'claude_cli'
             providers.add((label, backend, spec.get('model')))
+    codex_error = None
+    if any(backend == 'codex_cli' for _, backend, _ in providers):
+        from backend.llm.codex_cli import check_login
+        from backend.llm.client import NonRetryableProviderFailure
+        try:
+            check_login()
+        except NonRetryableProviderFailure as exc:
+            codex_error = str(exc)
     for label, backend, model in sorted(providers):
+        if backend == 'codex_cli' and codex_error:
+            errors.append(f'{label}: {codex_error}')
         if backend == 'openai':
             from backend.llm.environment import setting
             if not setting('OPENAI_API_KEY'):
@@ -116,7 +138,7 @@ def check(design, backend_override=None, cells=None):
                 errors.append(f'{label}: ANTHROPIC_API_KEY is not set')
             if model in (None, 'haiku', 'sonnet', 'opus'):
                 errors.append(f'{label}: Anthropic API requires a full model ID; set --agent-model / --observer-model')
-        if backend not in ('mock', 'openai', 'claude_cli', 'anthropic'):
+        if backend not in ('mock', 'openai', 'codex_cli', 'claude_cli', 'anthropic'):
             errors.append(f'{label}: unsupported backend {backend}')
     return {'name': design.name, 'ready': not errors, 'runs': len(cells), 'populations': populations,
             'providers': [{'role': role, 'backend': backend, 'model': model} for role, backend, model in sorted(providers)],

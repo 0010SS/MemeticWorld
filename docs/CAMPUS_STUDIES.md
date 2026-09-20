@@ -1,5 +1,9 @@
 # Current campus studies
 
+To use ChatGPT/Codex allowance or credits instead of API billing, see
+[the Codex CLI launch guide](CODEX_EXPERIMENTS.md). All four studies support `--backend codex_cli`,
+which defaults agents and observation to GPT-5.6 Luna in a separate custom design.
+
 The selected studies use `configs/campus100.yaml`: 100 people from the shuffled Homewood 500
 roster, three days, 11:00–20:00, 15-minute ticks, and GPT-5 nano for agents and observation.
 Population and duration remain configurable. These are the first 100 profiles, not a stratified sample.

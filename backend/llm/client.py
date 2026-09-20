@@ -452,6 +452,9 @@ class LLMClient:
 
 def make_backend(cfg: dict) -> Backend:
     kind = cfg.get("backend", "mock")
+    if kind == "codex_cli":
+        from backend.llm.codex_cli import CodexCLIBackend
+        return CodexCLIBackend(cfg.get("model"), cfg.get("timeout", 180))
     if kind == "openai":
         return OpenAIBackend(cfg.get("model"), cfg.get("timeout", 120))
     if kind == "claude_cli":

@@ -78,6 +78,11 @@ def settings(cfg, backend=None, model=None):
         result["backend"] = backend
     if model:
         result["model"] = model
+    elif backend == "codex_cli":
+        original_backend = (acfg.get("observer") or {}).get("backend") or cfg["llm"]["backend"]
+        if original_backend != backend:
+            from backend.llm.codex_cli import DEFAULT_MODEL
+            result["model"] = DEFAULT_MODEL
     if int(result["window_chars"]) < 2000 or int(result["history_chars"]) < 1000:
         raise ValueError("Observer window/history sizes must be at least 2000/1000 characters")
     result["analysis_version"] = VERSION

@@ -113,7 +113,7 @@ class JobRequest(BaseModel):
     action: Literal["experiment", "observe", "inquire", "continue", "audit", "report", "synthesize"]
     run: str | None = None
     experiment: str | None = None
-    backend: Literal["mock", "openai", "claude_cli", "anthropic"] | None = None
+    backend: Literal["mock", "openai", "codex_cli", "claude_cli", "anthropic"] | None = None
     model: str | None = None
     question: str | None = None
     parallel: int = Field(default=1, ge=1, le=64)
@@ -150,7 +150,7 @@ def configured_experiment(request):
         p.write_text(request.background_markdown, encoding="utf-8")
         background = str(p)
     try:
-        return E.configure(experiment(request.experiment), population=population,
+        return E.configure(experiment(request.experiment), backend=request.backend, population=population,
                            population_size=request.population_size, days=request.days, background=background,
                            agent_model=request.agent_model, observer_model=request.observer_model)
     except (ValueError, OSError) as exc:

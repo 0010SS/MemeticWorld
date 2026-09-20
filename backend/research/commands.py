@@ -19,7 +19,7 @@ def execute(args):
         return
     if action in ("expand", "status", "run", "report", "synthesize", "check"):
         d = E.resolve(args.experiment, args.runs_root)
-        d = E.configure(d, **{key: getattr(args, key, None) for key in
+        d = E.configure(d, backend=args.backend, **{key: getattr(args, key, None) for key in
                             ("population", "population_size", "days", "background", "agent_model", "observer_model")})
         cells = D.select(D.expand(d, args.backend), getattr(args, "only", None), getattr(args, "seed", None))
         if action == "check":
