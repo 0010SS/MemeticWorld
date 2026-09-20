@@ -201,6 +201,21 @@ def data(run_id: str):
     return _load(run_id, _mtime(d))
 
 
+def _display_run_status(directory, manifest):
+    """A killed worker cannot update its manifest; resolve its status for display only."""
+    status = manifest.get("status")
+    if status != "running":
+        return status
+    try:
+        side = json.loads((directory / "design_cell.json").read_text(encoding="utf-8"))
+        if not isinstance(side, dict) or not side.get("pid") or not side.get("host"):
+            return status
+        from backend.experiment.design import _alive
+        return status if _alive(side) else "interrupted"
+    except (OSError, ValueError, TypeError):
+        return status                         # no reliable local worker metadata
+
+
 @app.get("/api/runs")
 def list_runs():
     out = []
@@ -214,7 +229,7 @@ def list_runs():
             continue
         if not isinstance(man["config"].get("llm"), dict) or not isinstance(man.get("world"), dict) or not isinstance(man.get("agents"), dict):
             continue
-        out.append({"run_id": run_id_of(d), "status": man.get("status"), "run_name": man["config"].get("run_name"),
+        out.append({"run_id": run_id_of(d), "status": _display_run_status(d, man), "run_name": man["config"].get("run_name"),
                     "seed": man["config"].get("seed"), "days": man["config"].get("simulation_days"),
                     "modules": man.get("modules"), "stats": man.get("stats"),
                     "llm_backend": man["config"]["llm"].get("backend"),
@@ -225,7 +240,9 @@ def list_runs():
 @app.get("/api/runs/{run_id:path}/manifest")
 def manifest(run_id: str, debug: int = 0):
     from backend.simulation.world import MAP_POS
-    man = json.load(open(_run_dir(run_id) / "manifest.json"))
+    directory = _run_dir(run_id)
+    man = json.loads((directory / "manifest.json").read_text(encoding="utf-8"))
+    man["status"] = _display_run_status(directory, man)
     man["world"]["map_pos"] = MAP_POS  # display-only layout; always use the current one
     return man if debug else _strip_manifest(man)
 

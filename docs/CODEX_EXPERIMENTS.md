@@ -69,10 +69,19 @@ instruction, not a hard output cap, and temperature is not configurable through 
 This means the CLI is not a numerically identical substitute for direct API sampling.
 Account limits, authentication failures, and timeouts stop the run instead of silently changing
 providers or entering the simulator as dialogue. Check the terminal/log before resuming.
+Recoverable CLI error/reconnect notifications do not abort a successful completed turn.
+An explicit failed turn, nonzero exit, missing final answer, or tool/action event still rejects
+the response. HTTP status classification excludes request IDs and model replies.
 CLI process startup and quota limits may make this slower than API execution; no 100-person
 Codex runtime estimate has been measured.
 
-The server and experiment must inherit the same PATH and CODEX_HOME as your logged-in CLI.
-An optional `CODEX_CLI_PATH` in `.env` can point to the actual `codex.exe` when PATH discovery
-fails. Credentials remain managed by Codex; no tokens are copied into the experiment config.
+After updating backend code, start a fresh recording with a new `--runs-root`, such as
+`runs\codex-fixed`. Continuation requires matching source fingerprints; it must not mix
+responses recorded before and after an adapter change. The previous recording is preserved.
+
+The server and experiment must use the same CODEX_HOME as your logged-in CLI.
+On Windows, discovery checks PATH and then the newest matching Codex binary bundled with
+the VS Code / VS Code Insiders OpenAI extension, so ordinary CMD windows do not need the
+extension directory on PATH. An optional `CODEX_CLI_PATH` in `.env` takes precedence.
+Credentials remain managed by Codex; no tokens are copied into the experiment config.
 See [official non-interactive documentation](https://learn.chatgpt.com/docs/non-interactive-mode).

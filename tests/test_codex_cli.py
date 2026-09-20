@@ -7,8 +7,36 @@ import pytest
 from fastapi.testclient import TestClient
 
 from backend.llm import codex_cli as C
-from backend.llm.client import LLMClient, LLMUnavailable, NonRetryableProviderFailure, make_backend
+from backend.llm.client import LLMClient, LLMUnavailable, NonRetryableProviderFailure, ProviderFailure, make_backend
 from backend.research import experiments as E
+
+
+def test_executable_discovery_respects_explicit_path_and_falls_back(monkeypatch):
+    monkeypatch.setattr(C, 'setting', lambda name: None)
+    monkeypatch.setattr(C.shutil, 'which', lambda name: None)
+    monkeypatch.setattr(C, '_bundled_executables', lambda: ['C:/VS Code/codex.exe'])
+    assert C.executable() == 'C:/VS Code/codex.exe'
+    monkeypatch.setattr(C.shutil, 'which', lambda name: 'C:/standalone/codex.exe')
+    assert C.executable() == 'C:/standalone/codex.exe'
+    monkeypatch.setattr(C, 'setting', lambda name: 'C:/explicit/codex.exe')
+    monkeypatch.setattr(C.shutil, 'which', lambda name: name)
+    assert C.executable() == 'C:/explicit/codex.exe'
+    monkeypatch.setattr(C.shutil, 'which', lambda name: None)
+    with pytest.raises(NonRetryableProviderFailure, match='CODEX_CLI_PATH'):
+        C.executable()
+
+
+@pytest.mark.skipif(C.os.name != 'nt', reason='Windows extension layout')
+def test_bundled_discovery_uses_newest_matching_architecture(monkeypatch, tmp_path):
+    monkeypatch.setattr(C.Path, 'home', classmethod(lambda cls: tmp_path))
+    monkeypatch.setattr(C.platform, 'machine', lambda: 'AMD64')
+    paths = []
+    for version, arch in [('26.9.1', 'windows-x86_64'), ('26.10.1', 'windows-x86_64'), ('26.11.1', 'windows-aarch64')]:
+        binary = tmp_path / '.vscode' / 'extensions' / ('openai.chatgpt-' + version) / 'bin' / arch / 'codex.exe'
+        binary.parent.mkdir(parents=True)
+        binary.write_bytes(b'fake test executable')
+        paths.append(binary)
+    assert C._bundled_executables() == [str(paths[1]), str(paths[0])]
 
 
 @pytest.fixture
@@ -89,6 +117,43 @@ def test_timeout_is_actionable_without_long_retry_cycle(monkeypatch, tmp_path):
     monkeypatch.setattr(C.subprocess, 'run', timeout)
     with pytest.raises(NonRetryableProviderFailure, match='timed out'):
         C.CodexCLIBackend().generate('prompt', None, 20, 0)
+
+
+@pytest.mark.parametrize('event_type', ['error', 'item.completed'])
+def test_recovered_errors_accept_only_completed_text_turn(cli, monkeypatch, event_type):
+    original_run = C.subprocess.run
+    def recovered(cmd, **kw):
+        result = original_run(cmd, **kw)
+        if 'exec' in cmd:
+            diagnostic = {'type': 'error', 'message': 'Reconnecting: HTTP 401; request id abc401def'}
+            if event_type == 'item.completed':
+                diagnostic = {'type': event_type, 'item': diagnostic}
+            result.stdout = json.dumps(diagnostic) + '\n' + result.stdout
+        return result
+    monkeypatch.setattr(C.subprocess, 'run', recovered)
+    assert C.CodexCLIBackend().generate('prompt', 'System role', 20, 0) == 'A café reply.'
+
+
+@pytest.mark.parametrize('exit_code,terminal', [(1, 'error'), (0, 'turn.failed')])
+def test_failure_cannot_be_masked_by_final_answer(cli, monkeypatch, exit_code, terminal):
+    original_run = C.subprocess.run
+    def failed(cmd, **kw):
+        result = original_run(cmd, **kw)
+        if 'exec' in cmd:
+            result.returncode = exit_code
+            result.stdout += '\n' + json.dumps({'type': terminal, 'error': {'message': 'HTTP 401 Unauthorized'}})
+        return result
+    monkeypatch.setattr(C.subprocess, 'run', failed)
+    with pytest.raises(NonRetryableProviderFailure, match='authentication'):
+        C.CodexCLIBackend().generate('prompt', 'System role', 20, 0)
+
+
+def test_error_classification_does_not_read_status_from_request_id():
+    failure = C._failure('Stream disconnected, request id: abc401def429ghi, model: gpt-5.6-luna')
+    assert type(failure) is ProviderFailure
+    assert 'authentication' not in str(failure)
+    assert 'HTTP 503' in str(C._failure('unexpected status 503 Service Unavailable'))
+    assert 'usage/rate limit' in str(C._failure('unexpected status 429 Too Many Requests'))
 
 
 def test_final_answer_replays_without_cli(cli, tmp_path, monkeypatch):

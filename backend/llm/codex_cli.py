@@ -9,6 +9,8 @@ from __future__ import annotations
 import json
 import os
 from pathlib import Path
+import platform
+import re
 import shutil
 import subprocess
 import tempfile
@@ -35,14 +37,35 @@ _STARTUP_ADVISORIES = (
 )
 
 
+def _bundled_executables():
+    """VS Code exposes its bundled CLI to extensions, but not ordinary CMD windows."""
+    if os.name != "nt":
+        return []
+    arch = "windows-aarch64" if platform.machine().lower() in ("arm64", "aarch64") else "windows-x86_64"
+    found = []
+    for editor in (".vscode", ".vscode-insiders"):
+        root = Path.home() / editor / "extensions"
+        for package in root.glob("openai.chatgpt-*"):
+            version = re.fullmatch(r"openai\.chatgpt-(\d+)\.(\d+)\.(\d+)(?:-.*)?", package.name)
+            binary = package / "bin" / arch / "codex.exe"
+            if version and binary.is_file():
+                found.append((tuple(map(int, version.groups())), binary))
+    return [str(path) for _, path in sorted(found, key=lambda item: item[0], reverse=True)]
+
+
 def executable():
-    candidate = setting("CODEX_CLI_PATH") or "codex"
-    found = shutil.which(candidate)
-    if not found:
-        raise NonRetryableProviderFailure(
-            "Codex CLI was not found. Install Codex, restart this terminal/server, "
-            "or set CODEX_CLI_PATH to its executable in .env.")
-    return found
+    explicit = setting("CODEX_CLI_PATH")
+    found = shutil.which(explicit or "codex")
+    if found:
+        return found
+    if explicit:
+        raise NonRetryableProviderFailure("CODEX_CLI_PATH does not point to an executable; correct it in .env or remove it for automatic discovery.")
+    bundled = _bundled_executables()
+    if bundled:
+        return bundled[0]
+    raise NonRetryableProviderFailure(
+        "Codex CLI was not found on PATH or in the VS Code extension. "
+        "Install Codex or set CODEX_CLI_PATH to its executable in .env.")
 
 
 def process_options():
@@ -68,15 +91,27 @@ def check_login():
 def _failure(detail):
     # Diagnose internally, but never echo CLI output: it can contain prompts/tokens.
     lower = detail.lower()
-    if any(s in lower for s in ("usage limit", "quota", "insufficient", "credits", "rate limit", "429")):
+    # Require an HTTP-status context: request IDs can contain e.g. "401".
+    status = re.search(r'\b(?:http(?:/\d(?:\.\d)?)?(?:\s+status)?|status(?:\s+code)?|response(?:\s+status)?)\s*[:=]?\s*([45]\d\d)\b', lower)
+    code = status.group(1) if status else None
+    if re.search(r'\b(?:usage limit|quota|insufficient_quota|credits|rate limit|rate_limit_exceeded)\b', lower) or code == '429':
         return NonRetryableProviderFailure(
             "Codex usage/rate limit reached. Check your Codex allowance and reset time before resuming.")
-    if any(s in lower for s in ("auth", "login", "logged in", "401", "403", "token expired")):
+    if re.search(r'\b(?:authentication|unauthorized|unauthenticated|not logged in|token expired|token_expired|refresh_token_reused|invalid_api_key)\b', lower) or code in ('401', '403'):
         return NonRetryableProviderFailure("Codex authentication failed. Run codex login and check your ChatGPT account.")
-    if any(s in lower for s in ("model", "unsupported", "unexpected argument", "invalid value", "config", "feature")):
+    if re.search(r'\b(?:unsupported|unexpected argument|invalid value|unknown model|model not found|model_not_found|invalid configuration)\b', lower):
         return NonRetryableProviderFailure(
             "Codex rejected the model or CLI configuration. Update Codex and select a model available in /model.")
-    return ProviderFailure("Codex CLI request failed; check connectivity and Codex service status.")
+    suffix = f" (HTTP {code})" if code else ""
+    return ProviderFailure(f"Codex CLI request failed{suffix}; check connectivity and Codex service status.")
+
+
+def _error_message(event):
+    """Use error text only; IDs, usage metadata and model replies are not errors."""
+    error = event.get('error')
+    if isinstance(error, dict):
+        return str(error.get('message') or error.get('code') or '')
+    return str(event.get('message') or error or '')
 
 
 class CodexCLIBackend(Backend):
@@ -130,10 +165,10 @@ class CodexCLIBackend(Backend):
                     "Codex request timed out; the CLI process was stopped. Check login, limits, and connectivity before resuming.") from exc
             except OSError as exc:
                 raise NonRetryableProviderFailure("Could not start Codex CLI; check CODEX_CLI_PATH and installation.") from exc
-            if result.returncode:
-                raise _failure(result.stderr + "\n" + result.stdout)
             completed = False
             started = False
+            failures = []
+            diagnostics = []
             for line in result.stdout.splitlines():
                 try:
                     event = json.loads(line)
@@ -141,8 +176,10 @@ class CodexCLIBackend(Backend):
                     continue
                 if not isinstance(event, dict):
                     continue
-                if event.get("type") in ("turn.failed", "error"):
-                    raise _failure(json.dumps(event))
+                if event.get("type") == "turn.failed":
+                    failures.append(_error_message(event))
+                if event.get("type") == "error":
+                    diagnostics.append(_error_message(event))
                 started |= event.get("type") == "turn.started"
                 if event.get("type", "").startswith("item."):
                     item = event.get("item") or {}
@@ -152,12 +189,21 @@ class CodexCLIBackend(Backend):
                         # notices as error items, even on successful text-only turns.
                         if not started and str(item.get("message", "")).startswith(_STARTUP_ADVISORIES):
                             continue
-                        raise _failure(str(item.get("message", "")))
+                        diagnostics.append(_error_message(item))
+                        continue
                     if item_type not in (None, "agent_message", "reasoning"):
                         raise NonRetryableProviderFailure(
                             "Codex emitted a tool/action event; this response was rejected to preserve experiment isolation.")
                 completed |= event.get("type") == "turn.completed"
+            # Codex may emit reconnect/error notifications and subsequently
+            # finish successfully. Only the final outcome decides acceptance.
+            # Explicit failed turns and tool events always reject the response.
+            if failures or result.returncode:
+                detail = '\n'.join(failures or diagnostics) or result.stderr
+                raise _failure(detail)
             if not completed:
+                if diagnostics:
+                    raise _failure('\n'.join(diagnostics))
                 raise ProviderFailure("Codex did not report a completed turn; no response was recorded.")
             answer = output.read_text(encoding="utf-8").strip() if output.exists() else ""
             if not answer:
