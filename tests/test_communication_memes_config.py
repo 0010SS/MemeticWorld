@@ -18,6 +18,8 @@ def test_four_conditions_preserve_injection_settings(tmp_path):
     base = load_config('configs/homewood100_memes.yaml')
     design = E.resolve('communication_communities', tmp_path)
     cells = D.expand(design)
+    assert design.days == 2
+    assert load_config(design.base)['simulation_days'] == 2
     assert len(cells) == 4
     assert {c.seed for c in cells} == {42}
     expected = load_config('configs/homewood100_memes_communication.yaml')['memes']['registry']
@@ -34,8 +36,9 @@ def test_four_conditions_preserve_injection_settings(tmp_path):
         assert all(word not in entry['habit'] for word in ('greasy', 'fume hood', 'standing note'))
     for cell in cells:
         cfg = cell.config()
+        assert cfg['simulation_days'] == 2
         assert cfg['memes']['registry'] == expected
-        for key in ('population', 'population_size', 'initial_memories_file', 'simulation_days',
+        for key in ('population', 'population_size', 'initial_memories_file',
                     'day_start', 'day_end', 'memory', 'priming', 'retrieval', 'routine', 'world'):
             assert cfg[key] == base[key], key
         conversation = deepcopy(cfg['conversation'])

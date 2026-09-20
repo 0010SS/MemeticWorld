@@ -1,7 +1,8 @@
 name: memetics_communication_communities
 description: Existing injected-meme study crossed on communication opportunities and community connectivity
 base: configs/homewood100_memes_communication.yaml
-# One run per condition, matching the existing injection study's seed and horizon.
+# One two-day run per condition, retaining the injection study's seed.
+days: 2
 seeds: [42]
 replicates: 1
 observer: {backend: codex_cli, model: gpt-5.6-luna}

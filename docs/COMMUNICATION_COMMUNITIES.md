@@ -24,7 +24,7 @@ The world vocabulary audit is derived from the replacement words rather than the
 
 ## Conditions
 
-100 agents from Homewood100, seven days, 08:30–19:30, simulation seed 42; four runs total.
+100 agents from Homewood100, two days, 08:30–19:30, simulation seed 42; four runs total.
 Both agents and observer use Codex CLI / GPT-5.6-Luna. The existing 12 model workers are inherited.
 Every condition generates four communities, adds zero strong bridge agents, and enables shared meals.
 
@@ -63,7 +63,7 @@ Run all four sequentially, with the existing analysis and reports:
 
 To run one condition, append `--only` followed by its cell ID from the table. Do not launch overlapping
 selections concurrently. `--no-questions` skips optional question-specific inquiries; it does not disable
-the inherited analysis. The seven-day horizon is retained; this variant has no staged incident/repair manipulation.
+the inherited analysis. Both the base preset and design specify two days; this variant has no staged incident/repair manipulation.
 
 ```cmd
 .venv\Scripts\python.exe -X utf8 -m backend.cli experiment status communication_communities --runs-root runs\injected-communities

@@ -4,10 +4,11 @@
 # Ungrounded means no staged origin incident; broad denotes use across social situations.
 # These are four expressions, not the original grounding-by-breadth experiment.
 # Five carriers per expression receive persistent habits using the existing spread allocation.
-# Word retention, conversation mechanisms, and the seven-day clock are inherited unchanged.
+# Word retention and conversation mechanisms are inherited; this study runs for two days.
 # Frequency is a profile instruction, not a guaranteed utterance quota.
 extends: configs/homewood100_memes.yaml
 run_name: homewood100_memes_communication
+simulation_days: 2
 llm:
   backend: codex_cli
   model: gpt-5.6-luna
