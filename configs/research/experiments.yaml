@@ -1,6 +1,7 @@
 version: 1
 experiments:
 - id: emergence
+  featured: true
   title: Spontaneous emergence and cultural development
   design: configs/designs/memetics/emergence.yaml
   questions:
@@ -21,6 +22,7 @@ experiments:
     concepts?
   environment: campus
 - id: communities
+  featured: true
   title: Social structure and local cultures
   design: configs/designs/memetics/communities.yaml
   questions:
@@ -35,6 +37,7 @@ experiments:
     negotiation and later reuse?
   environment: campus
 - id: influence
+  featured: true
   title: Influence, competition and coexistence
   design: configs/designs/memetics/influence.yaml
   questions:
@@ -42,6 +45,7 @@ experiments:
     of interpretations?
   environment: campus
 - id: social_meaning
+  featured: true
   title: Social and pragmatic meaning
   design: configs/designs/memetics/social_meaning.yaml
   questions:

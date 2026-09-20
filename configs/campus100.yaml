@@ -1,0 +1,18 @@
+# Current study setup: ordinary campus life, with no supplied naming or meme.
+extends: configs/memetics.yaml
+run_name: campus100
+population: configs/population/homewood500.yaml
+population_size: 100
+simulation_days: 3
+day_start: "11:00"
+day_end: "20:00"
+initial_memories_file: null
+shared_background: {file: null, markdown: null, sha256: null}
+controls: {planted_phrase: null}
+priming: {enabled: true, window_hours: 24, max_phrases: 3}
+llm:
+  backend: openai
+  model: gpt-5-nano
+  max_workers: 6
+analysis:
+  observer: {backend: openai, model: gpt-5-nano}

@@ -2,6 +2,7 @@
 // Normal demo mode never requests hidden ground truth; Research Debug Mode adds ?debug=1.
 
 import { renderCultureTrends } from "./culture.js";
+import { mountResearch, refreshResearch, renderMemeticsCulture } from "./research.js";
 import { loadRealMap, drawRealMap, drawRealMapLabels, REALMAP_ATTRIBUTION } from "./realmap.js";
 
 const $ = (s, el = document) => el.querySelector(s);
@@ -55,6 +56,8 @@ function hideTip() { tip.hidden = true; }
 // ------------------------------------------------------------------- boot
 async function boot() {
   mountResearch({run: () => S.runId, replay: (tick) => { showView("campus"); setTick(Math.max(0,tick)); }});
+  const qs = new URLSearchParams(location.search);
+  if (qs.get("view") === "research") showView("research");
   $$(".tab").forEach((b) => b.onclick = () => showView(b.dataset.view));
   $("#debugToggle").onchange = async (e) => { S.debug = e.target.checked; $("#debugBadge").hidden = !S.debug; await loadRun(S.runId, true); };
   $("#runSelect").onchange = (e) => loadRun(e.target.value);
@@ -96,12 +99,11 @@ async function boot() {
   }
   S.runs = await api("/runs");
   const sel = $("#runSelect");
-  sel.innerHTML = S.runs.map((r) => `<option value="${r.run_id}">${esc(r.run_id)} (${r.status}${r.has_analysis ? ", analyzed" : ""})</option>`).join("");
+  sel.innerHTML = '<option value="">Select a recorded society</option>' + S.runs.map((r) => `<option value="${esc(r.run_id)}">${esc(r.run_id)} (${r.status}${r.has_analysis ? ", analyzed" : ""})</option>`).join("");
   const want = new URLSearchParams(location.search).get("run");
-  const first = S.runs.find((r) => r.run_id === want) || S.runs.find((r) => r.status === "finished" && r.has_analysis) || S.runs[0];
+  const first = S.runs.find((r) => r.run_id === want) || (qs.get("view") !== "research" && (S.runs.find((r) => r.status === "finished" && r.has_analysis) || S.runs[0]));
   if (first) { sel.value = first.run_id; await loadRun(first.run_id); }
   await mapReady;
-  const qs = new URLSearchParams(location.search);
   if (qs.get("tick")) setTick(+qs.get("tick"));
   if (qs.get("view") === "fit") zoomFit();
   if (qs.get("view") === "research") showView("research");

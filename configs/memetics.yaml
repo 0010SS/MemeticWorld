@@ -4,6 +4,9 @@ run_name: memetics_campus
 population: configs/population/homewood8.yaml
 population_size: 16
 simulation_days: 30
+initial_memories_file: null
+shared_background: {file: null, markdown: null, sha256: null}
+controls: {planted_phrase: null}
 latent_events:
   event_rate: 0
 conversation:

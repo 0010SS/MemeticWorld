@@ -81,7 +81,11 @@ export async function refreshResearch() {
   try {
     if (!catalog.length) {
       catalog = await api("/experiments");
-      $("#studySelect").innerHTML = catalog.map(e => `<option value="${esc(e.id)}">${esc(e.title)}</option>`).join("");
+      $("#studySelect").innerHTML = [
+        ["Your selected studies", catalog.filter(e => e.featured)],
+        ["Other experiments", catalog.filter(e => !e.featured)]
+      ].filter(([, entries]) => entries.length).map(([label, entries]) =>
+        `<optgroup label="${esc(label)}">${entries.map(e => `<option value="${esc(e.id)}">${esc(e.title)}</option>`).join("")}</optgroup>`).join("");
     }
     currentRun = hooks.run();
     $("#researchRunName").textContent = currentRun || "Select a run in the header.";
@@ -102,7 +106,7 @@ async function refreshStudy() {
   const backend = $("#studyBackend").value;
   $("#studyExecutionNote").textContent = backend === "mock" ? "Mock mode exercises the software only. It cannot provide evidence about memes or meaning change." : `This launches ${entry.runs} simulations plus observer and inquiry calls using the selected live providers.`;
   const result = await api("/experiment-preview", {method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify({action:"experiment", ...studyOptions()})});
-  $("#studyExecutionNote").textContent += ` Population: ${result.population} (${result.population_size ?? "all"} people); horizon: ${result.days.join(" / ")} days. ${entry.environment === "workshop" ? "This study uses the workshop environment and its crew population." : "Campus society."}`;
+  $("#studyExecutionNote").textContent += ` Population: ${result.population} (${result.population_size ?? "all"} people); horizon: ${result.days.join(" / ")} days, ${result.active_hours} each day. Agents: ${result.agent_model}; observer: ${result.observer.model}. Starting material: ${result.initial_memories_file ? "additional seed memories" : "ordinary relationship memories"}${result.shared_background ? " plus shared introduction" : "; no shared introduction"}.`;
   const counts = {};
   result.runs.forEach(r => counts[r.status] = (counts[r.status] || 0) + 1);
   $("#studyStatus").innerHTML = `<p>${Object.entries(counts).map(([s,n]) => `<span class="tag">${n} ${esc(s)}</span>`).join(" ")}</p>` + (result.pipeline ? `<p class="muted">Pipeline: ${esc(result.pipeline.status)} · ${esc(result.pipeline.stage)}</p>` : "") +

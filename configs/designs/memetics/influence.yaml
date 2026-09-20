@@ -1,16 +1,12 @@
 name: memetics_influence
 description: Influence, competition and coexistence
-base: configs/memetics.yaml
+base: configs/campus100.yaml
 seeds:
 - 11
-- 12
-- 13
-- 14
-- 15
 replicates: 1
 observer:
   backend: openai
-  model: $OPENAI_OBSERVER_MODEL
+  model: gpt-5-nano
 questions:
 - How do implemented influence mechanisms affect the circulation and coexistence of
   interpretations?

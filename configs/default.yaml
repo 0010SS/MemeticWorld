@@ -55,7 +55,7 @@ topology:
 memory:
   encoding_noise: 0.3       # 0 = perfect verbatim memory ... 1 = gist only
   decay_rate: 0.1           # per simulated hour, used in recency = exp(-decay_rate * hours)
-  memory_capacity: 300      # max nodes per agent before forgetting the weakest
+  memory_capacity: 80      # max nodes per agent before forgetting the weakest
   merge_threshold: 0.92     # embedding cosine above which a new memory merges into an old one (only if noise > 0)
   entity_generalization: 0.5  # prob. multiplier for replacing unfamiliar names with a role ("a student")
   encoding_variability: 1.0  # sampled memory lens per encoding (D44); 0 = fixed encoding prompt
@@ -110,7 +110,7 @@ perception:
   base_attention: 0.45
   other_arena_factor: 0.35  # attention multiplier for events in the same building but a different room
   busy_factor: 0.6          # attention multiplier while in a conversation
-  familiarity_weight: 0.25  # extra attention for facts involving familiar people
+  familiarity_weight: 0.8  # extra attention for facts involving familiar people
   crowd_factor: 0.92        # attention x this per other agent in the building beyond 2 (D45)
   viewpoints: true          # render each observer's own version of perceived facts (D42)
   overhear_prob: 0.3        # prob. a bystander in the same room hears a given utterance

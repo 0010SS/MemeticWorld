@@ -206,13 +206,18 @@ def list_runs():
     out = []
     for d in sorted(discover_runs(), key=run_id_of, reverse=True):
         try:
-            man = json.load(open(d / "manifest.json"))
+            man = json.loads((d / "manifest.json").read_text(encoding="utf-8"))
         except (OSError, ValueError):
             continue                                   # a run that is just starting to write its manifest
+        # Partial recordings and non-simulation manifests must not break the entire launcher.
+        if not isinstance(man, dict) or not isinstance(man.get("config"), dict):
+            continue
+        if not isinstance(man["config"].get("llm"), dict) or not isinstance(man.get("world"), dict) or not isinstance(man.get("agents"), dict):
+            continue
         out.append({"run_id": run_id_of(d), "status": man.get("status"), "run_name": man["config"].get("run_name"),
                     "seed": man["config"].get("seed"), "days": man["config"].get("simulation_days"),
                     "modules": man.get("modules"), "stats": man.get("stats"),
-                    "llm_backend": man["config"]["llm"]["backend"],
+                    "llm_backend": man["config"]["llm"].get("backend"),
                     "has_analysis": (d / "analysis.json").exists()})
     return out
 
@@ -584,12 +589,19 @@ def llm_calls(run_id: str, agent: str = "", purpose: str = "", start: int = 0, l
 @app.get("/api/compare")
 def compare_runs(debug: int = 0):
     from backend.analysis.compare import compare
-    dirs = [d for d in discover_runs(need="analysis.json")
-            if json.loads((d / "analysis.json").read_text(encoding="utf-8")).get("kind") != "memetics"]
-    rows = compare(dirs, allow_mixed_observers=True)
-    if len(rows) == len(dirs):                  # one row per analysed run: use the full (nested) run id
-        for r, d in zip(rows, dirs):
+    rows = []
+    for d in discover_runs(need="analysis.json"):
+        try:
+            analysis = json.loads((d / "analysis.json").read_text(encoding="utf-8"))
+            if not isinstance(analysis, dict) or analysis.get("kind") == "memetics":
+                continue
+            summarized = compare([d], allow_mixed_observers=True)
+        except (OSError, ValueError, KeyError, TypeError, AttributeError, ZeroDivisionError):
+            # One unfinished/legacy artifact cannot take the entire Runs page down.
+            continue
+        for r in summarized:
             r["run_id"] = run_id_of(d)
+            rows.append(r)
     if not debug:
         rows = [{k: v for k, v in _strip(r).items() if k not in ("cell", "levels")} for r in rows]
     return rows

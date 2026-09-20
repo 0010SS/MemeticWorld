@@ -167,6 +167,9 @@ def preview(request: JobRequest):
             "pipeline": read_json(root / "pipeline.json"), "report": read_json(root / "report.json"),
             "directory": root.relative_to(runs_root()).as_posix(),
             "population": cfg["population"], "population_size": cfg["population_size"],
+            "active_hours": f"{cfg['day_start']}–{cfg['day_end']}",
+            "initial_memories_file": cfg.get("initial_memories_file"),
+            "shared_background": any(bool(c.config().get("shared_background", {}).get("markdown")) for c in cells),
             "days": sorted({c.config()["simulation_days"] for c in cells}),
             "agent_model": cfg["llm"]["model"], "observer": cfg["analysis"]["observer"]}
 

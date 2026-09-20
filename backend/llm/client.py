@@ -162,6 +162,12 @@ class OpenAIBackend(Backend):
         if self.model.startswith(("gpt-5.4", "gpt-5.2", "gpt-5.1")):
             payload["reasoning"] = {"effort": "none"}
             payload["temperature"] = temperature
+        elif self.model in ("gpt-5", "gpt-5-mini", "gpt-5-nano") or self.model.startswith(("gpt-5-20", "gpt-5-mini-", "gpt-5-nano-")):
+            # Original GPT-5 models support minimal, not none, and reject temperature.
+            # Their output limit includes reasoning, so reserve room beyond the GA reply budget.
+            payload["reasoning"] = {"effort": "minimal"}
+            payload["text"] = {"verbosity": "low"}
+            payload["max_output_tokens"] += 2048
         elif self.model.startswith(("gpt-4", "gpt-3.5")):
             payload["temperature"] = temperature
         response = httpx.post("https://api.openai.com/v1/responses", json=payload,
@@ -172,6 +178,8 @@ class OpenAIBackend(Backend):
             raise error(f"OpenAI request failed (HTTP {response.status_code}); check API access and model settings")
         data = response.json()
         if data.get("status") != "completed":
+            if (data.get("incomplete_details") or {}).get("reason") == "max_output_tokens":
+                raise NonRetryableProviderFailure("OpenAI exhausted the output budget; increase the budget or choose a model supporting reasoning=none")
             raise ProviderFailure("OpenAI response did not complete; check output budget and provider status")
         text = "".join(part.get("text", "") for item in data.get("output", []) if item.get("type") == "message"
                        for part in item.get("content", []) if part.get("type") == "output_text")

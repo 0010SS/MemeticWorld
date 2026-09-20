@@ -89,3 +89,30 @@ def test_missing_key_fails_without_a_request(tmp_path, monkeypatch):
     with pytest.raises(LLMUnavailable, match='OPENAI_API_KEY'):
         client.complete('Hello')
     client.close()
+
+
+def test_cheapest_gpt_uses_minimal_reasoning_and_reserves_output_room(monkeypatch):
+    monkeypatch.setenv('OPENAI_API_KEY', 'test-secret')
+    requests = []
+    def post(url, **kwargs):
+        requests.append(kwargs['json'])
+        return httpx.Response(200, json={'status': 'completed', 'output': [
+            {'type': 'message', 'content': [{'type': 'output_text', 'text': '7'}]}]})
+    monkeypatch.setattr(httpx, 'post', post)
+    assert OpenAIBackend('gpt-5-nano').generate('Rate this memory.', None, 8, .7) == '7'
+    assert requests[0]['reasoning'] == {'effort': 'minimal'}
+    assert requests[0]['text'] == {'verbosity': 'low'}
+    assert requests[0]['max_output_tokens'] == 2064
+    assert 'temperature' not in requests[0]
+
+
+def test_exhausted_output_does_not_retry_identical_budget(tmp_path, monkeypatch):
+    monkeypatch.setenv('OPENAI_API_KEY', 'test-secret')
+    monkeypatch.setattr(httpx, 'post', lambda *a, **kw: httpx.Response(200, json={
+        'status': 'incomplete', 'incomplete_details': {'reason': 'max_output_tokens'}, 'output': []}))
+    sleeps = []
+    client = LLMClient(OpenAIBackend('gpt-5-nano'), tmp_path / 'calls.jsonl', fail_fast={}, sleep=sleeps.append)
+    with pytest.raises(LLMUnavailable, match='exhausted the output budget'):
+        client.complete('Hello')
+    client.close()
+    assert not sleeps
