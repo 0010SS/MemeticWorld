@@ -29,6 +29,13 @@ experiments:
   - How do social ties relate to shared and diverging interpretations, including transformations
     across groups?
   environment: campus
+- id: communication_communities
+  featured: true
+  title: Injected memes across communication and community conditions
+  design: configs/designs/memetics/communication_communities.yaml
+  questions:
+  - How do communication opportunities and cross-community relationships affect the spread of supplied memes?
+  environment: campus
 - id: communication
   title: Communication and negotiation
   design: configs/designs/memetics/communication.yaml

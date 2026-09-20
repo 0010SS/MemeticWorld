@@ -1,0 +1,41 @@
+name: memetics_communication_communities
+description: Existing injected-meme study crossed on communication opportunities and community connectivity
+base: configs/homewood100_memes_communication.yaml
+# One two-day run per condition, retaining the injection study's seed.
+days: 2
+seeds: [42]
+replicates: 1
+observer: {backend: codex_cli, model: gpt-5.6-luna}
+questions:
+- How do communication opportunities and cross-community relationships affect the spread and reuse of the four supplied expressions?
+common:
+  topology:
+    mode: generated
+    generated:
+      n_circles: 4
+      n_bridges: 0
+      shared_meals: true
+factors:
+  ties:
+    separated:
+      topology:
+        generated: {p_between: 0.0}
+    connected:
+      topology:
+        generated: {p_between: 0.4}
+  talk:
+    low:
+      conversation:
+        base_talk_prob: 0.1
+        # Existing ordinary-initiation threshold; other conversation routes are unchanged.
+        max_per_agent_per_day: 2
+    high:
+      conversation:
+        base_talk_prob: 0.7
+        max_per_agent_per_day: 8
+outcomes:
+- n_candidates
+- n_emerged
+- max_emerged_adoption
+- n_grounded
+- n_conventions

@@ -1,0 +1,103 @@
+# Frequent carrier habits for the four supplied expressions.
+# "seven six" is an intentional variant; never normalize it to the reversed order.
+# Legacy registry IDs remain stable; the old object meanings and incidents are removed.
+# Ungrounded means no staged origin incident; broad denotes use across social situations.
+# These are four expressions, not the original grounding-by-breadth experiment.
+# Five carriers per expression receive persistent habits using the existing spread allocation.
+# Word retention and conversation mechanisms are inherited; this study runs for two days.
+# Frequency is a profile instruction, not a guaranteed utterance quota.
+extends: configs/homewood100_memes.yaml
+run_name: homewood100_memes_communication
+simulation_days: 2
+llm:
+  backend: codex_cli
+  model: gpt-5.6-luna
+memes:
+  enabled: true
+  registry:
+  - id: tray_washer
+    phrase: seven six
+    grounding: ungrounded
+    breadth: broad
+    habit: frequently says "seven six" as a playful, deliberately nonsensical catchphrase
+      in casual banter. Uses those words in that exact order as a recurring joke and
+      a way to join in with friends, including as an absurd answer to an everyday
+      question. Reuses it across casual conversations.
+    seeds:
+      k: 5
+      strategy: spread
+    incident: null
+    probe_gradient:
+      literal: friends exchange a deliberately absurd reply as a shared joke at lunch
+      near: roommates repeat a nonsense response while joking about their day
+      mid: a study group uses a meaningless catchphrase to lighten the mood
+      far: strangers recognize one another through a playful verbal ritual
+    foils:
+    - a cashier reads an exact numeric total with no joking intended
+    - a student gives a precise factual answer during an oral examination
+  - id: hood_sash
+    phrase: rizz
+    grounding: ungrounded
+    breadth: broad
+    habit: frequently uses "rizz" to describe charm and skill at flirting or making
+      a romantic impression. Uses it as a recurring part of conversations about social
+      encounters, praising a smooth introduction or teasing an awkward attempt. For
+      example, says "That took rizz" after someone charms a person they like.
+    seeds:
+      k: 5
+      strategy: spread
+    incident: null
+    probe_gradient:
+      literal: a student charms someone they are attracted to with an easy introduction
+      near: a friend starts a flirtatious conversation that makes the other person
+        smile
+      mid: a club recruiter wins someone over through personal charm
+      far: a speaker makes an unfamiliar crowd feel personally welcomed
+    foils:
+    - a student solves a difficult equation alone without interacting with anyone
+    - a supervisor gets agreement through a threat rather than personal charm
+  - id: running_warm
+    phrase: lock in
+    grounding: ungrounded
+    breadth: broad
+    habit: frequently says "lock in" when committing to focused effort or urging friends
+      to stop getting distracted. Uses it as a recurring rallying phrase for studying,
+      practice, and approaching deadlines. For example, says "We need to lock in"
+      when a group has work to finish. Reuses it across relevant conversations.
+    seeds:
+      k: 5
+      strategy: spread
+    incident: null
+    probe_gradient:
+      literal: a student puts distractions aside to concentrate fully before a deadline
+      near: teammates decide to give their full attention to an upcoming match
+      mid: musicians stop chatting and concentrate on a demanding rehearsal
+      far: friends commit their full effort to organizing a difficult shared task
+    foils:
+    - someone turns a key to secure a door before leaving
+    - a distracted student keeps scrolling instead of beginning the assignment
+  - id: tuesday_list
+    phrase: aura farming
+    grounding: ungrounded
+    breadth: broad
+    habit: frequently calls deliberately looking cool, confident, or impressive "aura
+      farming". Uses it as a recurring way to praise or tease people who make a pose,
+      entrance, or ordinary action look effortlessly cinematic. For example, says
+      "You are aura farming" when a friend conspicuously poses for an admiring audience.
+    seeds:
+      k: 5
+      strategy: spread
+    incident: null
+    probe_gradient:
+      literal: a student deliberately poses to look effortlessly impressive in front
+        of friends
+      near: a teammate makes a stylish entrance to attract admiring attention
+      mid: someone turns an ordinary coffee break into a carefully staged cool photograph
+      far: a performer cultivates a mysterious public image through understated gestures
+    foils:
+    - someone works soil and plants vegetables on a plot of land
+    - a person quietly helps a stranger without trying to impress an audience
+analysis:
+  observer:
+    backend: codex_cli
+    model: gpt-5.6-luna
