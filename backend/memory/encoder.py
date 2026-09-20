@@ -472,13 +472,33 @@ def add_simple_event(agent, text: str, importance: int, involves: list[str], sou
 
 
 def forget(agent):
+    """Drop the weakest memories while the stream is over `memory.memory_capacity`, ranked by
+    importance x recency (D17). This is the transmission bottleneck: with the v2 capacity of 300 it
+    never fired, so nothing was lost after encoding (D74).
+
+    `memory.protect_sources` (default [seed]) names source types the cliff reaches LAST: what the agent
+    was handed before the run about who the people around it are, rather than anything it experienced
+    during it. Protected memories still count against capacity -- a longer `initial_memories_file` buys
+    a smaller episodic budget -- and a store made of nothing else still loses its weakest, so the cap
+    always binds. Without that floor they go first: they are old, low-importance and never re-accessed,
+    so importance x recency ranks them below this morning's ambient sightings, and a 3-day mock run at
+    capacity 80 ends with 26% of the relationship seeds left -- agents stop knowing who their roommate
+    is, which is not the kind of loss the bottleneck argument is about."""
     cap = int(agent.cfg["memory"]["memory_capacity"])
     nodes = agent.a_mem.all_nodes()
     if len(nodes) <= cap:
         return
     now = agent.scratch.curr_time
-    dr = float(agent.cfg["memory"]["decay_rate"])
-    ranked = sorted(nodes, key=lambda n: ((n.poignancy / 10.0) * recency_score(n, now, dr), n.node_id))
-    for n in ranked[: len(nodes) - cap]:
+    mc = agent.cfg["memory"]
+    dr = float(mc["decay_rate"])
+    floor = frozenset(mc.get("protect_sources") or ())
+    meta = agent.ctx.meta
+
+    def weakness(n):
+        m = meta.get(n.node_id)
+        protected = m is not None and m.source_type in floor
+        return (protected, (n.poignancy / 10.0) * recency_score(n, now, dr), n.node_id)
+
+    for n in sorted(nodes, key=weakness)[: len(nodes) - cap]:
         agent.a_mem.remove(n.node_id)
         agent.ctx.tracer.log("memory_forgotten", agent=agent.id, node_id=n.node_id, text=n.description)

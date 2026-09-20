@@ -1,0 +1,19 @@
+# Cell 2 of 2: the same people, schedules, seeds and model, with the WORDING channel switched on
+# (docs/ONTOLOGY_V2.md; the same block as the `wording: on` level of configs/designs/bottleneck_factorial.yaml)
+# plus the catch-up recurrence, so a heard name has a route into memory and back out into speech.
+# Everything else is inherited from configs/homewood100_naming.yaml, so the two cells differ in exactly
+# these keys.
+extends: configs/homewood100_naming.yaml
+run_name: homewood100_naming_wording
+memory:
+  verbatim: {enabled: true}   # distinctive heard wording survives lossy encoding word for word
+priming:
+  enabled: true               # recently heard wordings are in mind when speaking
+retrieval:
+  source_weights: {seed: 0.5, ambient: 0.5}
+conversation:
+  catchup:
+    enabled: true
+    # The day ends at 17:00 and the last tick is 16:45, so the default `after: "17:00"` would never
+    # fire inside this scenario's window. 16:00 gives four late-afternoon ticks for close friends.
+    after: "16:00"

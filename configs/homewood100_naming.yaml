@@ -1,0 +1,30 @@
+# Connected 100-person cut of the seeded naming experiment; see docs/HOMEWOOD_100_SUBSET.md.
+# Same design as configs/homewood500_naming.yaml on a subset chosen for an exact 20/80 split and a
+# surviving social network (214 of 1,404 edges, mean degree 4.28, largest component 97).
+# Cell 1 of 2: plain cognition, every meme-formation mechanism off (the baseline).
+extends: configs/baseline.yaml
+run_name: homewood100_naming
+seed: 42
+world_seed: 42
+population: configs/population/homewood100.yaml
+population_size: 100
+initial_memories_file: configs/population/homewood100_initial_memories.yaml
+simulation_days: 3
+day_start: "08:30"
+day_end: "17:00"
+llm:
+  backend: claude_cli
+  model: haiku
+  max_workers: 12
+routine:
+  jitter_minutes: 0
+  deviation_prob: 0
+conversation:
+  invite_prob: 0
+topology:
+  mode: file
+latent_events:
+  event_rate: 0
+analysis:
+  llm_classifier: true
+  probes: false

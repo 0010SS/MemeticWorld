@@ -55,7 +55,12 @@ topology:
 memory:
   encoding_noise: 0.3       # 0 = perfect verbatim memory ... 1 = gist only
   decay_rate: 0.1           # per simulated hour, used in recency = exp(-decay_rate * hours)
-  memory_capacity: 80      # max nodes per agent before forgetting the weakest
+  memory_capacity: 80       # max nodes per agent before forgetting the weakest. 300 never bound (peak
+                            # store ~100-150), so nothing was lost after encoding and the transmission
+                            # bottleneck the iterated-learning argument rests on had no mechanism (D74).
+  protect_sources: [seed]   # source types the capacity cliff reaches last: what the agent was handed
+                            # before the run (who the people around it are), not what it experienced in
+                            # it. [] = v2 behaviour, every memory competes on importance x recency.
   merge_threshold: 0.92     # embedding cosine above which a new memory merges into an old one (only if noise > 0)
   entity_generalization: 0.5  # prob. multiplier for replacing unfamiliar names with a role ("a student")
   encoding_variability: 1.0  # sampled memory lens per encoding (D44); 0 = fixed encoding prompt
@@ -110,9 +115,15 @@ perception:
   base_attention: 0.45
   other_arena_factor: 0.35  # attention multiplier for events in the same building but a different room
   busy_factor: 0.6          # attention multiplier while in a conversation
-  familiarity_weight: 0.8  # extra attention for facts involving familiar people
-  crowd_factor: 0.92        # attention x this per other agent in the building beyond 2 (D45)
+  familiarity_weight: 0.8   # attention x (1 + this x familiarity) for facts involving familiar people.
+                            # MULTIPLICATIVE since D74: the social term is now under load like everything
+                            # else. 0.8 holds the median p_attend of familiar observers where +0.25 put it.
+  crowd_factor: 0.92        # attention x this per other agent in the same ROOM beyond 2 (D45, rescoped D74)
+  building_crowd_factor: null  # optional second-order load: x this per other agent elsewhere in the
+                            # building beyond 2. null/0 = off (the building is not the observer's field)
   viewpoints: true          # render each observer's own version of perceived facts (D42)
+  ambient_max_per_tick: 2   # notice at most N co-present people per tick (crowds flooded memory: a 100-agent
+                            #   mock day encoded 27.5k ambient memories and forgot 27.5k of them); -1 = no cap
   overhear_prob: 0.3        # prob. a bystander in the same room hears a given utterance
 
 conversation:

@@ -48,13 +48,40 @@ def vantage(agent, fact: dict, beat: dict) -> str:
     return "near"
 
 
-def crowd_size(agent) -> int:
-    """Other agents in the same building (events are visible building-wide)."""
+def crowd_size(agent, scope: str = "arena") -> int:
+    """Other agents competing for this observer's attention. `scope` "arena": people in the observer's own
+    room, which is what perceptual load is about; "location": everyone in the building (the v2 scope, kept
+    for the optional building term)."""
+    here = agent.state.location
     return sum(1 for o in agent.ctx.agents.values()
-               if o.id != agent.id and o.state.location == agent.state.location)
+               if o.id != agent.id and o.state.location == here
+               and (scope == "location" or o.state.arena == agent.state.arena))
 
 
 def attention_prob(agent, fact: dict, beat: dict, cfg: dict) -> float:
+    """p(this observer notices this fact): ONE priority, every term multiplying the same quantity.
+
+        p = base_attention * (0.5 + 0.5 * salience)             stimulus strength
+            * other_arena_factor          if the beat is in another room of this building
+            * busy_factor                 if the observer is still in a conversation
+            * crowd_factor ** (others in the ROOM - 2)                 perceptual load
+            * building_crowd_factor ** (others elsewhere in the building - 2)   optional, off by default
+            * (1 + familiarity_weight * familiarity)            social gain on the priority
+        clamped to [0, 1]
+
+    Participants always notice (p = 1); visibility gates to 0 before any of this.
+
+    Two changes from v2 (D74). Load is counted per ROOM, not per building: what competes for attention is
+    what is in the observer's own field, and counting the whole building made a quiet dorm room as loaded
+    as the dining hall two floors down. And `familiarity_weight` is now a MULTIPLICATIVE gain on the
+    priority, x(1 + w * fam), where it used to be an additive bonus, + w * fam. Additive, the social term
+    escaped every multiplier, so under load it was the only channel left standing and crowding *raised*
+    the share of attention going to familiar faces. Load theory (Lavie 1995) has high load cut processing
+    of everything, social cues included; a gain on the priority does that while keeping the
+    familiar/stranger ratio intact. The default weight moves 0.25 -> 0.8 to hold the median p_attend of
+    familiar observers where it was (measured on 623 reconstructed draws from 15 archived runs: 0.417 vs
+    0.418; the old additive bonus was worth a median 0.67 of the stimulus term it was added to).
+    """
     pc = cfg["perception"]
     if agent.id in fact["involves"]:
         return 1.0                                   # participation
@@ -69,11 +96,15 @@ def attention_prob(agent, fact: dict, beat: dict, cfg: dict) -> float:
         p *= pc["other_arena_factor"]
     if agent.state.in_conversation:
         p *= pc["busy_factor"]
-    # busy places: more going on, each thing is less likely to be noticed
-    p *= float(pc.get("crowd_factor", 1.0)) ** max(0, crowd_size(agent) - 2)
+    # busy rooms: more going on in the observer's own field, each thing is less likely to be noticed
+    in_room = crowd_size(agent)
+    p *= float(pc.get("crowd_factor", 1.0)) ** max(0, in_room - 2)
+    bcf = pc.get("building_crowd_factor")
+    if bcf:                                          # weaker second-order load from the rest of the building
+        p *= float(bcf) ** max(0, crowd_size(agent, "location") - in_room - 2)
     fam = max([agent.profile.rel(a).familiarity for a in fact["involves"]] or [0.0])
-    p += pc["familiarity_weight"] * fam
-    return agent.mods.modify_attention(agent, fact, p)
+    p *= 1.0 + float(pc["familiarity_weight"]) * fam
+    return min(1.0, max(0.0, agent.mods.modify_attention(agent, fact, p)))
 
 
 def observe(agent, beat: dict, event_id: str, cfg: dict, rng, obs_id: str) -> AgentObservation | None:

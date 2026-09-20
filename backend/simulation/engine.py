@@ -461,7 +461,22 @@ class Simulation:
                 if a.state.activity == "sleeping":
                     continue
                 arng = seed_rng(a.seed, aid, "ambient", tick)
-                for oid in sorted(self.agents):
+                here = [oid for oid in sorted(self.agents)
+                        if oid != aid and self.agents[oid].state.activity != "sleeping"
+                        and (self.agents[oid].state.location, self.agents[oid].state.arena)
+                        == (a.state.location, a.state.arena)]
+                # attention is limited: notice at most `ambient_max_per_tick` of the people around you, the
+                # familiar ones first. Without this a crowded room floods memory quadratically (a 100-agent
+                # mock day encoded 27.5k ambient memories and forgot 27.5k of them, evicting real experience).
+                cap = int(self.cfg["perception"].get("ambient_max_per_tick", 2))
+                if cap >= 0 and len(here) > cap:
+                    order = sorted(here, key=lambda oid: (-a.profile.rel(oid).familiarity, oid))
+                    keep = set(order[:cap])
+                    rest = [oid for oid in order[cap:]]
+                    if rest and cap > 0:                       # one wildcard so strangers are not invisible
+                        keep.add(rest[int(arng.integers(len(rest)))])
+                    here = [oid for oid in here if oid in keep]
+                for oid in here:
                     o = self.agents[oid]
                     if oid == aid or (o.state.location, o.state.arena) != (a.state.location, a.state.arena):
                         continue
