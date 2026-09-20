@@ -29,6 +29,27 @@ import time
 from pathlib import Path
 from typing import Callable, Optional
 
+_SCRATCH_CWD: Optional[str] = None
+_SCRATCH_LOCK = threading.Lock()
+
+
+def _scratch_cwd() -> str:
+    """An EMPTY directory to run the `claude` CLI in.
+
+    The CLI scans its working directory at startup. This used to be `tempfile.gettempdir()`, which on a
+    working machine is huge -- measured at 6.8 GB / 296 entries here, much of it this project's own run
+    artifacts (a single trace.jsonl is over 1 GB). Every one of the 32 concurrent calls therefore kicked off
+    a ripgrep over 6.8 GB before answering: seven `rg` processes at ~185% CPU each, and throughput stuck at
+    ~124 calls/min against an expected 270+. An empty directory removes the scan entirely.
+
+    Created once per process and reused; the CLI never writes here (`--no-session-persistence`).
+    """
+    global _SCRATCH_CWD
+    with _SCRATCH_LOCK:
+        if _SCRATCH_CWD is None or not os.path.isdir(_SCRATCH_CWD):
+            _SCRATCH_CWD = tempfile.mkdtemp(prefix="memeworld-cli-cwd-")
+    return _SCRATCH_CWD
+
 _local = threading.local()
 
 
@@ -110,7 +131,7 @@ class ClaudeCLIBackend(Backend):
         for attempt in range(4):
             try:
                 p = subprocess.run(cmd, input=prompt, capture_output=True, text=True,
-                                   encoding="utf-8", timeout=self.timeout, cwd=tempfile.gettempdir())
+                                   encoding="utf-8", timeout=self.timeout, cwd=_scratch_cwd())
                 data = json.loads(p.stdout)
                 if data.get("is_error"):
                     raise RuntimeError(str(data.get("result"))[:300])

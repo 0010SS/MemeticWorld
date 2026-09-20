@@ -1,0 +1,192 @@
+extends: configs/baseline.yaml
+run_name: pitch_memes
+seed: 42
+world_seed: 42
+population: configs/population/homewood100.yaml
+population_size: 100
+initial_memories_file: configs/population/homewood100_meme_memories.yaml
+initial_memories_importance: 5
+simulation_days: 2
+day_start: 08:30
+day_end: '17:00'
+llm:
+  backend: claude_cli
+  model: haiku
+  max_workers: 12
+world:
+  reference_mode: situated
+routine:
+  jitter_minutes: 0
+  deviation_prob: 0
+latent_events:
+  event_rate: 0
+memory:
+  verbatim:
+    enabled: true
+priming:
+  enabled: true
+retrieval:
+  source_weights:
+    seed: 0.5
+    ambient: 0.5
+reminding:
+  enabled: false
+need:
+  enabled: false
+conversation:
+  invite_prob: 0
+  max_utterances: 4
+  max_per_agent_per_day: 8
+  catchup:
+    enabled: true
+  mealtalk:
+    enabled: true
+  group:
+    enabled: true
+    windows:
+    - 11:30-13:30
+    - 17:30-19:00
+  repair:
+    enabled: true
+memes:
+  enabled: true
+  registry:
+  - id: tray_washer
+    phrase: teal tray
+    grounding: grounded
+    breadth: broad
+    habit: has a habit of calling trays that came out of the cold wash looking clean but greasy a "teal
+      tray".
+    seeds:
+      k: 5
+      strategy: spread
+    incident:
+      location: Dining Hall
+      arena: Main Floor
+      days:
+      - 1
+      repaired_day: 2
+      prob_per_meal: 0.9
+      surfaces:
+      - '{P} lifted a tray off the clean rack and the underside was still slick.'
+      - '{P} wiped down a tray straight out of the wash and the cloth came away greasy.'
+      - '{P} put a plate back on the stack after finding a film on it the wash had not taken off.'
+      - '{P} left half a meal and spent the rest of the day with a bad stomach.'
+      repaired_surfaces:
+      - '{P} lifted a tray off the clean rack and it came away dry under a thumb.'
+      - '{P} wiped down a tray straight out of the wash and the cloth stayed clean.'
+      - '{P} took a plate off the stack, turned it over, and found nothing on it.'
+      - '{P} felt the heat still coming off a rack of trays that had just come through.'
+    origin_probe: for three days the wash in a dining hall ran cold, so trays came off the clean rack
+      looking fine and were still greasy underneath, and a few people were ill afterwards
+    distinctive_words:
+    - teal
+    probe_gradient:
+      literal: a rack of trays comes out of the wash looking clean and is still greasy
+      near: a coffee urn is wiped down and still tastes of yesterday
+      mid: a bench is signed off as clear and still has someone's samples on it
+      far: a reading list looks complete and leaves out the one chapter the exam covers
+    foils:
+    - a tray that is visibly dirty, which everyone can see for themselves
+    - a wash cycle that is cancelled before it starts, so nothing comes out at all
+  - id: hood_sash
+    phrase: ochre hood
+    grounding: grounded
+    breadth: narrow
+    habit: has a habit of calling the one fume hood that reads shut and does not actually seal the "ochre
+      hood".
+    seeds:
+      k: 5
+      strategy: spread
+    incident:
+      location: Research Lab
+      arena: Wet Lab
+      days:
+      - 1
+      repaired_day: 2
+      prob_per_meal: 0.9
+      windows:
+      - 09:00-11:30
+      - 13:30-16:00
+      surfaces:
+      - '{P} pulled the front of one fume hood down until it read shut, and felt air moving past the gap.'
+      - '{P} held a strip of tissue at the front of one fume hood and watched it hang still while the
+        panel read closed.'
+      - '{P} closed one fume hood, and the smell of solvent stayed in the room.'
+      - '{P} ran a hand along the front edge of one fume hood and felt a draught coming out.'
+      repaired_surfaces:
+      - '{P} pulled the front of that fume hood down and it seated with a soft knock.'
+      - '{P} held a strip of tissue at the front of that fume hood and it pulled flat inwards.'
+      - '{P} closed that fume hood, and the smell of solvent went with it.'
+      - '{P} ran a hand along the front edge of that fume hood and felt nothing coming out.'
+    origin_probe: one fume hood in a teaching lab reads shut on its panel and does not actually seal,
+      so air and solvent smell keep coming past the front edge while people work at it
+    distinctive_words:
+    - ochre
+    probe_gradient:
+      literal: that one fume hood is in use and its front does not seal
+      near: a different fume hood on the same bench does not seal either
+      mid: a door in the same building reads shut and is not
+      far: a submitted form reads complete and is not
+    foils:
+    - a fume hood that is out of service with a sign on it, so nobody is misled
+    - a fume hood that seals properly and is simply in use by someone else
+  - id: running_warm
+    phrase: indigo case
+    grounding: ungrounded
+    breadth: broad
+    habit: has a habit of calling any stretch of work that has quietly got well out of hand an "indigo
+      case".
+    seeds:
+      k: 5
+      strategy: spread
+    incident: null
+    origin_probe: a stretch of someone's work has quietly got well out of hand -- more taken on than can
+      be finished, and further behind than anyone has said out loud
+    home:
+      location: Library
+      arena: Study Tables
+    distinctive_words:
+    - indigo
+    probe_gradient:
+      literal: someone has taken on more this week than they can finish
+      near: a group project is two sessions behind its own plan
+      mid: one piece of equipment is booked by three people for the same hour
+      far: a friendship is running on favours nobody has returned
+    foils:
+    - a week that is genuinely busy and is finishing on time
+    - a plan that was cancelled outright, so there is nothing left to fall behind on
+  - id: tuesday_list
+    phrase: mauve list
+    grounding: ungrounded
+    breadth: narrow
+    habit: has a habit of calling the standing note of who is bringing what to the weekly get-together
+      the "mauve list".
+    seeds:
+      k: 5
+      strategy: spread
+    incident: null
+    origin_probe: the standing note that people add their name to before the weekly get-together, saying
+      who is bringing what to it
+    home:
+      location: Dorm
+      arena: Lounge
+    distinctive_words:
+    - mauve
+    probe_gradient:
+      literal: the sheet people add their name to before the weekly get-together
+      near: a second sign-up sheet, for a different thing that happens every week
+      mid: any sign-up sheet at all
+      far: any running tally of what people owe each other
+    foils:
+    - a one-off sign-up for a single trip that will not happen again
+    - a printed class roster that nobody adds their own name to
+checkpoints:
+  enabled: true
+  days:
+  - 2
+  - 4
+  - 6
+analysis:
+  llm_classifier: true
+  probes: true
